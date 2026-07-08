@@ -1,10 +1,10 @@
 import numpy as np
 import sounddevice as sd
 import queue
-from scipy.signal import butter, lfilter
 
 from .config import SAMPLE_RATE, BLOCK_SIZE
 from .soundboard import load_sound
+from .effects import GainEffect, RobotEffect, LowpassEffect
 
 class AudioEngine:
     def __init__(self):
@@ -19,7 +19,12 @@ class AudioEngine:
         self.monitor_enabled = False
         self.monitor_volume = 0.35
         self.soundboard_volume = 0.70
-        self.phase = 0
+
+        self.effects = [
+            RobotEffect(lambda: self.robot),
+            LowpassEffect(lambda: self.lowpass),
+            GainEffect(lambda: self.gain),
+        ]
 
     def set_params(self, gain, robot, lowpass, monitor_enabled, monitor_volume, soundboard_volume):
         self.gain = gain
@@ -30,17 +35,8 @@ class AudioEngine:
         self.soundboard_volume = soundboard_volume
 
     def process_voice(self, mono, frames):
-        t = (np.arange(frames) + self.phase) / SAMPLE_RATE
-        carrier = np.sin(2 * np.pi * 85 * t)
-        self.phase += frames
-
-        mono = mono * (1.0 - self.robot) + (mono * carrier) * self.robot
-
-        cutoff = max(300, min(self.lowpass, 8000))
-        b, a = butter(2, cutoff / (SAMPLE_RATE / 2), btype="low")
-        mono = lfilter(b, a, mono)
-
-        mono *= self.gain
+        for effect in self.effects:
+            mono = effect.process(mono, frames, SAMPLE_RATE)
         return np.clip(mono, -0.95, 0.95).astype(np.float32)
 
     def play_sound(self, path):
