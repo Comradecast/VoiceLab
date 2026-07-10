@@ -12,4 +12,5 @@ class TelemetrySnapshot:
     audio_running: bool = False
     route_status: str = "stopped"
     effect_chain_status: Any = None
+    plugin_startup_status: Any = None
     metadata: dict[str, Any] = field(default_factory=dict)

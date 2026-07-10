@@ -12,6 +12,7 @@ class TelemetryService:
         self._audio_running = False
         self._route_status = "stopped"
         self._effect_chain_status = None
+        self._plugin_startup_status = None
         self._metadata = {}
 
     def record_event(self, event_type, severity, message, **metadata):
@@ -42,6 +43,12 @@ class TelemetryService:
     def set_effect_chain_status(self, status):
         self._effect_chain_status = status
 
+    def set_plugin_startup_status(self, status):
+        self._plugin_startup_status = status
+
+    def set_metadata(self, key, value):
+        self._metadata[key] = value
+
     def snapshot(self):
         return TelemetrySnapshot(
             latest_status=self._latest_status,
@@ -50,5 +57,6 @@ class TelemetryService:
             audio_running=self._audio_running,
             route_status=self._route_status,
             effect_chain_status=self._effect_chain_status,
+            plugin_startup_status=self._plugin_startup_status,
             metadata=dict(self._metadata),
         )

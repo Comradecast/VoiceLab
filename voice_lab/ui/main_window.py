@@ -68,6 +68,7 @@ class App(QWidget):
         layout.addLayout(preset_btns)
 
         self.gain = self.slider(layout, "Gain", 0, 50, 10)
+        self.pitch = self.slider(layout, "Pitch", -12, 12, 0)
         self.robot = self.slider(layout, "Robot amount", 0, 100, 0)
         self.lowpass = self.slider(layout, "Lowpass Hz", 300, 8000, 4000)
 
@@ -127,6 +128,7 @@ class App(QWidget):
     def current_params(self):
         return {
             "gain": self.gain.value(),
+            "pitch": self.pitch.value(),
             "robot": self.robot.value(),
             "lowpass": self.lowpass.value(),
         }
@@ -156,6 +158,7 @@ class App(QWidget):
 
     def set_preset_controls(self, params):
         self.gain.setValue(params.get("gain", 10))
+        self.pitch.setValue(params.get("pitch", 0))
         self.robot.setValue(params.get("robot", 0))
         self.lowpass.setValue(params.get("lowpass", 4000))
         self.apply_current_parameters()
@@ -207,6 +210,7 @@ class App(QWidget):
             gain=self.gain.value() / 10.0,
             robot=self.robot.value() / 100.0,
             lowpass=self.lowpass.value(),
+            pitch=self.pitch.value(),
             monitor_enabled=self.monitor_check.isChecked(),
             monitor_volume=self.monitor_volume.value() / 100.0,
             soundboard_volume=self.soundboard_volume.value() / 100.0,

@@ -1,4 +1,5 @@
 import os
+from dataclasses import asdict, is_dataclass
 
 from PySide6.QtCore import QObject, Signal
 
@@ -52,6 +53,7 @@ class ApplicationService(QObject):
             "gain": 1.0,
             "robot": 0.0,
             "lowpass": 4000,
+            "pitch": 0.0,
         }
         self.current_monitor_enabled = False
         self.current_monitor_volume = 0.35
@@ -70,6 +72,17 @@ class ApplicationService(QObject):
 
     def _refresh_effect_chain_status(self):
         self.telemetry.set_effect_chain_status(self.engine.effect_chain.status())
+        for effect in self.engine.effect_chain.effects:
+            if getattr(effect, "name", "") != "Pitch Shift" or not hasattr(effect, "telemetry"):
+                continue
+            status = effect.telemetry()
+            if status is None:
+                continue
+            self.telemetry.set_metadata(
+                "pitch_buffer_status",
+                asdict(status) if is_dataclass(status) else status,
+            )
+            break
 
     def _record_effect_runtime_failure(self, effect_name, exc):
         self._refresh_effect_chain_status()
@@ -110,8 +123,9 @@ class ApplicationService(QObject):
         monitor_enabled,
         monitor_volume,
         soundboard_volume,
+        pitch=0.0,
     ):
-        validation = self.config.validate_effect_parameters(gain, robot, lowpass)
+        validation = self.config.validate_effect_parameters(gain, robot, lowpass, pitch)
         if not validation.success:
             result = CommandResult.fail(
                 f"Invalid effect parameters: {validation.message}",
@@ -123,6 +137,7 @@ class ApplicationService(QObject):
                 gain=gain,
                 robot=robot,
                 lowpass=lowpass,
+                pitch=pitch,
             )
             self.telemetry.record_command_result("apply_effect_parameters", result)
             return result
@@ -130,10 +145,12 @@ class ApplicationService(QObject):
         gain = validation.gain
         robot = validation.robot
         lowpass = validation.lowpass
+        pitch = validation.pitch
         self.current_effect_params = {
             "gain": gain,
             "robot": robot,
             "lowpass": lowpass,
+            "pitch": pitch,
         }
         self.current_monitor_enabled = monitor_enabled
         self.current_monitor_volume = monitor_volume
@@ -142,7 +159,10 @@ class ApplicationService(QObject):
             gain=gain,
             robot=robot,
             lowpass=lowpass,
+            pitch=pitch,
         )
+        self.telemetry.set_metadata("current_pitch_semitones", pitch)
+        self.telemetry.set_metadata("current_effect_params", self.current_effect_params)
         self.mixer.set_params(
             soundboard_volume=soundboard_volume,
             monitor_volume=monitor_volume,
@@ -154,6 +174,7 @@ class ApplicationService(QObject):
             gain=gain,
             robot=robot,
             lowpass=lowpass,
+            pitch=pitch,
             monitor_enabled=monitor_enabled,
         )
         return result
@@ -176,6 +197,7 @@ class ApplicationService(QObject):
             gain=effect_parameters.gain,
             robot=effect_parameters.robot,
             lowpass=effect_parameters.lowpass,
+            pitch=effect_parameters.pitch,
             monitor_enabled=self.current_monitor_enabled,
             monitor_volume=self.current_monitor_volume,
             soundboard_volume=self.current_soundboard_volume,

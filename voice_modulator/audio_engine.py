@@ -28,8 +28,17 @@ class AudioEngine(_AudioEngine):
             monitor_enabled=lambda: getattr(self, "monitor_enabled", False),
         )
 
-    def set_params(self, gain, robot, lowpass, monitor_enabled, monitor_volume, soundboard_volume):
-        super().set_params(gain, robot, lowpass)
+    def set_params(
+        self,
+        gain,
+        robot,
+        lowpass,
+        monitor_enabled,
+        monitor_volume,
+        soundboard_volume,
+        pitch=0.0,
+    ):
+        super().set_params(gain, robot, lowpass, pitch=pitch)
         self.monitor_enabled = monitor_enabled
         self.monitor_volume = monitor_volume
         self.soundboard_volume = soundboard_volume

@@ -7,7 +7,7 @@ class Router:
     def __init__(self, audio_io, capture=None):
         self.audio_io = audio_io
         self.capture = capture or Capture()
-        self.monitor_queue = queue.Queue(maxsize=8)
+        self.monitor_queue = queue.Queue(maxsize=1)
 
     def validate_route(self, input_id, virtual_mic_id, monitor_id=None):
         devices = self.audio_io.query_devices()
@@ -19,7 +19,7 @@ class Router:
     def start(self, engine, mixer, input_id, virtual_mic_id, monitor_id=None, monitor_enabled=None):
         self.stop()
         self.validate_route(input_id, virtual_mic_id, monitor_id)
-        self.monitor_queue = queue.Queue(maxsize=8)
+        self.monitor_queue = queue.Queue(maxsize=1)
 
         def main_callback(indata, outdata, frames, time_info, status):
             input_frame = self.capture.capture_block(indata, frames)
@@ -29,6 +29,7 @@ class Router:
             self.audio_io.write_frame(outdata, buses.main_bus)
 
             if monitor_enabled and monitor_enabled() and monitor_id is not None:
+                self._drop_stale_monitor_frame()
                 try:
                     self.monitor_queue.put_nowait(buses.monitor_bus)
                 except queue.Full:
@@ -48,6 +49,12 @@ class Router:
 
     def stop(self):
         self.audio_io.close()
+
+    def _drop_stale_monitor_frame(self):
+        try:
+            self.monitor_queue.get_nowait()
+        except queue.Empty:
+            pass
 
     def _require_device(self, devices, device_id, label, channel_key):
         if device_id is None:

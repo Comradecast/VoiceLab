@@ -9,6 +9,7 @@ Canonical project documents:
 - `ROADMAP.md`
 - `DECISION_QUEUE.md`
 - `ENGINEERING_PROCESS.md`
+- `AFME_PROTOCOL.md`
 
 Run the current application with:
 

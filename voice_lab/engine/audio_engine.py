@@ -10,6 +10,7 @@ class AudioEngine:
         self.gain = 1.0
         self.robot = 0.0
         self.lowpass = 4000
+        self.pitch = 0.0
         self.effect_chain = effect_chain or EffectChain()
 
     def set_effects(self, effects):
@@ -25,10 +26,11 @@ class AudioEngine:
     def effects(self):
         return self.effect_chain.effects
 
-    def set_params(self, gain, robot, lowpass):
+    def set_params(self, gain, robot, lowpass, pitch=0.0):
         self.gain = gain
         self.robot = robot
         self.lowpass = lowpass
+        self.pitch = pitch
 
     def process_voice(self, audio, frames=None):
         """Process microphone audio.

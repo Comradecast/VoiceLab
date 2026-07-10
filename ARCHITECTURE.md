@@ -259,6 +259,40 @@ Every effect plugin must expose:
 - telemetry fields or events
 - test entry points independent of UI, microphone, and virtual cable
 
+Plugin identity is defined by plugin metadata, not by display names or concrete Python class names.
+
+Plugin ids and effect ids must:
+
+- be stable across releases
+- be unique within the registered plugin set
+- use lowercase slug or dotted identifier format
+- not depend on display names
+- reject invalid values clearly
+
+The v1 metadata contract includes:
+
+- plugin id
+- display name
+- plugin version
+- provider
+- description
+- plugin type
+- enabled-by-default state
+- VoiceLab plugin API compatibility declaration
+- provided effect descriptors
+- optional homepage, license, and metadata fields
+
+Each effect descriptor includes:
+
+- effect id
+- display name
+- category
+- factory id
+- effect factory reference
+- optional parameter metadata
+
+Plugin versions and VoiceLab plugin API versions use `major.minor.patch` format. Compatibility is evaluated against the current VoiceLab plugin API version before effect construction. VoiceLab does not implement package dependency solving in v1.
+
 Effect plugins may:
 
 - transform audio blocks passed to them
@@ -280,6 +314,172 @@ Load failure disables the plugin and reports telemetry. Runtime failure bypasses
 Plugins load at application startup only in v1.
 
 Hot reload is explicitly out of scope for v1.
+
+Plugin discovery is startup-only in v1. UI and controllers must not trigger discovery.
+
+Discovery ownership:
+
+- `PluginDiscovery` owns locating plugin candidates.
+- `PluginLoader` owns interpreting a discovered candidate into plugin metadata when supported.
+- `PluginManager` owns validating and registering metadata.
+- `EffectChain` owns ordered execution of already constructed effect instances.
+- `AudioEngine` must not discover plugins, inspect plugin metadata, or construct concrete effects.
+
+Discovery locations are explicit and deterministic. The v1 search order is:
+
+1. built-in plugin source
+2. application-local `plugins/` directory at the project root
+3. user plugin directory at `~/VoiceLab/plugins`
+
+Missing optional external directories do not fail startup.
+
+Candidate rules:
+
+- the built-in source is represented as a built-in candidate
+- external candidates are either a `plugin.json` file or a directory containing `plugin.json`
+- external discovery is non-recursive
+- candidates within a directory are sorted by name for deterministic ordering
+- duplicate candidate manifest paths are ignored after the first occurrence and reported as discovery failures
+- malformed manifests are rejected at discovery without partial registration
+
+Discovery must not:
+
+- construct effects
+- register plugins
+- execute arbitrary plugin code
+- install dependencies
+- scan the network
+- hot reload plugins
+
+Discovery failures are structured results. Missing optional directories, invalid locations, unreadable directories, duplicate candidates, malformed manifests, and unexpected discovery exceptions must be contained at the discovery boundary so startup can continue when possible.
+
+Manifest loading ownership:
+
+- `PluginLoader` owns converting declarative `plugin.json` data into `PluginMetadata`.
+- manifest loading must not register plugins
+- manifest loading must not evaluate plugin-id or effect-id collisions
+- manifest loading must not execute plugin code
+- failed manifest loading must produce a structured result and no partial plugin state
+
+The v1 `plugin.json` schema is:
+
+```json
+{
+  "manifest_version": "1",
+  "plugin_id": "example.plugin",
+  "display_name": "Example Plugin",
+  "version": "1.0.0",
+  "provider": "Example Provider",
+  "description": "Example plugin description.",
+  "compatibility": {
+    "min_api_version": "1.0.0",
+    "max_api_version": "1.0.0"
+  },
+  "plugin_type": "effect",
+  "enabled_by_default": true,
+  "effects": [
+    {
+      "effect_id": "example.effect",
+      "display_name": "Example Effect",
+      "category": "voice",
+      "implementation": "example.effect.factory"
+    }
+  ]
+}
+```
+
+Optional plugin fields:
+
+- `author` as an alias when `provider` is absent
+- `homepage`
+- `license`
+- `metadata`
+
+Optional effect fields:
+
+- `factory_id` as an alias when `implementation` is absent
+- `parameter_metadata`
+- `metadata`
+
+Schema versioning:
+
+- `manifest_version` is separate from plugin version and VoiceLab plugin API version.
+- M4.3 supports only `manifest_version` value `"1"`.
+- unsupported manifest versions must fail manifest loading with a structured result.
+- no manifest migration framework exists in v1.
+
+Unknown-field policy:
+
+- unknown root and effect fields are tolerated
+- unknown field names are preserved in metadata diagnostics
+- structurally invalid required fields are rejected
+
+Implementation references:
+
+- `implementation` or `factory_id` is a declarative identifier only
+- the identifier uses the same lowercase slug/dotted identifier format as other plugin ids
+- M4.3 must not import, call, resolve, or execute the implementation reference
+- external manifest effects may produce metadata, but their implementation is not executable until a later loading milestone explicitly defines that boundary
+
+External manifests are untrusted declarative data. VoiceLab must not import manifest-declared Python modules, call factories, execute scripts, install dependencies, inspect arbitrary executable files, follow network URLs, or expand archives during manifest loading.
+
+Plugin telemetry ownership:
+
+- plugin components produce structured discovery, load, compatibility, and registration results
+- application lifecycle or a plugin startup coordinator records telemetry from those results
+- telemetry observes outcomes and must not discover, load, register, enable, disable, or execute plugins
+- telemetry failures must not alter plugin startup behavior
+
+Plugin telemetry event taxonomy:
+
+- `plugin.discovery_started`
+- `plugin.discovery_completed`
+- `plugin.candidate_discovered`
+- `plugin.discovery_failed`
+- `plugin.manifest_loaded`
+- `plugin.manifest_failed`
+- `plugin.compatible`
+- `plugin.incompatible`
+- `plugin.registered`
+- `plugin.registration_failed`
+- `plugin.startup_summary`
+
+Plugin state terminology:
+
+- `discovered`: a plugin candidate was found by discovery
+- `metadata loaded`: a manifest or built-in source was converted to `PluginMetadata`
+- `registered metadata`: `PluginManager` accepted metadata for registration
+- `executable`: VoiceLab can construct executable effect instances for the plugin
+- `active`: effect instances are present in the current effect chain
+
+External manifest plugins may be discovered, loaded as metadata, and registered as metadata. For RC1 they are not executable and must not be reported as active effect plugins.
+
+Plugin metadata, discovery, manifest loading, registration, compatibility checking, lifecycle integration, and plugin startup telemetry are frozen for RC1. Changes to these contracts require an explicit architecture decision and migration plan.
+
+External plugin execution is intentionally outside the RC1 architecture. Factory resolution, trust policy, sandboxing or process isolation, dependency management, and plugin enable/disable policy remain deferred decisions.
+
+Telemetry snapshot may expose a passive plugin startup status with candidate counts, loaded metadata counts, registered plugin ids, rejected counts, incompatible plugin ids, latest plugin failure, built-in availability, and whether external plugin execution is supported. The snapshot is not authoritative plugin state; `PluginManager` remains authoritative for registered metadata.
+
+Plugin metadata owns descriptive identity, compatibility declaration, and the list of provided effects.
+
+PluginManager owns:
+
+- plugin registration
+- identifier validation outcomes
+- plugin-id uniqueness checks
+- effect-id uniqueness checks
+- plugin API compatibility evaluation
+- enabled or rejected plugin state
+- read-only exposure of registered metadata
+- structured registration failures
+
+Registration must be atomic. Invalid, incompatible, or duplicate plugins must not partially register. Previously valid registrations must remain valid when a later registration fails.
+
+EffectChain owns ordered execution of effect instances. It does not discover plugins or evaluate metadata.
+
+AudioEngine must not know plugin metadata details and must not construct concrete effect classes.
+
+UI must not import concrete plugin implementations.
 
 Plugin discovery must define:
 
@@ -513,10 +713,11 @@ Canonical documentation paths:
 - `ROADMAP.md`
 - `DECISION_QUEUE.md`
 - `ENGINEERING_PROCESS.md`
+- `AFME_PROTOCOL.md`
 
 Root-level files are canonical. Copies under `docs/` are not canonical and must not contain competing architecture rules.
 
-Architectural changes must update documentation before or with implementation. `NON_NEGOTIABLES.md` defines rules; `ARCHITECTURE.md` defines contracts and boundaries; `ROADMAP.md` defines sequencing and planned scope; `DECISION_QUEUE.md` tracks unresolved architecture decisions; `ENGINEERING_PROCESS.md` defines the contribution workflow.
+Architectural changes must update documentation before or with implementation. `NON_NEGOTIABLES.md` defines rules; `ARCHITECTURE.md` defines contracts and boundaries; `ROADMAP.md` defines sequencing and planned scope; `DECISION_QUEUE.md` tracks unresolved architecture decisions; `ENGINEERING_PROCESS.md` defines the contribution workflow; `AFME_PROTOCOL.md` defines the governing milestone engineering protocol.
 
 ## 24. Lifecycle
 

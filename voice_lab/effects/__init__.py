@@ -8,6 +8,7 @@ __all__ = [
     "EffectFailureStatus",
     "GainEffect",
     "LowpassEffect",
+    "PitchShiftEffect",
     "RobotEffect",
 ]
 
@@ -21,6 +22,10 @@ def __getattr__(name):
         from .lowpass import LowpassEffect
 
         return LowpassEffect
+    if name == "PitchShiftEffect":
+        from .pitch_shift import PitchShiftEffect
+
+        return PitchShiftEffect
     if name == "RobotEffect":
         from .robot import RobotEffect
 

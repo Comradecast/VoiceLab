@@ -44,8 +44,8 @@ class ConfigurationService:
     def preset_names(self):
         return sorted(self._presets.keys())
 
-    def validate_effect_parameters(self, gain, robot, lowpass):
-        return validate_effect_parameters(gain, robot, lowpass)
+    def validate_effect_parameters(self, gain, robot, lowpass, pitch=0.0):
+        return validate_effect_parameters(gain, robot, lowpass, pitch)
 
     def select_preset(self, name):
         if not name or name not in self._presets:
