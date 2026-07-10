@@ -12,7 +12,7 @@ Observed:
 
 Status:
 
-- Reproducible.
+- Historical / not reproduced during final RC1 hardware acceptance.
 
 Priority:
 
@@ -20,8 +20,38 @@ Priority:
 
 Notes:
 
-- Does not block current architectural work.
-- Investigate after RC1 unless root cause becomes obvious.
+- Final M5.6 RC1 hardware acceptance found soundboard playback passing.
+- The former two-stage behavior was not reproduced during the final hardware
+  smoke session.
+- Keep this as a historical observation, not an active RC1 blocker. Reopen only
+  if the behavior becomes reproducible again.
+
+## Telemetry / UI
+
+### Backend Telemetry Not Visible In UI
+
+Observed:
+
+- Final M5.6 manual hardware acceptance could not verify backend telemetry,
+  fallback warnings, or initial telemetry through the UI because telemetry is
+  not currently visible in the application.
+- Automated verification confirmed Signalsmith `available=True`, backend
+  `signalsmith`, status `active`, telemetry readability, and no fallback active.
+
+Status:
+
+- Deferred usability/telemetry-visibility work.
+
+Priority:
+
+- Low for RC1.
+
+Notes:
+
+- This does not block RC1 because backend telemetry is readable through the
+  automated path.
+- The broader telemetry visibility decision remains tracked in
+  `decision_queue/telemetry-visibility.md`.
 
 ## Pitch Shift
 
@@ -42,7 +72,7 @@ Status:
 
 - Automated adapter checks pass.
 - Exact-zero tail diagnostics pass for sine, speech-like synthetic audio, and impulse input.
-- Requires manual hardware listening test.
+- Final RC1 hardware listening test passed for the canonical Signalsmith path.
 
 Priority:
 
@@ -61,6 +91,8 @@ Notes:
 - This keeps the M5.0 demonstrator bounded and callback-safe, but RC1 hardening should evaluate latency, crackle, and continuity under real microphone routing and consider a streaming-capable pitch backend if quality is unacceptable.
 - Follow-up live testing found exactly that tradeoff: 8192-frame Pedalboard buffering had acceptable continuity but unacceptable monitor latency, while 2048-frame buffering improved latency but brought flutter/choppiness back. Pedalboard is therefore unsuitable as the primary real-time pitch backend unless new evidence disproves this.
 - M5.3 Signalsmith live hardware testing closed the Pedalboard continuity/tail issue for the canonical pitch path. The native Signalsmith backend loaded successfully, the metallic/electrical tail is gone, and flutter/choppiness is gone.
+- M5.6 final RC1 hardware acceptance reconfirmed metallic tail absent,
+  flutter/choppiness absent, and latency acceptable.
 
 Window diagnostics at 48 kHz with 1024-frame callbacks:
 

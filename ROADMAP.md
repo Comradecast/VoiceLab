@@ -376,7 +376,7 @@ Candidate directions:
 
 ## M5.5 - RC1 Lifecycle and Release Readiness
 
-Status: PROVISIONAL
+Status: PASS
 
 Purpose: harden application lifecycle and document a repeatable RC1 operator and
 release-preparation process without changing audio behavior, pitch DSP
@@ -416,6 +416,75 @@ configuration, frozen contracts, or architectural ownership.
 
 - Automated M5.5 verification passed.
 - Native rebuild succeeded after normal offscreen application close.
-- Manual hardware checklist was documented but not performed in this automated
-  engineering session; M5.5 remains provisional until that manual RC1 smoke pass
-  is completed.
+- Final M5.6 manual hardware acceptance completed the remaining M5.5
+  release-readiness gate.
+- Shutdown and relaunch testing passed after normal stop, after close, and after
+  closing while processing remained active.
+- Native rebuild-after-close verification passed; the rebuilt module copied to
+  `voice_lab/effects/_signalsmith_pitch.cp313-win_amd64.pyd`, confirming
+  VoiceLab released the native module after shutdown.
+- No RC1 lifecycle blockers remain.
+
+## M5.6 - Final Hardware Smoke and RC1 Freeze
+
+Status: PASS
+
+Purpose: complete final RC1 manual hardware acceptance and freeze the verified
+repository state without changing implementation behavior, pitch DSP
+configuration, frozen contracts, or architectural ownership.
+
+### Scope
+
+- Record final automated verification for M5.4/M5.5 and RC1 contract guards.
+- Record final manual hardware startup, device, core audio, stability,
+  shutdown, relaunch, and rebuild-after-close results.
+- Reconcile known issues so remaining work is explicitly non-blocking.
+- Recommend the RC1 release tag without creating or pushing it.
+
+### Out of Scope
+
+- Signalsmith DSP changes.
+- UI telemetry visibility implementation.
+- External plugin execution.
+- Installer, packaging, dependency management, or auto-update behavior.
+
+### Completed
+
+- Final automated verification confirmed Signalsmith `available=True`, backend
+  `signalsmith`, backend status `active`, telemetry readability, and no fallback
+  active.
+- Final manual startup/device acceptance passed for application launch,
+  microphone input, virtual microphone availability, monitor availability, and
+  starting processing. Backend telemetry/fallback visibility through the UI was
+  not tested because telemetry is not currently visible in the application; the
+  CLI/automated telemetry path confirmed the backend state.
+- Final manual core audio acceptance passed for dry voice, Gain, Lowpass, Robot,
+  pitch `+4`, pitch `-4`, preset switching while processing, live pitch changes
+  while processing, soundboard playback, virtual microphone processed output,
+  and monitor processed output.
+- Virtual microphone and monitor processed-output paths were confirmed through
+  Steam voice test.
+- Subjective pitch/audio acceptance passed: metallic tail absent,
+  flutter/choppiness absent, and latency acceptable.
+- The former soundboard two-stage behavior was not reproduced during final RC1
+  hardware acceptance.
+- Runtime stability passed for a 30-minute session with no crash, stream loss,
+  runaway/increasing latency, progressive distortion, repeated dropout, frozen
+  UI, or lost command response.
+- Shutdown and relaunch acceptance passed: stop processing, close after
+  stopping, terminal prompt return, relaunch, start processing after relaunch,
+  close while processing remained active, terminal prompt return after active
+  close, no native-module lock after close, and native Signalsmith rebuild after
+  close.
+
+### Completion Notes
+
+- Tested environment: Windows 11, Python 3.13.3, AMD64 / 64-bit,
+  pybind11 3.0.4, Signalsmith native module active.
+- Established pitch guidance: `+/-4` semitones is the recommended normal range,
+  `+/-8` semitones is usable but obviously processed, and `+/-12` semitones is
+  intentionally extreme.
+- Missing UI telemetry visibility is deferred usability work and is not an RC1
+  failure because backend telemetry remains readable through the automated path.
+- Remaining DSP debt is limited to non-blocking sung pitch-contour flattening.
+- No RC1 blockers were found.

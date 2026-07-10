@@ -9,6 +9,14 @@
 - External virtual microphone dependency: VB-CABLE or an equivalent
   user-installed virtual audio device.
 
+Final RC1 hardware acceptance was completed on:
+
+- Windows 11.
+- Python 3.13.3.
+- AMD64 / 64-bit runtime.
+- pybind11 3.0.4.
+- Signalsmith native module active.
+
 ## Setup
 
 Create and activate a virtual environment, then install runtime/build
@@ -65,13 +73,16 @@ backend build command should be able to replace the `.pyd` after normal close.
 
 ## Known Limitations
 
-- Recommended normal pitch range is around `+/-4` semitones.
-- `+/-8` semitones is usable but clearly processed.
+- Recommended normal pitch range is `+/-4` semitones.
+- `+/-8` semitones is usable but obviously processed.
 - `+/-12` semitones is intentionally extreme.
 - Some sung notes, bends, or transitions may sound flattened. This is deferred
   product-quality debt and is not an RC1 blocker.
-- Soundboard playback may still appear to trigger in two stages; this remains
-  deferred unless it blocks lifecycle shutdown.
+- The former soundboard two-stage playback behavior was not reproduced during
+  final RC1 hardware acceptance. Treat it as historical unless it becomes
+  reproducible again.
+- Backend telemetry is not currently visible in the application UI. Automated
+  telemetry verification remains available and confirmed the RC1 backend state.
 
 ## Troubleshooting
 
@@ -96,32 +107,100 @@ Before building a release package:
 
 ## Manual RC1 Hardware Smoke Checklist
 
-Current documented result for this engineering session: not performed. This
-checklist is the required manual RC1 smoke pass before release tagging.
+Current documented result: PASS. Final M5.6 manual hardware acceptance is
+complete and no RC1 blockers were found.
 
-- Microphone capture works.
-- Virtual mic output receives processed audio.
-- Monitor output works when enabled.
-- Monitor disabled mode runs cleanly.
-- Gain changes are audible.
-- Lowpass changes are audible.
-- Robot effect is audible when enabled.
-- Signalsmith pitch at `+4` semitones works.
-- Signalsmith pitch at `-4` semitones works.
-- Preset switching works while running.
-- Soundboard playback works.
-- Audio stop/start works.
-- Application close releases audio devices.
-- Application relaunch works after close.
-- Backend telemetry reports `signalsmith`.
-- No lingering VoiceLab `main.py` process remains after close.
-- Native rebuild succeeds after close.
+Tested environment:
 
-Retain current subjective acceptance from M5.3:
+- Windows 11.
+- Python 3.13.3.
+- AMD64 / 64-bit runtime.
+- pybind11 3.0.4.
+- Signalsmith native module active.
+- Virtual microphone and monitor processed-output paths confirmed through Steam
+  voice test.
 
-- metallic tail eliminated;
-- flutter/choppiness eliminated;
-- latency acceptable;
-- `+/-4` is the recommended normal range;
-- `+/-8` is usable but obviously processed;
-- `+/-12` is intentionally extreme.
+Automated backend verification:
+
+- Signalsmith `available=True`.
+- Pitch backend `signalsmith`.
+- Backend status `active`.
+- Backend telemetry readable.
+- No fallback active.
+
+Startup and devices:
+
+- VoiceLab launches normally: PASS.
+- Microphone input available: PASS.
+- Virtual microphone available: PASS.
+- Monitor available: PASS.
+- Backend telemetry through UI: NOT TESTED; telemetry is not currently visible
+  in the application.
+- Unexpected fallback warning through UI: NOT TESTED; backend status is not
+  currently visible in the application.
+- Initial telemetry through UI: NOT TESTED; telemetry is not currently visible
+  in the application.
+- Starting processing: PASS.
+
+Treat missing UI telemetry visibility as deferred usability work, not an RC1
+failure, because automated verification confirmed the active Signalsmith
+backend and no fallback.
+
+Core audio path:
+
+- Dry voice: PASS.
+- Gain: PASS.
+- Lowpass: PASS.
+- Robot: PASS.
+- Pitch `+4`: PASS.
+- Pitch `-4`: PASS.
+- Preset switching while processing: PASS.
+- Live pitch changes while processing: PASS.
+- Soundboard: PASS.
+- Virtual microphone processed output: PASS.
+- Monitor processed output: PASS.
+
+Subjective acceptance:
+
+- Metallic tail: ABSENT.
+- Flutter/choppiness: ABSENT.
+- Latency: ACCEPTABLE.
+- Former soundboard two-stage behavior: NOT REPRODUCED.
+
+Runtime stability:
+
+- Duration: 30 minutes.
+- Crash: NO.
+- Stream loss: NO.
+- Runaway/increasing latency: NO.
+- Progressive distortion: NO.
+- Repeated dropout: NO.
+- Frozen UI: NO.
+- Lost command response: NO.
+- Additional notes: None.
+
+Shutdown and relaunch:
+
+- Stop processing normally: PASS.
+- Close after stopping: PASS.
+- Terminal prompt returns: PASS.
+- Relaunch: PASS.
+- Start processing after relaunch: PASS.
+- Close while processing remains active: PASS.
+- Terminal prompt returns after active close: PASS.
+- No native-module lock remained after close: PASS.
+- Native Signalsmith rebuild after close: PASS.
+
+The successful rebuild copied:
+
+```text
+voice_lab/effects/_signalsmith_pitch.cp313-win_amd64.pyd
+```
+
+This confirms the application released the native module after shutdown.
+
+Pitch guidance:
+
+- `+/-4` semitones: recommended normal range.
+- `+/-8` semitones: usable but obviously processed.
+- `+/-12` semitones: intentionally extreme.
