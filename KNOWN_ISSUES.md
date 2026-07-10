@@ -40,7 +40,7 @@ Observed:
 
 Status:
 
-- Deferred usability/telemetry-visibility work.
+- Resolved for primary M6.1 operator visibility.
 
 Priority:
 
@@ -48,10 +48,11 @@ Priority:
 
 Notes:
 
-- This does not block RC1 because backend telemetry is readable through the
-  automated path.
-- The broader telemetry visibility decision remains tracked in
-  `decision_queue/telemetry-visibility.md`.
+- M6.1 adds a compact application UI operator-status area for processing,
+  routing, pitch backend, fallback/error state, estimated pitch DSP latency, and
+  the latest actionable warning/error.
+- Broader persistent logging remains out of scope and can be handled by a later
+  product-refinement milestone.
 
 ## Pitch Shift
 

@@ -81,8 +81,25 @@ backend build command should be able to replace the `.pyd` after normal close.
 - The former soundboard two-stage playback behavior was not reproduced during
   final RC1 hardware acceptance. Treat it as historical unless it becomes
   reproducible again.
-- Backend telemetry is not currently visible in the application UI. Automated
-  telemetry verification remains available and confirmed the RC1 backend state.
+- M6.1 adds primary operator status visibility in the application UI. Persistent
+  logging remains out of scope for RC1/M6.1.
+
+## Operator Status Visibility
+
+The main window shows compact read-only operator status derived through
+`ApplicationService`:
+
+- processing state;
+- route state;
+- pitch state and backend in plain language;
+- estimated pitch DSP latency when meaningful;
+- latest command/status message;
+- latest actionable warning or error;
+- compact diagnostic backend fields.
+
+The status refresh runs on the Qt UI thread about twice per second. It is
+read-only: it does not discover devices, discover plugins, write configuration,
+create effects, restart audio, select a backend, or mutate telemetry.
 
 ## Troubleshooting
 

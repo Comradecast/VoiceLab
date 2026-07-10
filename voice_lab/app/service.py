@@ -4,6 +4,7 @@ from dataclasses import asdict, is_dataclass
 from PySide6.QtCore import QObject, Signal
 
 from voice_lab.app.commands import CommandResult
+from voice_lab.app.operator_status import build_operator_status
 from voice_lab.config.config import DEFAULT_INPUT_ID, DEFAULT_MONITOR_ID, DEFAULT_OUTPUT_ID, SOUNDS_DIR
 from voice_lab.config import ConfigurationService
 from voice_lab.controllers.hotkeys import HotkeyManager
@@ -58,6 +59,14 @@ class ApplicationService(QObject):
         self.current_monitor_enabled = False
         self.current_monitor_volume = 0.35
         self.current_soundboard_volume = 0.70
+        self._processing_state = "stopped"
+        self._active_route = {
+            "virtual_mic_active": False,
+            "monitor_active": False,
+            "input_id": None,
+            "output_id": None,
+            "monitor_id": None,
+        }
 
         self.hotkeys.set_commands(self)
         self.soundboard.set_commands(self)
@@ -69,6 +78,13 @@ class ApplicationService(QObject):
     def telemetry_snapshot(self):
         self._refresh_effect_chain_status()
         return self.telemetry.snapshot()
+
+    def operator_status(self):
+        return build_operator_status(
+            self.telemetry_snapshot(),
+            self._processing_state,
+            active_route=self._active_route,
+        )
 
     def _refresh_effect_chain_status(self):
         self.telemetry.set_effect_chain_status(self.engine.effect_chain.status())
@@ -271,6 +287,7 @@ class ApplicationService(QObject):
         return result
 
     def start_audio(self, input_id, output_id, monitor_id=None):
+        self._processing_state = "starting"
         try:
             self.router.start(
                 self.engine,
@@ -282,8 +299,17 @@ class ApplicationService(QObject):
             )
         except Exception as exc:
             result = CommandResult.fail(f"Start failed: {exc}")
+            self._processing_state = "failed"
+            self._active_route = {
+                "virtual_mic_active": False,
+                "monitor_active": False,
+                "input_id": input_id,
+                "output_id": output_id,
+                "monitor_id": monitor_id,
+            }
             self.telemetry.set_audio_running(False)
             self.telemetry.set_route_status("error")
+            self.telemetry.set_metadata("active_route", self._active_route)
             self.telemetry.record_event(
                 "route.start_failed",
                 "error",
@@ -300,8 +326,17 @@ class ApplicationService(QObject):
             + (f" + monitor {monitor_id}" if monitor_id is not None else "")
         )
         result = CommandResult.ok(message)
+        self._processing_state = "running"
+        self._active_route = {
+            "virtual_mic_active": True,
+            "monitor_active": monitor_id is not None and self.current_monitor_enabled,
+            "input_id": input_id,
+            "output_id": output_id,
+            "monitor_id": monitor_id,
+        }
         self.telemetry.set_audio_running(True)
         self.telemetry.set_route_status("running")
+        self.telemetry.set_metadata("active_route", self._active_route)
         self.telemetry.record_event(
             "audio.started",
             "info",
@@ -314,17 +349,29 @@ class ApplicationService(QObject):
         return result
 
     def stop_audio(self):
+        previous_state = self._processing_state
+        self._processing_state = "stopping"
         try:
             self.router.stop()
             self.engine.stop()
         except Exception as exc:
             result = CommandResult.fail(f"Stop failed: {exc}")
+            self._processing_state = "failed" if previous_state != "running" else "running"
             self.telemetry.record_event("audio.stop_failed", "error", result.message)
             self.telemetry.record_command_result("stop_audio", result)
             return result
         result = CommandResult.ok("Stopped")
+        self._processing_state = "stopped"
+        self._active_route = {
+            "virtual_mic_active": False,
+            "monitor_active": False,
+            "input_id": None,
+            "output_id": None,
+            "monitor_id": None,
+        }
         self.telemetry.set_audio_running(False)
         self.telemetry.set_route_status("stopped")
+        self.telemetry.set_metadata("active_route", self._active_route)
         self.telemetry.record_event("audio.stopped", "info", result.message)
         self.telemetry.record_command_result("stop_audio", result)
         return result

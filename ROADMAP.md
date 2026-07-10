@@ -488,3 +488,74 @@ configuration, frozen contracts, or architectural ownership.
   failure because backend telemetry remains readable through the automated path.
 - Remaining DSP debt is limited to non-blocking sung pitch-contour flattening.
 - No RC1 blockers were found.
+
+## M6 - Product Refinement
+
+Status: In Progress
+
+Purpose: improve the operator experience after the RC1 freeze while preserving
+the proven audio behavior, Signalsmith DSP configuration, frozen contracts,
+lifecycle ownership, and plugin boundaries. M6 is not public packaging work.
+
+## M6.1 - Operator Status and Telemetry Visibility
+
+Status: PASS
+
+Purpose: make VoiceLab's current runtime state understandable from the
+application itself without giving the UI or telemetry new runtime authority.
+
+### Scope
+
+- Resolve the M6.1 telemetry visibility decision into primary operator UI,
+  diagnostic detail, and event/log-only visibility levels.
+- Add a narrow application-layer operator-status projection derived from
+  existing runtime state and telemetry.
+- Render compact PySide6 status fields for processing, routing, pitch backend,
+  estimated pitch DSP latency, command/status message, warning/error state, and
+  secondary diagnostics.
+- Refresh status on the Qt UI thread at low frequency.
+- Keep Start Processing and Stop Processing enabled state aligned with the
+  authoritative application status projection.
+
+### Out of Scope
+
+- Signalsmith DSP changes.
+- Pitch buffering changes.
+- Device-routing ownership changes.
+- Persistent logging.
+- Installer, executable packaging, auto-update, public release, or runtime
+  native compilation.
+- External plugin execution.
+- Broad UI redesign.
+
+### Completed
+
+- `ApplicationService.operator_status()` now returns a read-only operator view
+  derived from telemetry snapshot, current application processing state, and
+  active route state.
+- The UI window now uses `VoiceLab` as the product name and exposes compact
+  status labels for processing, routing, pitch, estimated pitch DSP latency,
+  status, warnings, and diagnostic backend details.
+- Pitch status distinguishes off/bypassed zero semitones, Signalsmith ready,
+  active Signalsmith, Pedalboard fallback, no usable backend, and pitch effect
+  runtime failure.
+- Route status distinguishes routes stopped, virtual mic active, virtual mic and
+  monitor active, and route error without inspecting device handles.
+- Status refresh uses a 500 ms Qt timer and catches refresh failures without
+  affecting processing.
+- Added focused M6.1 tests for operator projection semantics and offscreen UI
+  refresh/control behavior.
+
+### Completion Notes
+
+- Primary operator information: processing state, route state, pitch/backend
+  state, fallback/error warning, current pitch amount, estimated pitch DSP
+  latency, command/status message, and latest actionable warning/error.
+- Diagnostic-only information: backend identifiers/status, fallback flag,
+  current semitones, block/interval sizes, latency frames, and latest backend
+  error.
+- Event/log-only information: plugin discovery event history, verbose event
+  metadata, processor identity, buffer counters, reset counters, and future
+  persistent logs.
+- Telemetry remains passive; the UI obtains state only through
+  `ApplicationService`.

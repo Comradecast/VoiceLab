@@ -20,4 +20,4 @@ Architecture Stable
 | [Configuration migration policy](decision_queue/configuration-migration-policy.md) | Low | Open | Nothing | First config version change |
 | [Command interface shape](decision_queue/command-interface-shape.md) | High | Open | UI/controller integration | UI to engine integration |
 | [Soundboard asset formats](decision_queue/soundboard-asset-formats.md) | Medium | Open | Soundboard implementation | Soundboard source implementation |
-| [Telemetry visibility](decision_queue/telemetry-visibility.md) | Medium | Open | Nothing | Telemetry UI and logging implementation |
+| [Telemetry visibility](decision_queue/telemetry-visibility.md) | Medium | Accepted | Nothing | M6.1 operator UI and future logging |

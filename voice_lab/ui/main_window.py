@@ -1,6 +1,6 @@
 import os
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 class App(QWidget):
     def __init__(self, service, on_close=None):
         super().__init__()
-        self.setWindowTitle("Voice Modulator")
+        self.setWindowTitle("VoiceLab")
         self.service = service
         self.on_close = on_close
         self.devices = self.service.devices()
@@ -82,20 +82,43 @@ class App(QWidget):
         layout.addWidget(refresh_sounds)
 
         btns = QHBoxLayout()
-        start = QPushButton("Start")
-        stop = QPushButton("Stop")
-        start.clicked.connect(self.start)
-        stop.clicked.connect(self.stop)
-        btns.addWidget(start)
-        btns.addWidget(stop)
+        self.start_button = QPushButton("Start Processing")
+        self.stop_button = QPushButton("Stop Processing")
+        self.start_button.clicked.connect(self.start)
+        self.stop_button.clicked.connect(self.stop)
+        btns.addWidget(self.start_button)
+        btns.addWidget(self.stop_button)
         layout.addLayout(btns)
 
         self.status = QLabel("Stopped")
         layout.addWidget(self.status)
+        self.processing_status = QLabel("Processing: Stopped")
+        self.route_status = QLabel("Routes stopped")
+        self.pitch_status = QLabel("Pitch: Off")
+        self.latency_status = QLabel("Estimated pitch DSP latency: Not active")
+        self.command_status = QLabel("")
+        self.warning_status = QLabel("Warnings: None")
+        self.diagnostic_status = QLabel("")
+        for label in (
+            self.processing_status,
+            self.route_status,
+            self.pitch_status,
+            self.latency_status,
+            self.command_status,
+            self.warning_status,
+            self.diagnostic_status,
+        ):
+            label.setWordWrap(True)
+            layout.addWidget(label)
 
         self.preselect_devices()
         self.apply_selected_preset()
         self.refresh_soundboard()
+        self.status_timer = QTimer(self)
+        self.status_timer.setInterval(500)
+        self.status_timer.timeout.connect(self.refresh_operator_status)
+        self.status_timer.start()
+        self.refresh_operator_status()
 
     def play_sound_by_index(self, index):
         result = self.service.play_sound_by_index(index)
@@ -243,8 +266,44 @@ class App(QWidget):
     def display_result(self, result):
         if result.message:
             self.set_status(result.message)
+        self.refresh_operator_status()
+
+    def refresh_operator_status(self):
+        try:
+            status = self.service.operator_status()
+        except Exception as exc:
+            self.processing_status.setText("Processing: Status unavailable")
+            self.warning_status.setText(f"Warnings: Status refresh failed: {exc}")
+            return
+        self.processing_status.setText(f"Processing: {status.processing}")
+        self.route_status.setText(status.route)
+        self.pitch_status.setText(status.pitch)
+        self.latency_status.setText(status.latency)
+        self.command_status.setText(
+            f"Status: {status.command_status}" if status.command_status else "Status: Ready"
+        )
+        self.warning_status.setText(
+            f"Warnings: {status.actionable_status}"
+            if status.actionable_status
+            else "Warnings: None"
+        )
+        self.start_button.setEnabled(status.start_enabled)
+        self.stop_button.setEnabled(status.stop_enabled)
+        details = []
+        for key in (
+            "pitch_backend",
+            "pitch_backend_status",
+            "pitch_fallback_active",
+            "pitch_configured_block_size",
+            "pitch_configured_interval_size",
+            "pitch_latency_frames",
+        ):
+            details.append(f"{key}: {status.diagnostics.get(key)}")
+        self.diagnostic_status.setText("Diagnostics: " + "; ".join(details))
 
     def closeEvent(self, event):
+        if hasattr(self, "status_timer"):
+            self.status_timer.stop()
         if self.on_close is not None:
             self.on_close()
         event.accept()
