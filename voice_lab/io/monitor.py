@@ -1,0 +1,1 @@
+"""Monitor output placeholder."""

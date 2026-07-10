@@ -1,8 +1,5 @@
-from PySide6.QtWidgets import QApplication
-from voice_modulator.ui import App
+from voice_lab.app.application import run
 
-app = QApplication([])
-w = App()
-w.resize(720, 720)
-w.show()
-app.exec()
+
+if __name__ == "__main__":
+    raise SystemExit(run())

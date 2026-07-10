@@ -1,0 +1,1 @@
+"""Virtual microphone output placeholder."""

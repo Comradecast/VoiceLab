@@ -1,9 +1,5 @@
-from pynput import keyboard
+from voice_lab.tests.hotkey_test import main
 
-def on_press(key):
-    print("pressed:", key)
 
-print("Press F1/F2/F3/F5/F6/F7. Press ESC to exit.")
-
-with keyboard.Listener(on_press=on_press) as listener:
-    listener.join()
+if __name__ == "__main__":
+    main()

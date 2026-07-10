@@ -1,4 +1,1 @@
-from .base import Effect
-from .gain import GainEffect
-from .robot import RobotEffect
-from .lowpass import LowpassEffect
+from voice_lab.effects import Effect, GainEffect, LowpassEffect, RobotEffect
