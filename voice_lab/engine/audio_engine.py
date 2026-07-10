@@ -70,4 +70,6 @@ class AudioEngine:
         return np.clip(mono, -0.95, 0.95).astype(np.float32)
 
     def stop(self):
-        pass
+        close = getattr(self.effect_chain, "close", None)
+        if close is not None:
+            close()

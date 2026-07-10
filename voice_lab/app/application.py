@@ -9,7 +9,7 @@ def run():
     app = QApplication([])
     lifecycle = ApplicationLifecycle()
     service = lifecycle.startup()
-    window = App(service)
+    window = App(service, on_close=lifecycle.shutdown)
     window.resize(720, 720)
     window.show()
     lifecycle.start_controllers()

@@ -16,3 +16,5 @@ Run the current application with:
 ```powershell
 python main.py
 ```
+
+RC1 operator and release-preparation notes are in `docs/rc1_runbook.md`.

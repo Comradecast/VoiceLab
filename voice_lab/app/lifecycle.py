@@ -17,66 +17,111 @@ class LifecycleState:
     startup_steps: list[str] = field(default_factory=list)
     shutdown_steps: list[str] = field(default_factory=list)
     controllers_running: bool = False
+    startup_errors: list[str] = field(default_factory=list)
+    shutdown_errors: list[str] = field(default_factory=list)
 
 
 class ApplicationLifecycle:
-    def __init__(self):
+    def __init__(
+        self,
+        config_factory=ConfigurationService,
+        telemetry_factory=TelemetryService,
+        plugin_discovery_factory=PluginDiscovery,
+        plugin_manager_factory=PluginManager,
+        engine_factory=AudioEngine,
+        mixer_factory=Mixer,
+        audio_io_factory=AudioIO,
+        router_factory=Router,
+        hotkey_factory=HotkeyManager,
+        soundboard_factory=SoundboardController,
+        service_factory=ApplicationService,
+    ):
         self.state = LifecycleState()
+        self._config_factory = config_factory
+        self._telemetry_factory = telemetry_factory
+        self._plugin_discovery_factory = plugin_discovery_factory
+        self._plugin_manager_factory = plugin_manager_factory
+        self._engine_factory = engine_factory
+        self._mixer_factory = mixer_factory
+        self._audio_io_factory = audio_io_factory
+        self._router_factory = router_factory
+        self._hotkey_factory = hotkey_factory
+        self._soundboard_factory = soundboard_factory
+        self._service_factory = service_factory
 
     def startup(self):
         if self.state.service is not None:
             return self.state.service
 
-        self._step("load_configuration")
-        config = ConfigurationService()
+        telemetry = None
+        audio_io = None
+        router = None
+        hotkeys = None
+        engine = None
+        try:
+            self._step("load_configuration")
+            config = self._config_factory()
 
-        self._step("initialize_telemetry")
-        telemetry = TelemetryService()
+            self._step("initialize_telemetry")
+            telemetry = self._telemetry_factory()
 
-        self._step("discover_plugins")
-        self._record_telemetry(
-            telemetry,
-            "plugin.discovery_started",
-            "info",
-            "Plugin discovery started",
-        )
-        plugin_discovery = PluginDiscovery()
-        discovery_result = plugin_discovery.discover()
-        self._record_discovery_telemetry(telemetry, discovery_result)
+            self._step("discover_plugins")
+            self._record_telemetry(
+                telemetry,
+                "plugin.discovery_started",
+                "info",
+                "Plugin discovery started",
+            )
+            plugin_discovery = self._plugin_discovery_factory()
+            discovery_result = plugin_discovery.discover()
+            self._record_discovery_telemetry(telemetry, discovery_result)
 
-        self._step("validate_plugins")
-        plugins = PluginManager(discovery_result=discovery_result)
-        self._record_plugin_startup_telemetry(telemetry, discovery_result, plugins)
+            self._step("validate_plugins")
+            plugins = self._plugin_manager_factory(discovery_result=discovery_result)
+            self._record_plugin_startup_telemetry(telemetry, discovery_result, plugins)
 
-        self._step("initialize_engine")
-        engine = AudioEngine()
+            self._step("initialize_engine")
+            engine = self._engine_factory()
 
-        self._step("initialize_mixer")
-        mixer = Mixer()
+            self._step("initialize_mixer")
+            mixer = self._mixer_factory()
 
-        self._step("initialize_audio_io")
-        audio_io = AudioIO()
+            self._step("initialize_audio_io")
+            audio_io = self._audio_io_factory()
 
-        self._step("initialize_router")
-        router = Router(audio_io)
+            self._step("initialize_router")
+            router = self._router_factory(audio_io)
 
-        self._step("initialize_controllers")
-        hotkeys = HotkeyManager()
-        soundboard = SoundboardController()
+            self._step("initialize_controllers")
+            hotkeys = self._hotkey_factory()
+            soundboard = self._soundboard_factory()
 
-        self._step("initialize_application_service")
-        self.state.service = ApplicationService(
-            telemetry=telemetry,
-            config=config,
-            plugins=plugins,
-            engine=engine,
-            mixer=mixer,
-            audio_io=audio_io,
-            router=router,
-            hotkeys=hotkeys,
-            soundboard=soundboard,
-        )
-        return self.state.service
+            self._step("initialize_application_service")
+            self.state.service = self._service_factory(
+                telemetry=telemetry,
+                config=config,
+                plugins=plugins,
+                engine=engine,
+                mixer=mixer,
+                audio_io=audio_io,
+                router=router,
+                hotkeys=hotkeys,
+                soundboard=soundboard,
+            )
+            return self.state.service
+        except Exception as exc:
+            self.state.startup_errors.append(str(exc))
+            if telemetry is not None:
+                self._record_telemetry(
+                    telemetry,
+                    "application.startup_failed",
+                    "error",
+                    f"Application startup failed: {exc}",
+                )
+            self._cleanup_partial_startup(router=router, audio_io=audio_io, hotkeys=hotkeys, engine=engine)
+            self.state.service = None
+            self.state.controllers_running = False
+            raise
 
     def start_controllers(self):
         service = self.startup()
@@ -95,24 +140,62 @@ class ApplicationLifecycle:
             service.unregister_hotkeys()
             self.state.controllers_running = False
 
-        self._shutdown_step("stop_audio")
-        service.stop_audio()
+        try:
+            self._shutdown_step("stop_audio")
+            service.stop_audio()
 
-        self._shutdown_step("flush_telemetry")
-        service.telemetry_snapshot()
+            self._shutdown_step("flush_telemetry")
+            try:
+                service.flush_telemetry()
+            except Exception as exc:
+                self._record_shutdown_error(service, "telemetry_flush_failed", exc)
 
-        self._shutdown_step("close_devices")
-        service.router.stop()
+            self._shutdown_step("close_devices")
+            try:
+                service.router.stop()
+            except Exception as exc:
+                self._record_shutdown_error(service, "resource_close_failed", exc)
 
-        self._shutdown_step("unload_plugins")
+            self._shutdown_step("unload_plugins")
+            try:
+                service.unload_plugins()
+            except Exception as exc:
+                self._record_shutdown_error(service, "plugin_unload_failed", exc)
 
-        self._shutdown_step("save_configuration")
+            self._shutdown_step("save_configuration")
+            try:
+                service.save_configuration()
+            except Exception as exc:
+                self._record_shutdown_error(service, "configuration_save_failed", exc)
+        finally:
+            self.state.service = None
+            self.state.controllers_running = False
 
     def _step(self, name):
         self.state.startup_steps.append(name)
 
     def _shutdown_step(self, name):
         self.state.shutdown_steps.append(name)
+
+    def _cleanup_partial_startup(self, router=None, audio_io=None, hotkeys=None, engine=None):
+        for resource in (hotkeys, router, audio_io, engine):
+            if resource is None:
+                continue
+            cleanup = getattr(resource, "unregister", None) or getattr(resource, "stop", None) or getattr(resource, "close", None)
+            if cleanup is None:
+                continue
+            try:
+                cleanup()
+            except Exception:
+                pass
+
+    def _record_shutdown_error(self, service, event_type, exc):
+        message = f"Shutdown {event_type.replace('_', ' ')}: {exc}"
+        self.state.shutdown_errors.append(message)
+        try:
+            service.telemetry.record_event(event_type, "error", message)
+        except Exception:
+            pass
 
     def _record_telemetry(self, telemetry, event_type, severity, message, **metadata):
         try:

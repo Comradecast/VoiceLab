@@ -15,10 +15,11 @@ from PySide6.QtWidgets import (
 
 
 class App(QWidget):
-    def __init__(self, service):
+    def __init__(self, service, on_close=None):
         super().__init__()
         self.setWindowTitle("Voice Modulator")
         self.service = service
+        self.on_close = on_close
         self.devices = self.service.devices()
 
         self.service.status_changed.connect(self.set_status)
@@ -244,4 +245,6 @@ class App(QWidget):
             self.set_status(result.message)
 
     def closeEvent(self, event):
+        if self.on_close is not None:
+            self.on_close()
         event.accept()

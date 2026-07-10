@@ -373,3 +373,49 @@ Candidate directions:
 - M5 RC1 hardening
 - M5 Configuration hardening
 - M5 Product stabilization and known-issue triage
+
+## M5.5 - RC1 Lifecycle and Release Readiness
+
+Status: PROVISIONAL
+
+Purpose: harden application lifecycle and document a repeatable RC1 operator and
+release-preparation process without changing audio behavior, pitch DSP
+configuration, frozen contracts, or architectural ownership.
+
+### Scope
+
+- Clean shutdown of audio streams, router/device handles, controller resources,
+  effect backend buffers, telemetry flushing, and configuration flushing.
+- Restart reliability after normal shutdown and recoverable startup failures.
+- Focused lifecycle regression coverage without real microphone or VB-CABLE
+  hardware.
+- Concise RC1 runbook and final manual hardware smoke checklist.
+
+### Out of Scope
+
+- Signalsmith DSP changes.
+- Installer creation, auto-update, dependency management, or startup auto-build.
+- External plugin execution.
+- Deferred singing-contour and soundboard playback-quality issues.
+
+### Completed
+
+- Lifecycle shutdown now releases audio routes/devices, effect backend buffers,
+  telemetry/configuration flush hooks, controller state, and service references.
+- Startup failure cleanup now closes partially constructed runtime resources and
+  allows a later startup retry.
+- UI close routes through the application lifecycle close callback.
+- Added focused lifecycle regression coverage for service stop/restart,
+  idempotent stop, partial startup cleanup, telemetry/config flushing, UI close,
+  no duplicate engine/plugin initialization, and thread/resource cleanup with
+  fake seams.
+- Added `docs/rc1_runbook.md` with setup, native build, launch,
+  troubleshooting, release-preparation, and manual RC1 hardware checklist.
+
+### Completion Notes
+
+- Automated M5.5 verification passed.
+- Native rebuild succeeded after normal offscreen application close.
+- Manual hardware checklist was documented but not performed in this automated
+  engineering session; M5.5 remains provisional until that manual RC1 smoke pass
+  is completed.

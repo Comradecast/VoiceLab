@@ -186,6 +186,10 @@ class StreamingPitchAdapter:
         self._output_fifo = self._output_fifo[frames:]
         return output
 
+    def close(self):
+        self._input_fifo = np.empty(0, dtype=np.float32)
+        self._output_fifo = np.empty(0, dtype=np.float32)
+
 
 class SignalsmithStreamingAdapter:
     def __init__(self, semitones, sample_rate, block_size):
@@ -386,3 +390,11 @@ class PitchShiftEffect(Effect):
             processor_identity=0,
             last_backend_error=status.reason if not status.available else "",
         )
+
+    def close(self):
+        if self._adapter is None:
+            return
+        close = getattr(self._adapter, "close", None)
+        if close is not None:
+            close()
+        self._adapter = None

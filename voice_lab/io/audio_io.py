@@ -40,14 +40,25 @@ class AudioIO:
         self.stream.start()
 
     def close(self):
+        errors = []
         if self.stream:
-            self.stream.stop()
-            self.stream.close()
-            self.stream = None
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                self.stream = None
         if self.monitor_stream:
-            self.monitor_stream.stop()
-            self.monitor_stream.close()
-            self.monitor_stream = None
+            try:
+                self.monitor_stream.stop()
+                self.monitor_stream.close()
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                self.monitor_stream = None
+        if errors:
+            raise RuntimeError("; ".join(str(error) for error in errors))
 
     def write_frame(self, outdata, frame):
         """Write one output block to a hardware buffer.

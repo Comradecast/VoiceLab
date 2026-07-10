@@ -40,6 +40,7 @@ class ConfigurationService:
     def __init__(self, load_func=load_presets, save_func=save_presets):
         self._save_func = save_func
         self._presets = load_func()
+        self._dirty = False
 
     def preset_names(self):
         return sorted(self._presets.keys())
@@ -81,6 +82,7 @@ class ConfigurationService:
             return PresetSaveResult(False, message=f"Preset save failed: {exc}", error=exc)
 
         self._presets = updated_presets
+        self._dirty = False
         return PresetSaveResult(True, preset=validation.preset, message=f"Saved preset: {name}")
 
     def delete_preset(self, name):
@@ -95,7 +97,14 @@ class ConfigurationService:
             return PresetDeleteResult(False, message=f"Preset delete failed: {exc}", error=exc)
 
         self._presets = updated_presets
+        self._dirty = False
         return PresetDeleteResult(True, message=f"Deleted preset: {name}")
 
     def validation_from_preset(self, preset):
         return validate_preset_parameters(preset)
+
+    def flush(self):
+        if not self._dirty:
+            return
+        self._save_func(dict(self._presets))
+        self._dirty = False

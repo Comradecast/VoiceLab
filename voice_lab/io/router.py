@@ -49,6 +49,7 @@ class Router:
 
     def stop(self):
         self.audio_io.close()
+        self.monitor_queue = queue.Queue(maxsize=1)
 
     def _drop_stale_monitor_frame(self):
         try:

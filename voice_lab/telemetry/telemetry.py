@@ -60,3 +60,6 @@ class TelemetryService:
             plugin_startup_status=self._plugin_startup_status,
             metadata=dict(self._metadata),
         )
+
+    def flush(self):
+        return self.snapshot()

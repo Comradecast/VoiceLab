@@ -329,6 +329,16 @@ class ApplicationService(QObject):
         self.telemetry.record_command_result("stop_audio", result)
         return result
 
+    def flush_telemetry(self):
+        self._refresh_effect_chain_status()
+        return self.telemetry.flush()
+
+    def save_configuration(self):
+        self.config.flush()
+
+    def unload_plugins(self):
+        self.engine.stop()
+
     def _record_validation_failure(self, command_name, issues, **metadata):
         self.telemetry.record_event(
             "config.validation_failed",

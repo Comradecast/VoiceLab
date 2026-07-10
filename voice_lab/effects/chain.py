@@ -86,3 +86,10 @@ class EffectChain:
             self._runtime_failure_handler(effect_name, exc)
         except Exception:
             pass
+
+    def close(self):
+        for effect in self.effects:
+            close = getattr(effect, "close", None)
+            if close is None:
+                continue
+            close()

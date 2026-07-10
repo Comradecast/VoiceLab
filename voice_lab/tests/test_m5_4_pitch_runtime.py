@@ -211,7 +211,7 @@ class M54PitchRuntimeTests(unittest.TestCase):
         second = lifecycle.startup()
         lifecycle.shutdown()
 
-        self.assertIs(first, second)
+        self.assertIsNot(first, second)
         self.assertIn("initialize_application_service", lifecycle.state.startup_steps)
         self.assertEqual(lifecycle.state.shutdown_steps.count("stop_audio"), 2)
 
