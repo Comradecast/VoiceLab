@@ -1023,7 +1023,7 @@ Compatibility aliases preserve existing built-in preset names where applicable:
 
 ## M7.1 - Live Audio Meters and Clipping Indication
 
-Status: PROVISIONAL
+Status: PASS
 
 Purpose: give the operator passive visual feedback that VoiceLab is receiving
 microphone audio, producing processed voice audio, sending audio to the virtual
@@ -1086,4 +1086,23 @@ audio, routing, effects, devices, character state, or settings.
   service passivity, operator diagnostics, UI meter construction and timer
   shutdown, display mapping, overload latch, prohibited imports, callback
   guards, and audio identity preservation.
-- Manual M7.1 live meter hardware acceptance remains pending.
+- Manual M7.1 live meter hardware acceptance passed with three remaining
+  hardware-acceptance coverage gaps: Input overload, Processed/output
+  overload, and Failed Start and retry were NOT TESTED.
+- Live acceptance passed for baseline speech meter response, meter decay,
+  sustained silence/no-signal behavior, quiet speech, character switching,
+  character strength response, Bypass Effects attribution, soundboard-only
+  attribution, voice plus soundboard attribution, monitor-disabled operation,
+  Stop clearing or invalidating active meter state, repeated Start/Stop, device
+  refresh behavior, window scrolling and layout, close while running, and
+  relaunch behavior.
+- Live final audio regression passed: metallic tail remained absent, flutter
+  remained absent, latency remained acceptable, and meters made no audible
+  difference.
+- Output-meter limitation accepted: Output observes the existing post-clamp bus
+  after the mixer clamp to `0.95`; it cannot display exact pre-clamp magnitude
+  beyond that clamp.
+- Hardware overload coverage is incomplete because Input overload and
+  Processed/output overload were NOT TESTED.
+- Hardware failed-start meter coverage is incomplete because Failed Start and
+  retry was NOT TESTED.

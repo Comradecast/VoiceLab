@@ -402,7 +402,7 @@ Not tested:
 
 ## Live Audio Meters
 
-M7.1 Status: PROVISIONAL.
+M7.1 Status: PASS.
 
 M7.1 adds passive live meters for normal operator feedback. The meters observe
 audio levels but never change gain, normalize audio, compress audio, gate audio,
@@ -484,7 +484,45 @@ Known limitations:
 - Meter color and overload zones are operational guidance, not mastering
   standards.
 
-Manual M7.1 live meter acceptance remains pending.
+Manual M7.1 live meter acceptance is complete. All manual scenarios passed
+except the explicitly listed NOT TESTED hardware-acceptance coverage gaps.
+
+Manual M7.1 accepted results:
+
+- Baseline speech meter response: PASS.
+- Meter decay: PASS.
+- Sustained silence/no-signal behavior: PASS.
+- Quiet speech: PASS.
+- Character switching: PASS.
+- Character strength response: PASS.
+- Bypass Effects attribution: PASS.
+- Soundboard-only attribution: PASS.
+- Voice plus soundboard attribution: PASS.
+- Monitor-disabled operation: PASS.
+- Stop clears or invalidates active meter state: PASS.
+- Repeated Start/Stop: PASS.
+- Device refresh behavior: PASS.
+- Window scrolling and layout: PASS.
+- Close while running: PASS.
+- Relaunch behavior: PASS.
+- Metallic tail remained absent: PASS.
+- Flutter remained absent: PASS.
+- Latency remained acceptable: PASS.
+- Meters made no audible difference: PASS.
+
+M7.1 hardware-acceptance coverage gaps:
+
+- Input overload: NOT TESTED.
+- Processed/output overload: NOT TESTED.
+- Failed Start and retry: NOT TESTED.
+
+Accepted limitation:
+
+- The Output meter observes the existing post-clamp bus after the mixer's
+  `0.95` clamp and cannot display exact pre-clamp magnitude beyond that clamp.
+
+Do not treat M7.1 as complete overload or failed-start hardware coverage until
+the NOT TESTED scenarios above are exercised.
 
 Manual M7.1 checklist:
 
