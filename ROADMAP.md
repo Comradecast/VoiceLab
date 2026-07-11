@@ -684,3 +684,14 @@ Roles:
   startup failure, telemetry detail retention, cleanup, retry, no automatic
   device replacement, monitor semantics, polling after failure, and offscreen UI
   close after failure.
+- Manual M6.3 hardware acceptance passed for unavailable monitor recovery,
+  unavailable microphone recovery, stale-device-after-relaunch recovery, and
+  unavailable virtual microphone recovery.
+- Corrected retries succeeded without restarting VoiceLab after monitor,
+  microphone, stale selection, and virtual microphone recovery paths.
+- Manual M6.3 acceptance confirmed no silent device substitution occurred.
+- Exclusive/open failure was not manually reproduced; automated generic-open
+  failure coverage passed.
+- Normal regression passed for startup, virtual mic, monitor, pitch `+4`, pitch
+  `-4`, soundboard, stop, close, relaunch, metallic tail absent, flutter absent,
+  and acceptable latency.

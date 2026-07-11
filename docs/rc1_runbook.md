@@ -128,6 +128,25 @@ devices, disable monitor output, or retry automatically.
 Device lists are still loaded at UI startup. M6.3 does not add automatic
 hot-plug monitoring or a manual device refresh action.
 
+### M6.3 Manual Device-Recovery Acceptance
+
+Manual M6.3 hardware acceptance result: PASS.
+
+- Monitor unavailable: understandable failure message, correct device role,
+  stopped processing state, inactive routes, recovered Start/Stop controls,
+  responsive UI, and retry after disabling or changing monitor all passed.
+- Microphone unavailable: understandable failure message, correct device role,
+  control recovery, and retry passed.
+- Stale device after relaunch: understandable failure message, no silent
+  substitution, and retry passed.
+- Virtual microphone unavailable: understandable failure message, correct device
+  role, appropriate VB-CABLE guidance, and retry after restoration passed.
+- Exclusive/open failure: NOT TESTED manually; automated generic-open-failure
+  coverage passed.
+- Normal regression passed for startup, virtual microphone, monitor, pitch
+  `+4`, pitch `-4`, soundboard, stop, close, relaunch, metallic tail absent,
+  flutter absent, and acceptable latency.
+
 ## Troubleshooting
 
 - If Signalsmith is missing, rebuild with the active virtual environment and
