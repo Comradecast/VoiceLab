@@ -12,6 +12,7 @@ class OperatorStatus:
     actionable_status: str
     start_enabled: bool
     stop_enabled: bool
+    refresh_enabled: bool
     diagnostics: MappingProxyType
 
 
@@ -40,6 +41,7 @@ def build_operator_status(snapshot, processing_state, active_route=None):
         actionable_status=actionable,
         start_enabled=processing_state in {"stopped", "failed"},
         stop_enabled=processing_state == "running",
+        refresh_enabled=processing_state in {"stopped", "failed"},
         diagnostics=MappingProxyType(diagnostics),
     )
 

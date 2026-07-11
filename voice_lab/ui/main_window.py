@@ -33,12 +33,15 @@ class App(QWidget):
         self.output_box = QComboBox()
         self.monitor_box = QComboBox()
 
-        for i, d in enumerate(self.devices):
-            if d["max_input_channels"] > 0:
-                self.input_box.addItem(f'{i}: {d["name"]}', i)
-            if d["max_output_channels"] > 0:
-                self.output_box.addItem(f'{i}: {d["name"]}', i)
-                self.monitor_box.addItem(f'{i}: {d["name"]}', i)
+        self.populate_device_boxes(
+            self.devices,
+            {
+                "input": self.service.default_input_id(),
+                "virtual_output": self.service.default_output_id(),
+                "monitor_output": self.service.default_monitor_id(),
+            },
+            select_first_available=True,
+        )
 
         layout.addWidget(QLabel("Input device"))
         layout.addWidget(self.input_box)
@@ -49,6 +52,9 @@ class App(QWidget):
         layout.addWidget(self.monitor_check)
         layout.addWidget(QLabel("Monitor output device"))
         layout.addWidget(self.monitor_box)
+        self.refresh_devices_button = QPushButton("Refresh Devices")
+        self.refresh_devices_button.clicked.connect(self.refresh_devices)
+        layout.addWidget(self.refresh_devices_button)
 
         self.monitor_volume = self.slider(layout, "Monitor volume", 0, 100, 35)
         self.soundboard_volume = self.slider(layout, "Soundboard volume", 0, 100, 70)
@@ -111,7 +117,6 @@ class App(QWidget):
             label.setWordWrap(True)
             layout.addWidget(label)
 
-        self.preselect_devices()
         self.apply_selected_preset()
         self.refresh_soundboard()
         self.status_timer = QTimer(self)
@@ -128,6 +133,30 @@ class App(QWidget):
         self.set_combo(self.input_box, self.service.default_input_id())
         self.set_combo(self.output_box, self.service.default_output_id())
         self.set_combo(self.monitor_box, self.service.default_monitor_id())
+
+    def populate_device_boxes(self, devices, selections, select_first_available=False):
+        for box in (self.input_box, self.output_box, self.monitor_box):
+            box.blockSignals(True)
+            box.clear()
+        self.input_box.addItem("Select an input device", None)
+        self.output_box.addItem("Select a virtual microphone output", None)
+        self.monitor_box.addItem("Select a monitor output", None)
+        for device in devices:
+            label = f"{device.index}: {device.name}"
+            if device.input_capable:
+                self.input_box.addItem(label, device.index)
+            if device.output_capable:
+                self.output_box.addItem(label, device.index)
+                self.monitor_box.addItem(label, device.index)
+        input_matched = self.set_combo(self.input_box, selections.get("input"))
+        output_matched = self.set_combo(self.output_box, selections.get("virtual_output"))
+        monitor_matched = self.set_combo(self.monitor_box, selections.get("monitor_output"))
+        if select_first_available:
+            self._select_first_available(self.input_box, input_matched)
+            self._select_first_available(self.output_box, output_matched)
+            self._select_first_available(self.monitor_box, monitor_matched)
+        for box in (self.input_box, self.output_box, self.monitor_box):
+            box.blockSignals(False)
 
     def slider(self, layout, name, low, high, value):
         label = QLabel(f"{name}: {value}")
@@ -224,6 +253,17 @@ class App(QWidget):
             btn.clicked.connect(lambda checked=False, f=filename: self.play_sound(f))
             self.soundboard_layout.addWidget(btn)
 
+    def refresh_devices(self):
+        result = self.service.refresh_devices(
+            input_id=self.input_box.currentData(),
+            output_id=self.output_box.currentData(),
+            monitor_id=self.monitor_box.currentData(),
+        )
+        if result.success:
+            self.devices = self.service.devices()
+            self.populate_device_boxes(self.devices, result.metadata["selections"])
+        self.display_result(result)
+
     def play_sound(self, filename):
         self.apply_current_parameters()
         result = self.service.play_sound_file(filename)
@@ -258,7 +298,13 @@ class App(QWidget):
         for i in range(box.count()):
             if box.itemData(i) == value:
                 box.setCurrentIndex(i)
-                return
+                return True
+        return False
+
+    def _select_first_available(self, box, already_matched):
+        if already_matched or box.count() <= 1:
+            return
+        box.setCurrentIndex(1)
 
     def set_status(self, text):
         self.status.setText(text)
@@ -289,6 +335,7 @@ class App(QWidget):
         )
         self.start_button.setEnabled(status.start_enabled)
         self.stop_button.setEnabled(status.stop_enabled)
+        self.refresh_devices_button.setEnabled(status.refresh_enabled)
         details = []
         for key in (
             "pitch_backend",

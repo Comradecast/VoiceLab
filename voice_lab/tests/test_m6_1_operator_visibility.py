@@ -2,6 +2,7 @@ import os
 import unittest
 
 from voice_lab.app.commands import CommandResult
+from voice_lab.app.devices import describe_devices
 from voice_lab.app.operator_status import build_operator_status
 from voice_lab.effects.chain import EffectChainStatus, EffectFailureStatus
 from voice_lab.telemetry.events import make_event
@@ -252,14 +253,15 @@ class FakeOperatorService:
         self.start_calls = 0
         self.stop_calls = 0
         self.apply_calls = 0
+        self.refresh_device_calls = 0
         self.closed = False
 
     def devices(self):
-        return [
+        return describe_devices([
             {"name": "Mic", "max_input_channels": 1, "max_output_channels": 0},
             {"name": "Cable", "max_input_channels": 0, "max_output_channels": 2},
             {"name": "Monitor", "max_input_channels": 0, "max_output_channels": 2},
-        ]
+        ])
 
     def default_input_id(self):
         return 0
@@ -302,6 +304,17 @@ class FakeOperatorService:
     def stop_audio(self):
         self.stop_calls += 1
         return CommandResult.ok("Stopped")
+
+    def refresh_devices(self, input_id=None, output_id=None, monitor_id=None):
+        self.refresh_device_calls += 1
+        return CommandResult.ok(
+            "Audio devices refreshed.",
+            selections={
+                "input": input_id,
+                "virtual_output": output_id,
+                "monitor_output": monitor_id,
+            },
+        )
 
     def operator_status(self):
         self.operator_status_calls += 1

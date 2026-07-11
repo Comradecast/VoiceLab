@@ -4,6 +4,7 @@ from dataclasses import asdict, is_dataclass
 from PySide6.QtCore import QObject, Signal
 
 from voice_lab.app.commands import CommandResult
+from voice_lab.app.devices import describe_devices
 from voice_lab.app.operator_status import build_operator_status
 from voice_lab.config.config import DEFAULT_INPUT_ID, DEFAULT_MONITOR_ID, DEFAULT_OUTPUT_ID, SOUNDS_DIR
 from voice_lab.config import ConfigurationService
@@ -68,13 +69,84 @@ class ApplicationService(QObject):
             "output_id": None,
             "monitor_id": None,
         }
+        self._device_descriptors = None
 
         self.hotkeys.set_commands(self)
         self.soundboard.set_commands(self)
         self.hotkeys.status_signal.connect(self.status_changed)
 
     def devices(self):
-        return self.audio_io.query_devices()
+        if self._device_descriptors is None:
+            self._device_descriptors = describe_devices(self.audio_io.query_devices())
+        return self._device_descriptors
+
+    def refresh_devices(self, input_id=None, output_id=None, monitor_id=None):
+        if self._processing_state not in {"stopped", "failed"}:
+            result = CommandResult.fail(
+                "Stop processing before refreshing audio devices.",
+                processing_state=self._processing_state,
+            )
+            self.telemetry.record_command_result("refresh_devices", result)
+            return result
+
+        old_devices = tuple(self.devices())
+        try:
+            new_devices = describe_devices(self.audio_io.query_devices())
+        except Exception as exc:
+            failure = {
+                "category": "device_enumeration_failed",
+                "operator_message": (
+                    "VoiceLab could not refresh audio devices. Check Windows audio services and try again."
+                ),
+                "technical_detail": str(exc),
+                "recoverable": True,
+            }
+            result = CommandResult.fail(failure["operator_message"], refresh_failure=failure)
+            self.telemetry.record_event(
+                "devices.refresh_failed",
+                "error",
+                failure["operator_message"],
+                **failure,
+            )
+            self.telemetry.record_command_result("refresh_devices", result)
+            return result
+
+        selections = {
+            "input": self._preserve_selection(old_devices, new_devices, input_id, "input"),
+            "virtual_output": self._preserve_selection(
+                old_devices,
+                new_devices,
+                output_id,
+                "output",
+            ),
+            "monitor_output": self._preserve_selection(old_devices, new_devices, monitor_id, "output"),
+        }
+        missing_roles = tuple(
+            role
+            for role, old_id in (
+                ("input", input_id),
+                ("virtual_output", output_id),
+                ("monitor_output", monitor_id),
+            )
+            if old_id is not None and selections[role] is None
+        )
+        self._device_descriptors = new_devices
+        message = self._refresh_message(missing_roles)
+        result = CommandResult.ok(
+            message,
+            devices=tuple(device.asdict() for device in new_devices),
+            selections=selections,
+            missing_roles=missing_roles,
+        )
+        self.telemetry.record_event(
+            "devices.refreshed",
+            "info",
+            message,
+            missing_roles=missing_roles,
+            device_count=len(new_devices),
+        )
+        self.telemetry.record_command_result("refresh_devices", result)
+        return result
 
     def telemetry_snapshot(self):
         self._refresh_effect_chain_status()
@@ -390,6 +462,59 @@ class ApplicationService(QObject):
             issues=tuple(issue.message for issue in issues),
             **metadata,
         )
+
+    def _preserve_selection(self, old_devices, new_devices, selected_id, capability):
+        if selected_id is None:
+            return None
+        old_device = self._device_by_index(old_devices, selected_id)
+        if old_device is None:
+            return None
+        same_index = self._device_by_index(new_devices, selected_id)
+        if (
+            same_index is not None
+            and same_index.identity == old_device.identity
+            and self._has_capability(same_index, capability)
+        ):
+            return same_index.index
+
+        matches = [
+            device
+            for device in new_devices
+            if device.identity == old_device.identity and self._has_capability(device, capability)
+        ]
+        if len(matches) == 1:
+            return matches[0].index
+        return None
+
+    def _device_by_index(self, devices, index):
+        for device in devices:
+            if device.index == index:
+                return device
+        return None
+
+    def _has_capability(self, device, capability):
+        if capability == "input":
+            return device.input_capable
+        if capability == "output":
+            return device.output_capable
+        return False
+
+    def _refresh_message(self, missing_roles):
+        if not missing_roles:
+            return "Audio devices refreshed."
+        labels = {
+            "input": "microphone",
+            "virtual_output": "virtual microphone",
+            "monitor_output": "monitor",
+        }
+        missing = [labels[role] for role in missing_roles]
+        if len(missing) == 1:
+            return f"Audio devices refreshed; {missing[0]} selection is no longer available."
+        if len(missing) == 2:
+            joined = " and ".join(missing)
+        else:
+            joined = ", ".join(missing[:-1]) + f", and {missing[-1]}"
+        return f"Audio devices refreshed; {joined} selections require attention."
 
     def _validate_start_selection(self, input_id, output_id, monitor_id):
         if input_id is None:

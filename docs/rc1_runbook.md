@@ -101,6 +101,43 @@ The status refresh runs on the Qt UI thread about twice per second. It is
 read-only: it does not discover devices, discover plugins, write configuration,
 create effects, restart audio, select a backend, or mutate telemetry.
 
+## Manual Device Refresh
+
+M6.4 adds an explicit `Refresh Devices` action near the audio device selectors.
+The action is available only while processing is stopped or after a failed
+start. It is disabled while processing is starting, running, or stopping, and
+the service rejects refresh commands in those states.
+
+Refresh behavior:
+
+- Audio device enumeration remains owned by `AudioIO`.
+- The UI receives immutable application-facing device descriptors through
+  `ApplicationService`.
+- Existing selections are preserved only when the same device identity is
+  matched safely.
+- VoiceLab never preserves a selection by numeric index alone or display name
+  alone.
+- If the selected device disappears or becomes ambiguous, that selector is
+  cleared and the operator must explicitly choose a replacement.
+- Monitor-enabled state is unchanged by refresh.
+- Effect parameters, presets, and soundboard state are unchanged by refresh.
+- Refresh does not automatically stop or start processing.
+- Refresh does not add background hot-plug monitoring or periodic polling.
+
+Device identity uses the exact device name, host API identifier, input/output
+channel capabilities, and default sample rate. A same-index match is preserved
+only when identity still matches. A moved device is preserved only when there is
+one unique exact identity match at the new index.
+
+If enumeration fails, VoiceLab preserves the old selector contents and current
+selections, reports:
+
+```text
+VoiceLab could not refresh audio devices. Check Windows audio services and try again.
+```
+
+Technical details remain in telemetry.
+
 ## Device Failure Recovery
 
 M6.3 normalizes startup and routing failures into stable categories before they
@@ -155,6 +192,11 @@ Manual M6.3 hardware acceptance result: PASS.
   `main.py` process is still running.
 - If device startup fails, verify microphone, virtual mic, and monitor device
   IDs are available in the UI device lists.
+- If a connected or enabled device is missing from the selectors while stopped,
+  click `Refresh Devices`.
+- If a previously selected device was disconnected or disabled, click
+  `Refresh Devices`, confirm the selector is cleared, then choose a replacement
+  explicitly.
 - If monitor startup fails, select another monitor output or uncheck
   `Enable monitor output`, then retry.
 - If hotkeys fail, VoiceLab should continue running and report the setup failure
@@ -269,3 +311,55 @@ Pitch guidance:
 - `+/-4` semitones: recommended normal range.
 - `+/-8` semitones: usable but obviously processed.
 - `+/-12` semitones: intentionally extreme.
+
+## Manual M6.4 Hardware Checklist
+
+M6.4 manual hardware verification status in this engineering session: NOT RUN.
+
+Connected device appears:
+
+1. Launch VoiceLab while stopped.
+2. Connect or enable a disposable USB/Bluetooth input or output.
+3. Click `Refresh Devices`.
+4. Confirm the device appears without relaunching.
+5. Confirm existing unrelated selections remain intact.
+
+Disconnected selected device:
+
+1. Select a disposable device while stopped.
+2. Disconnect or disable it.
+3. Click `Refresh Devices`.
+4. Confirm its selector is cleared.
+5. Confirm no replacement is selected.
+6. Select a valid replacement manually.
+7. Start successfully.
+
+Index-change safety:
+
+1. Note a selected device.
+2. Connect or disconnect another device that may change enumeration.
+3. Click `Refresh Devices`.
+4. Confirm VoiceLab preserves the correct device by identity rather than by
+   numeric index alone.
+
+Refresh failure:
+
+- Test only if safely reproducible; otherwise record `NOT TESTED`.
+
+Regression:
+
+- Normal microphone start.
+- Virtual microphone output.
+- Monitor output.
+- Monitor disabled mode.
+- Pitch `0`.
+- Pitch `+4`.
+- Pitch `-4`.
+- Presets.
+- Soundboard.
+- Stop.
+- Close.
+- Relaunch.
+- Metallic tail absent.
+- Flutter absent.
+- Latency acceptable.

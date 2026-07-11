@@ -695,3 +695,70 @@ Roles:
 - Normal regression passed for startup, virtual mic, monitor, pitch `+4`, pitch
   `-4`, soundboard, stop, close, relaunch, metallic tail absent, flutter absent,
   and acceptable latency.
+
+## M6.4 - Manual Device Refresh and Selection Integrity
+
+Status: PASS
+
+Purpose: allow the operator to explicitly refresh available audio devices after
+connecting, disconnecting, enabling, or disabling hardware without restarting
+VoiceLab and without automatic hot-plug behavior.
+
+### Scope
+
+- Add an explicit `Refresh Devices` UI action near the device selectors.
+- Route refresh through `ApplicationService`; keep operating-system device
+  enumeration owned by `AudioIO`.
+- Introduce a narrow immutable application-facing device descriptor for UI
+  choices and selection identity.
+- Preserve selections only when the same device identity can be matched safely.
+- Clear disappeared or ambiguous selections and require explicit operator
+  replacement before processing starts.
+- Preserve monitor-enabled state, effect parameters, presets, and soundboard
+  state during refresh.
+- Keep refresh disabled while processing is starting, running, or stopping, and
+  reject invalid refresh commands at the service boundary.
+
+### Out of Scope
+
+- Automatic hot-plug polling, Windows device event listeners, background device
+  watcher threads, automatic fallback, default substitution, automatic retry,
+  stopping active audio to refresh, persistent hardware profiles, friendly
+  aliases, packaging, installer, auto-update, DSP changes, external plugin
+  execution, and broad UI redesign.
+
+### Device Identity Policy
+
+- Selection preservation first accepts the same numeric index only when the
+  device identity still matches.
+- If the index changed, a unique exact identity match may preserve the
+  selection at the new index.
+- Identity is the exact device name, host API identifier, input/output channel
+  capabilities, and default sample rate.
+- Duplicate exact identities are ambiguous unless the same index still matches.
+- Numeric index alone and display name alone are never sufficient.
+
+### Refresh Availability Policy
+
+- `stopped`: enabled.
+- `failed`: enabled.
+- `starting`: disabled and rejected by `ApplicationService`.
+- `running`: disabled and rejected by `ApplicationService`.
+- `stopping`: disabled and rejected by `ApplicationService`.
+
+### Completion Notes
+
+- Successful refresh updates all three selector lists atomically and reports
+  missing roles in concise command text.
+- Enumeration failure preserves the old selector model and selections, records
+  technical detail in telemetry, and allows another refresh attempt.
+- Refresh does not clear an unresolved M6.3 startup failure; successful Start
+  remains the authoritative event that clears startup failure state.
+- No silent replacement device is selected during refresh.
+- Automated M6.4 coverage passed for refresh availability, service rejection,
+  role filtering, selection preservation, ambiguity handling, missing-selection
+  reporting, enumeration failure, retry after enumeration failure, start-failure
+  interaction, UI signal blocking, status polling, prohibited imports, and
+  offscreen UI refresh/close.
+- Manual M6.4 hardware verification remains not run in this engineering
+  session. The manual checklist is documented in the runbook.
