@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -27,7 +28,14 @@ class App(QWidget):
 
         os.makedirs("sounds", exist_ok=True)
 
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        scroll_area.setWidget(content)
+        root_layout.addWidget(scroll_area)
         self.restored_preferences = self.service.operator_preferences() if hasattr(self.service, "operator_preferences") else {}
         self._updating_voice_controls = False
 

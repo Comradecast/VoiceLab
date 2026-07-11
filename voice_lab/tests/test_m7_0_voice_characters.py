@@ -354,6 +354,11 @@ class M70UiTests(unittest.TestCase):
         self.assertFalse(window.advanced_toggle.isChecked())
         self.assertTrue(window.gain.isHidden())
 
+    def test_window_can_fit_default_launch_height(self):
+        window, _svc = self.make_window()
+
+        self.assertLessEqual(window.minimumSizeHint().height(), 720)
+
     def test_character_selection_strength_bypass_and_reset_update_ui(self):
         window, svc = self.make_window()
 

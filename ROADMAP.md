@@ -973,5 +973,9 @@ Compatibility aliases preserve existing built-in preset names where applicable:
   separation, settings compatibility, offscreen UI character controls,
   advanced-control collapse/expand behavior, prohibited UI imports, and M5.4
   through M6.5 regression suites.
+- Live launch after M7.0 exposed a Windows geometry warning caused by the main
+  window minimum height exceeding the usable monitor area. The content now
+  scrolls inside the window so the default launch height fits, and the corrected
+  launch no longer emits the warning in live use.
 - Manual M7.0 hardware voice-character acceptance remains not run in this
   engineering session.

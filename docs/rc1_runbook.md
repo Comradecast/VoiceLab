@@ -268,6 +268,8 @@ Operator behavior:
 - `Reset Voice` selects Natural, sets default strength, turns bypass off, and
   preserves devices, monitor state, volumes, soundboard state, processing
   state, and routing state.
+- The main content scrolls when needed so the default launch size remains usable
+  on smaller displays.
 
 Deferred character types:
 
