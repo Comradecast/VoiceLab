@@ -101,6 +101,33 @@ The status refresh runs on the Qt UI thread about twice per second. It is
 read-only: it does not discover devices, discover plugins, write configuration,
 create effects, restart audio, select a backend, or mutate telemetry.
 
+## Device Failure Recovery
+
+M6.3 normalizes startup and routing failures into stable categories before they
+reach the primary UI. User-facing messages explain the failed role and practical
+next action, while backend details remain in telemetry.
+
+Supported failure categories:
+
+- missing selection;
+- device not found;
+- device open failed;
+- unsupported configuration;
+- route startup failed;
+- partial-start cleanup failed;
+- unknown device error.
+
+Affected roles are input, virtual output, monitor output, or the general route.
+
+After a failed start, processing is not shown as running, routes are not shown
+as active, Start Processing is available again, Stop Processing is disabled,
+and the warning remains visible until a new start attempt replaces it or a
+successful start clears it. VoiceLab does not silently choose replacement
+devices, disable monitor output, or retry automatically.
+
+Device lists are still loaded at UI startup. M6.3 does not add automatic
+hot-plug monitoring or a manual device refresh action.
+
 ## Troubleshooting
 
 - If Signalsmith is missing, rebuild with the active virtual environment and
@@ -109,6 +136,8 @@ create effects, restart audio, select a backend, or mutate telemetry.
   `main.py` process is still running.
 - If device startup fails, verify microphone, virtual mic, and monitor device
   IDs are available in the UI device lists.
+- If monitor startup fails, select another monitor output or uncheck
+  `Enable monitor output`, then retry.
 - If hotkeys fail, VoiceLab should continue running and report the setup failure
   through status/telemetry.
 

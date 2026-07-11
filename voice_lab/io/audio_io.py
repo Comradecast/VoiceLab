@@ -2,6 +2,7 @@ import sounddevice as sd
 
 from voice_lab.config.config import BLOCK_SIZE, SAMPLE_RATE
 from voice_lab.core import AudioFrame
+from voice_lab.io.device_errors import DeviceFailure, DeviceFailureError
 
 
 class AudioIO:
@@ -16,28 +17,55 @@ class AudioIO:
         sd.sleep(milliseconds)
 
     def open_output_stream(self, output_id, callback):
-        self.monitor_stream = sd.OutputStream(
-            samplerate=SAMPLE_RATE,
-            blocksize=BLOCK_SIZE,
-            dtype="float32",
-            channels=2,
-            device=output_id,
-            callback=callback,
-            latency="low",
-        )
-        self.monitor_stream.start()
+        try:
+            self.monitor_stream = sd.OutputStream(
+                samplerate=SAMPLE_RATE,
+                blocksize=BLOCK_SIZE,
+                dtype="float32",
+                channels=2,
+                device=output_id,
+                callback=callback,
+                latency="low",
+            )
+            self.monitor_stream.start()
+        except DeviceFailureError:
+            raise
+        except Exception as exc:
+            self._close_unstarted_stream(self.monitor_stream)
+            self.monitor_stream = None
+            raise DeviceFailureError(
+                DeviceFailure(
+                    category="device_open_failed",
+                    role="monitor_output",
+                    selected_device_id=output_id,
+                    technical_detail=str(exc),
+                )
+            ) from exc
 
     def open_duplex_stream(self, input_id, output_id, callback):
-        self.stream = sd.Stream(
-            samplerate=SAMPLE_RATE,
-            blocksize=BLOCK_SIZE,
-            dtype="float32",
-            channels=(1, 2),
-            device=(input_id, output_id),
-            callback=callback,
-            latency="low",
-        )
-        self.stream.start()
+        try:
+            self.stream = sd.Stream(
+                samplerate=SAMPLE_RATE,
+                blocksize=BLOCK_SIZE,
+                dtype="float32",
+                channels=(1, 2),
+                device=(input_id, output_id),
+                callback=callback,
+                latency="low",
+            )
+            self.stream.start()
+        except DeviceFailureError:
+            raise
+        except Exception as exc:
+            self._close_unstarted_stream(self.stream)
+            self.stream = None
+            raise DeviceFailureError(
+                DeviceFailure(
+                    category="device_open_failed",
+                    role="route",
+                    technical_detail=str(exc),
+                )
+            ) from exc
 
     def close(self):
         errors = []
@@ -81,3 +109,14 @@ class AudioIO:
         if isinstance(frame, AudioFrame):
             return frame.samples
         return frame
+
+    def _close_unstarted_stream(self, stream):
+        if stream is None:
+            return
+        close = getattr(stream, "close", None)
+        if close is None:
+            return
+        try:
+            close()
+        except Exception:
+            pass

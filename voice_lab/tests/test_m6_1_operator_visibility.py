@@ -17,10 +17,13 @@ def snapshot(
     events=(),
     command_result=None,
     effect_chain_status=None,
+    active_start_failure=None,
 ):
     metadata = {"current_pitch_semitones": semitones}
     if pitch_status is not None:
         metadata["pitch_buffer_status"] = pitch_status
+    if active_start_failure is not None:
+        metadata["active_start_failure"] = active_start_failure
     return TelemetrySnapshot(
         latest_status="",
         recent_events=tuple(events),
@@ -204,18 +207,29 @@ class M61OperatorProjectionTests(unittest.TestCase):
         self.assertIn("pitch DSP latency", status.latency)
 
     def test_last_actionable_error_remains_visible(self):
-        events = (
-            make_event("route.start_failed", "error", "Virtual microphone route failed"),
-            make_event("command.apply_effect_parameters", "info", "apply succeeded"),
+        status = build_operator_status(
+            snapshot(
+                active_start_failure={
+                    "operator_message": "Virtual microphone route failed",
+                    "category": "device_open_failed",
+                    "role": "virtual_output",
+                }
+            ),
+            "failed",
         )
-        status = build_operator_status(snapshot(events=events), "failed")
 
         self.assertEqual(status.actionable_status, "Virtual microphone route failed")
 
     def test_successful_command_status_is_separate_from_error_state(self):
-        events = (make_event("route.start_failed", "error", "Audio start failed"),)
         status = build_operator_status(
-            snapshot(events=events, command_result=CommandResult.ok("Preset saved")),
+            snapshot(
+                command_result=CommandResult.ok("Preset saved"),
+                active_start_failure={
+                    "operator_message": "Audio start failed",
+                    "category": "route_startup_failed",
+                    "role": "route",
+                },
+            ),
             "failed",
         )
 

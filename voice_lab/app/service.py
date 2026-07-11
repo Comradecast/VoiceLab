@@ -11,6 +11,7 @@ from voice_lab.controllers.hotkeys import HotkeyManager
 from voice_lab.controllers.soundboard import SoundboardController
 from voice_lab.engine.audio_engine import AudioEngine
 from voice_lab.io import AudioIO, Router
+from voice_lab.io.device_errors import DeviceFailure, DeviceFailureError
 from voice_lab.mixer import Mixer
 from voice_lab.plugins import PluginManager
 from voice_lab.telemetry import TelemetryService
@@ -288,6 +289,9 @@ class ApplicationService(QObject):
 
     def start_audio(self, input_id, output_id, monitor_id=None):
         self._processing_state = "starting"
+        selection_failure = self._validate_start_selection(input_id, output_id, monitor_id)
+        if selection_failure is not None:
+            return self._handle_start_failure(selection_failure, input_id, output_id, monitor_id)
         try:
             self.router.start(
                 self.engine,
@@ -297,29 +301,15 @@ class ApplicationService(QObject):
                 monitor_id,
                 monitor_enabled=lambda: self.current_monitor_enabled,
             )
+        except DeviceFailureError as exc:
+            return self._handle_start_failure(exc.failure, input_id, output_id, monitor_id)
         except Exception as exc:
-            result = CommandResult.fail(f"Start failed: {exc}")
-            self._processing_state = "failed"
-            self._active_route = {
-                "virtual_mic_active": False,
-                "monitor_active": False,
-                "input_id": input_id,
-                "output_id": output_id,
-                "monitor_id": monitor_id,
-            }
-            self.telemetry.set_audio_running(False)
-            self.telemetry.set_route_status("error")
-            self.telemetry.set_metadata("active_route", self._active_route)
-            self.telemetry.record_event(
-                "route.start_failed",
-                "error",
-                result.message,
-                input_id=input_id,
-                output_id=output_id,
-                monitor_id=monitor_id,
+            failure = DeviceFailure(
+                category="route_startup_failed",
+                role="route",
+                technical_detail=str(exc),
             )
-            self.telemetry.record_command_result("start_audio", result)
-            return result
+            return self._handle_start_failure(failure, input_id, output_id, monitor_id)
 
         message = (
             f"Running: mic {input_id} → cable {output_id}"
@@ -337,6 +327,7 @@ class ApplicationService(QObject):
         self.telemetry.set_audio_running(True)
         self.telemetry.set_route_status("running")
         self.telemetry.set_metadata("active_route", self._active_route)
+        self.telemetry.set_metadata("active_start_failure", None)
         self.telemetry.record_event(
             "audio.started",
             "info",
@@ -361,6 +352,8 @@ class ApplicationService(QObject):
             self.telemetry.record_command_result("stop_audio", result)
             return result
         result = CommandResult.ok("Stopped")
+        if previous_state != "running":
+            result = CommandResult.ok("Already stopped")
         self._processing_state = "stopped"
         self._active_route = {
             "virtual_mic_active": False,
@@ -372,6 +365,8 @@ class ApplicationService(QObject):
         self.telemetry.set_audio_running(False)
         self.telemetry.set_route_status("stopped")
         self.telemetry.set_metadata("active_route", self._active_route)
+        if previous_state == "running":
+            self.telemetry.set_metadata("active_start_failure", None)
         self.telemetry.record_event("audio.stopped", "info", result.message)
         self.telemetry.record_command_result("stop_audio", result)
         return result
@@ -394,4 +389,135 @@ class ApplicationService(QObject):
             command=command_name,
             issues=tuple(issue.message for issue in issues),
             **metadata,
+        )
+
+    def _validate_start_selection(self, input_id, output_id, monitor_id):
+        if input_id is None:
+            return DeviceFailure(category="missing_selection", role="input")
+        if output_id is None:
+            return DeviceFailure(category="missing_selection", role="virtual_output")
+        if self.current_monitor_enabled and monitor_id is None:
+            return DeviceFailure(category="missing_selection", role="monitor_output")
+        return None
+
+    def _handle_start_failure(self, failure, input_id, output_id, monitor_id):
+        normalized = self._normalize_device_failure(failure, input_id, output_id, monitor_id)
+        result = CommandResult.fail(
+            normalized["operator_message"],
+            failure=normalized,
+        )
+        self._processing_state = "failed"
+        self._active_route = {
+            "virtual_mic_active": False,
+            "monitor_active": False,
+            "input_id": input_id,
+            "output_id": output_id,
+            "monitor_id": monitor_id,
+        }
+        self.telemetry.set_audio_running(False)
+        self.telemetry.set_route_status("error")
+        self.telemetry.set_metadata("active_route", self._active_route)
+        self.telemetry.set_metadata("active_start_failure", normalized)
+        self.telemetry.record_event(
+            "route.start_failed",
+            "error",
+            normalized["operator_message"],
+            input_id=input_id,
+            output_id=output_id,
+            monitor_id=monitor_id,
+            **normalized,
+        )
+        self.telemetry.record_command_result("start_audio", result)
+        return result
+
+    def _normalize_device_failure(self, failure, input_id, output_id, monitor_id):
+        category = failure.category
+        role = failure.role
+        selected_device_id = failure.selected_device_id
+        if selected_device_id is None:
+            selected_device_id = {
+                "input": input_id,
+                "virtual_output": output_id,
+                "monitor_output": monitor_id,
+            }.get(role)
+        operator_message, suggested_action = self._device_failure_message(category, role)
+        return {
+            "category": category,
+            "role": role,
+            "selected_device_id": selected_device_id,
+            "recoverable": failure.recoverable,
+            "operator_message": operator_message,
+            "suggested_action": suggested_action,
+            "technical_detail": failure.technical_detail,
+        }
+
+    def _device_failure_message(self, category, role):
+        if category == "missing_selection" and role == "input":
+            return (
+                "Select a microphone input before starting processing.",
+                "Choose an input device and try again.",
+            )
+        if category == "missing_selection" and role == "virtual_output":
+            return (
+                "Select a virtual microphone output before starting processing.",
+                "Choose a virtual microphone output and try again.",
+            )
+        if category == "missing_selection" and role == "monitor_output":
+            return (
+                "Select a monitor output device or disable monitor output.",
+                "Choose a monitor output or uncheck Enable monitor output.",
+            )
+        if category == "device_not_found" and role == "input":
+            return (
+                "The selected microphone is no longer available.",
+                "Reconnect it or select another microphone input.",
+            )
+        if category == "device_not_found" and role == "virtual_output":
+            return (
+                "The selected virtual microphone output is no longer available.",
+                "Check the selected device and VB-CABLE configuration.",
+            )
+        if category == "device_not_found" and role == "monitor_output":
+            return (
+                "The selected monitor output is no longer available.",
+                "Select another monitor output or disable monitor output.",
+            )
+        if category == "unsupported_configuration" and role == "input":
+            return (
+                "The selected microphone does not support the required input configuration.",
+                "Select a microphone input that supports recording.",
+            )
+        if category == "unsupported_configuration" and role == "virtual_output":
+            return (
+                "The selected virtual microphone output does not support the required output configuration.",
+                "Select a valid virtual microphone output.",
+            )
+        if category == "unsupported_configuration" and role == "monitor_output":
+            return (
+                "The selected monitor output does not support the required output configuration.",
+                "Select another monitor output or disable monitor output.",
+            )
+        if category in {"device_open_failed", "device_unavailable"} and role == "input":
+            return (
+                "The selected microphone could not be opened. Check that it is connected and not being used exclusively by another application.",
+                "Check the microphone connection and close other apps that may be using it.",
+            )
+        if category in {"device_open_failed", "device_unavailable"} and role == "virtual_output":
+            return (
+                "The selected virtual microphone output could not be opened. Check the selected device and VB-CABLE configuration.",
+                "Check the virtual microphone device and try again.",
+            )
+        if category in {"device_open_failed", "device_unavailable"} and role == "monitor_output":
+            return (
+                "The selected monitor output could not be opened. Select another output or disable monitor output.",
+                "Select another monitor output or uncheck Enable monitor output.",
+            )
+        if category == "partial_start_cleanup_failed":
+            return (
+                "VoiceLab could not cleanly recover from a partial audio startup failure.",
+                "Close VoiceLab if retry does not work, then reopen it.",
+            )
+        return (
+            "VoiceLab could not start audio processing. Check the selected devices and try again.",
+            "Check the selected devices and try again.",
         )

@@ -596,3 +596,91 @@ without redesigning the UI or changing runtime behavior.
 
 - This was the only concrete M6.2 correction justified by Phase A observations.
 - No runtime behavior changed.
+
+## M6.3 - Safe Device Failure Recovery
+
+Status: PASS
+
+Purpose: make device-related startup and routing failures understandable and
+recoverable without changing Router/AudioIO ownership or silently changing the
+selected devices.
+
+### Scope
+
+- Normalize device and route startup failures into stable categories and route
+  roles.
+- Translate normalized failures into concise operator messages and suggested
+  actions at the application layer.
+- Keep backend/OS exception details in telemetry metadata instead of primary UI
+  text.
+- Ensure failed starts leave processing not running, routes inactive, Start
+  enabled, Stop disabled, and retry possible.
+- Ensure Router closes partially opened resources if startup fails.
+
+### Out of Scope
+
+- DSP, Signalsmith, pitch-buffering, backend-selection, audio-contract, plugin,
+  lifecycle-ownership, configuration-format, packaging, installer, auto-update,
+  external plugin, persistent logging, or hot-plug monitoring changes.
+- Silent device fallback, automatic replacement device selection, or automatic
+  retry loops.
+
+### Failure-Path Inventory
+
+- Missing input selection, missing virtual output selection, and monitor enabled
+  with no monitor selection are detected before Router startup by
+  `ApplicationService`.
+- Stale selected input, output, or monitor IDs are detected by `Router`
+  validation as `device_not_found`.
+- Unsupported channel/role configuration is detected by `Router` validation as
+  `unsupported_configuration`.
+- Monitor output open failures are wrapped by `AudioIO` as
+  `device_open_failed` for `monitor_output`.
+- Duplex stream open failures are wrapped as `device_open_failed` for the
+  general route because PortAudio does not always identify whether input or
+  output caused the failure.
+- Typed lower-layer/fake failures for input, virtual output, or monitor open are
+  preserved and translated by `ApplicationService`.
+- Unknown startup failures use safe generic wording.
+- Partial startup failures now trigger immediate Router cleanup.
+- Stop after failed start is safe and reports "Already stopped".
+- Retry after correcting a condition is safe; successful start clears the
+  primary warning while telemetry retains failure history.
+
+### Failure Categories
+
+- `missing_selection`
+- `device_not_found`
+- `device_open_failed`
+- `unsupported_configuration`
+- `route_startup_failed`
+- `partial_start_cleanup_failed`
+- `unknown_device_error`
+
+Roles:
+
+- `input`
+- `virtual_output`
+- `monitor_output`
+- `route`
+
+### Completion Notes
+
+- User-visible messages are concise and actionable. They do not expose raw
+  tracebacks or backend object representations.
+- Technical details are retained in `CommandResult.metadata["failure"]`,
+  `active_start_failure` telemetry metadata, and the bounded telemetry event
+  history.
+- Routine informational commands do not erase an unresolved startup warning.
+- A new start attempt may replace a prior startup warning; successful start
+  clears the primary warning.
+- Monitoring remains optional but explicit: monitor failure does not silently
+  disable monitoring or select another device.
+- Device refresh was deferred. The current device list is loaded at UI startup;
+  users may correct selections already present or relaunch after external
+  hot-plug changes. No automatic refresh or hot-plug monitoring was added.
+- Automated M6.3 recovery coverage passed for selection failures,
+  device-not-found cases, open failures, unsupported configuration, unknown
+  startup failure, telemetry detail retention, cleanup, retry, no automatic
+  device replacement, monitor semantics, polling after failure, and offscreen UI
+  close after failure.

@@ -18,13 +18,17 @@ class OperatorStatus:
 def build_operator_status(snapshot, processing_state, active_route=None):
     active_route = dict(active_route or {})
     pitch_status = _pitch_status(snapshot)
-    actionable = _latest_actionable(snapshot, pitch_status["actionable"])
+    active_start_failure = _as_mapping(snapshot.metadata.get("active_start_failure", {}))
+    actionable = _latest_actionable(snapshot, pitch_status["actionable"], active_start_failure)
     diagnostics = dict(pitch_status["diagnostics"])
     diagnostics.update(
         {
             "processing_state": processing_state,
             "route_status": snapshot.route_status,
             "audio_running": snapshot.audio_running,
+            "active_start_failure_category": active_start_failure.get("category", ""),
+            "active_start_failure_role": active_start_failure.get("role", ""),
+            "active_start_failure_recoverable": active_start_failure.get("recoverable", ""),
         }
     )
     return OperatorStatus(
@@ -137,10 +141,10 @@ def _pitch_status(snapshot):
     }
 
 
-def _latest_actionable(snapshot, pitch_actionable):
-    for event in reversed(snapshot.recent_events):
-        if event.severity in {"warning", "error"}:
-            return event.message
+def _latest_actionable(snapshot, pitch_actionable, active_start_failure=None):
+    active_start_failure = active_start_failure or {}
+    if active_start_failure.get("operator_message"):
+        return active_start_failure["operator_message"]
     return pitch_actionable
 
 
