@@ -391,6 +391,12 @@ class M61OperatorUiTests(unittest.TestCase):
         self.qt_app.processEvents()
         self.assertTrue(service.closed)
 
+    def test_monitor_toggle_wording_is_explicit(self):
+        service = FakeOperatorService()
+        window = self.make_window(service)
+
+        self.assertEqual(window.monitor_check.text(), "Enable monitor output")
+
 
 if __name__ == "__main__":
     unittest.main()

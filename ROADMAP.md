@@ -559,3 +559,40 @@ application itself without giving the UI or telemetry new runtime authority.
   persistent logs.
 - Telemetry remains passive; the UI obtains state only through
   `ApplicationService`.
+- M6.1 live operator-facing acceptance passed after hardware/UI testing. The
+  tester confirmed startup, running, stopped, pitch, route, command, close,
+  relaunch, and audio-regression behavior. No false fallback, route, monitor, or
+  backend warnings appeared in normal operation.
+- Observed accepted limitations: unavailable-device failure behavior was not
+  tested, and no new 30-minute soak was run because no instability appeared.
+
+## M6.2 - Operator UX Micro-Polish
+
+Status: PASS
+
+Purpose: correct concrete usability issues observed during M6.1 live acceptance
+without redesigning the UI or changing runtime behavior.
+
+### Scope
+
+- Clarify wording for the monitor enable/disable control.
+- Preserve the existing application-service command path and routing behavior.
+
+### Out of Scope
+
+- Broad visual redesign.
+- DSP, routing, lifecycle, plugin, telemetry-authority, packaging, or logging
+  changes.
+
+### Completed
+
+- Renamed the monitor checkbox from "Monitor myself through speakers/headphones"
+  to "Enable monitor output" so disabling monitor is discoverable by unchecking
+  the control.
+- Renamed the adjacent device label to "Monitor output device".
+- Added focused offscreen UI coverage for the monitor toggle wording.
+
+### Completion Notes
+
+- This was the only concrete M6.2 correction justified by Phase A observations.
+- No runtime behavior changed.

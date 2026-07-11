@@ -45,9 +45,9 @@ class App(QWidget):
         layout.addWidget(QLabel("Output to virtual mic"))
         layout.addWidget(self.output_box)
 
-        self.monitor_check = QCheckBox("Monitor myself through speakers/headphones")
+        self.monitor_check = QCheckBox("Enable monitor output")
         layout.addWidget(self.monitor_check)
-        layout.addWidget(QLabel("Monitor device"))
+        layout.addWidget(QLabel("Monitor output device"))
         layout.addWidget(self.monitor_box)
 
         self.monitor_volume = self.slider(layout, "Monitor volume", 0, 100, 35)
