@@ -30,6 +30,9 @@ from voice_lab.telemetry import TelemetryService
 from voice_lab.app.soundboard_assets import list_sound_files, load_sound
 
 
+RESERVED_CUSTOM_VOICE_NAMES = frozenset({"Custom - Unsaved", "Custom — Unsaved"})
+
+
 class ApplicationService(QObject):
     status_changed = Signal(str)
     preset_selected = Signal(str, dict)
@@ -291,6 +294,31 @@ class ApplicationService(QObject):
         protected = protected_voice_names()
         return tuple(name for name in self.preset_names() if name not in protected)
 
+    def voice_selector_entries(self):
+        entries = [{"kind": "section", "label": "Built-in Voices", "value": None}]
+        for character in voice_characters():
+            entries.append(
+                {
+                    "kind": "built_in",
+                    "label": character.display_name,
+                    "value": character.id,
+                    "description": character.description,
+                }
+            )
+        custom_names = self.custom_preset_names()
+        if custom_names:
+            entries.append({"kind": "section", "label": "Custom Voices", "value": None})
+            for name in custom_names:
+                entries.append(
+                    {
+                        "kind": "custom",
+                        "label": name,
+                        "value": name,
+                        "description": "Saved custom voice",
+                    }
+                )
+        return tuple(entries)
+
     def active_voice_state(self):
         character = character_by_id(self.current_character_id)
         character_name = character.display_name if character else "Unknown"
@@ -357,6 +385,15 @@ class ApplicationService(QObject):
             strength=strength,
         )
         self.telemetry.record_command_result("select_voice_character", result, character_id=character.id)
+        return result
+
+    def select_voice(self, kind, value, strength=None, persist=True):
+        if kind == "built_in":
+            return self.select_voice_character(value, strength=strength, persist=persist)
+        if kind == "custom":
+            return self.select_preset(value, persist=persist)
+        result = CommandResult.fail("Unsupported voice selection.")
+        self.telemetry.record_command_result("select_voice", result, kind=kind, value=value)
         return result
 
     def set_character_strength(self, value, persist=True):
@@ -552,32 +589,117 @@ class ApplicationService(QObject):
         return result
 
     def save_preset(self, name, params):
-        name = name.strip()
-        if not name:
-            result = CommandResult.fail("Preset name is required")
-            self.telemetry.record_command_result("save_preset", result)
-            return result
-        if name in protected_voice_names():
-            result = CommandResult.fail("Built-in voice characters cannot be overwritten")
+        validation = self.validate_custom_voice_name(name, allow_existing=True)
+        if not validation.success:
+            self.telemetry.record_command_result("save_preset", validation)
+            return validation
+        normalized_name = validation.metadata["name"]
+        if validation.metadata.get("conflict"):
+            result = CommandResult.fail(
+                "Custom voice already exists. Confirm overwrite before saving.",
+                name=normalized_name,
+                conflict=True,
+            )
             self.telemetry.record_command_result("save_preset", result, preset=name)
             return result
-        saved = self.config.save_preset(name, params)
+        return self.save_custom_voice(normalized_name, params, overwrite=True)
+
+    def save_custom_voice(self, name, params, overwrite=False):
+        validation = self.validate_custom_voice_name(name, allow_existing=overwrite)
+        if not validation.success:
+            self.telemetry.record_command_result("save_custom_voice", validation)
+            return validation
+        normalized_name = validation.metadata["name"]
+        if validation.metadata.get("conflict") and not overwrite:
+            result = CommandResult.fail(
+                "Custom voice already exists. Confirm overwrite before saving.",
+                name=normalized_name,
+                conflict=True,
+            )
+            self.telemetry.record_command_result("save_custom_voice", result, preset=normalized_name)
+            return result
+        saved = self.config.save_preset(normalized_name, params)
         if not saved.success:
             result = CommandResult.fail(
                 saved.message,
-                preset=name,
+                preset=normalized_name,
                 issues=saved.issues,
             )
             if saved.issues:
-                self._record_validation_failure("save_preset", saved.issues, preset=name)
-            self.telemetry.record_command_result("save_preset", result, preset=name)
+                self._record_validation_failure("save_custom_voice", saved.issues, preset=normalized_name)
+            self.telemetry.record_command_result("save_custom_voice", result, preset=normalized_name)
             return result
-        result = CommandResult.ok(saved.message, name=name)
-        self.telemetry.record_command_result("save_preset", result, preset=name)
+        self.select_preset(normalized_name)
+        result = CommandResult.ok(saved.message, name=normalized_name, params=saved.preset.copy())
+        self.telemetry.record_command_result("save_custom_voice", result, preset=normalized_name)
         return result
 
     def delete_preset(self, name):
-        if name in protected_voice_names():
+        return self.delete_custom_voice(name)
+
+    def rename_custom_voice(self, old_name, new_name):
+        if old_name not in self.custom_preset_names():
+            result = CommandResult.fail("Select a saved custom voice to rename.")
+            self.telemetry.record_command_result("rename_custom_voice", result, preset=old_name)
+            return result
+        validation = self.validate_custom_voice_name(new_name)
+        if not validation.success:
+            self.telemetry.record_command_result("rename_custom_voice", validation, preset=old_name)
+            return validation
+        normalized_name = validation.metadata["name"]
+        renamed = self.config.rename_preset(old_name, normalized_name)
+        if not renamed.success:
+            result = CommandResult.fail(renamed.message, issues=renamed.issues)
+            self.telemetry.record_command_result("rename_custom_voice", result, preset=old_name)
+            return result
+        if self.current_custom_preset == old_name:
+            self.current_custom_preset = normalized_name
+            self.current_selected_preset = normalized_name
+            self.active_voice_kind = "custom"
+            self._update_operator_settings(
+                selected_preset=normalized_name,
+                selected_character_id=None,
+                character_strength=DEFAULT_CHARACTER_STRENGTH,
+            )
+        self._publish_voice_metadata()
+        result = CommandResult.ok(
+            f"Renamed custom voice: {normalized_name}",
+            old_name=old_name,
+            name=normalized_name,
+            params=renamed.preset.copy(),
+        )
+        self.telemetry.record_command_result("rename_custom_voice", result, preset=normalized_name)
+        return result
+
+    def duplicate_custom_voice(self, source_name, new_name):
+        if source_name not in self.custom_preset_names():
+            result = CommandResult.fail("Select a saved custom voice to duplicate.")
+            self.telemetry.record_command_result("duplicate_custom_voice", result, preset=source_name)
+            return result
+        validation = self.validate_custom_voice_name(new_name)
+        if not validation.success:
+            self.telemetry.record_command_result("duplicate_custom_voice", validation, preset=source_name)
+            return validation
+        normalized_name = validation.metadata["name"]
+        duplicated = self.config.duplicate_preset(source_name, normalized_name)
+        if not duplicated.success:
+            result = CommandResult.fail(duplicated.message, issues=duplicated.issues)
+            self.telemetry.record_command_result("duplicate_custom_voice", result, preset=source_name)
+            return result
+        selected = self.select_preset(normalized_name)
+        if not selected.success:
+            return selected
+        result = CommandResult.ok(
+            f"Duplicated custom voice: {normalized_name}",
+            source_name=source_name,
+            name=normalized_name,
+            params=duplicated.preset.copy(),
+        )
+        self.telemetry.record_command_result("duplicate_custom_voice", result, preset=normalized_name)
+        return result
+
+    def delete_custom_voice(self, name):
+        if name in protected_voice_names() or name not in self.custom_preset_names():
             result = CommandResult.fail("Built-in voice characters cannot be deleted")
             self.telemetry.record_command_result("delete_preset", result, preset=name)
             return result
@@ -586,9 +708,46 @@ class ApplicationService(QObject):
             result = CommandResult.fail(deleted.message)
             self.telemetry.record_command_result("delete_preset", result, preset=name)
             return result
-        result = CommandResult.ok(deleted.message, name=name)
+        params = None
+        if self.current_custom_preset == name:
+            reset = self.select_voice_character(NATURAL_CHARACTER_ID)
+            params = reset.metadata.get("params") if reset.success else None
+        result = CommandResult.ok(deleted.message, name=name, params=params)
         self.telemetry.record_command_result("delete_preset", result, preset=name)
         return result
+
+    def validate_custom_voice_name(self, name, allow_existing=False):
+        normalized_name = str(name or "").strip()
+        if not normalized_name:
+            return CommandResult.fail("Custom voice name is required.", reason="empty")
+        protected = self._logical_name_map(protected_voice_names())
+        reserved = self._logical_name_map(RESERVED_CUSTOM_VOICE_NAMES)
+        logical = self._logical_name(normalized_name)
+        if logical in protected:
+            return CommandResult.fail(
+                "Built-in voice names are reserved.",
+                reason="reserved",
+                name=normalized_name,
+            )
+        if logical in reserved:
+            return CommandResult.fail(
+                "That voice name is reserved.",
+                reason="reserved",
+                name=normalized_name,
+            )
+        custom_names = self.custom_preset_names()
+        custom_logical = self._logical_name_map(custom_names)
+        conflict_name = custom_logical.get(logical)
+        if conflict_name is not None:
+            if allow_existing and conflict_name == normalized_name:
+                return CommandResult.ok(name=normalized_name, conflict=True, existing_name=conflict_name)
+            return CommandResult.fail(
+                "A custom voice with that name already exists.",
+                reason="conflict",
+                name=normalized_name,
+                existing_name=conflict_name,
+            )
+        return CommandResult.ok(name=normalized_name, conflict=False)
 
     def play_sound(self, path):
         try:
@@ -773,6 +932,12 @@ class ApplicationService(QObject):
             return f"Active voice: {character.display_name}"
         value = int(self.current_character_strength)
         return f"Active voice: {character.display_name} - {value}%"
+
+    def _logical_name(self, name):
+        return str(name or "").strip().casefold()
+
+    def _logical_name_map(self, names):
+        return {self._logical_name(name): name for name in names}
 
     def _record_validation_failure(self, command_name, issues, **metadata):
         self.telemetry.record_event(

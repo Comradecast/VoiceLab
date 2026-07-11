@@ -107,6 +107,55 @@ class ConfigurationService:
         self._presets_dirty = False
         return PresetSaveResult(True, preset=validation.preset, message=f"Saved preset: {name}")
 
+    def rename_preset(self, old_name, new_name):
+        if old_name not in self._presets:
+            return PresetSaveResult(False, message=f"Preset not found: {old_name}")
+        if new_name in self._presets:
+            return PresetSaveResult(False, message=f"Preset already exists: {new_name}")
+        validation = validate_preset_parameters(self._presets[old_name])
+        if not validation.success:
+            return PresetSaveResult(
+                False,
+                issues=validation.issues,
+                message=f"Invalid preset: {validation.message}",
+            )
+
+        updated_presets = dict(self._presets)
+        updated_presets[new_name] = validation.preset
+        del updated_presets[old_name]
+        try:
+            self._save_func(updated_presets)
+        except Exception as exc:
+            return PresetSaveResult(False, message=f"Preset rename failed: {exc}", error=exc)
+
+        self._presets = updated_presets
+        self._presets_dirty = False
+        return PresetSaveResult(True, preset=validation.preset, message=f"Renamed preset: {new_name}")
+
+    def duplicate_preset(self, source_name, new_name):
+        if source_name not in self._presets:
+            return PresetSaveResult(False, message=f"Preset not found: {source_name}")
+        if new_name in self._presets:
+            return PresetSaveResult(False, message=f"Preset already exists: {new_name}")
+        validation = validate_preset_parameters(self._presets[source_name])
+        if not validation.success:
+            return PresetSaveResult(
+                False,
+                issues=validation.issues,
+                message=f"Invalid preset: {validation.message}",
+            )
+
+        updated_presets = dict(self._presets)
+        updated_presets[new_name] = validation.preset
+        try:
+            self._save_func(updated_presets)
+        except Exception as exc:
+            return PresetSaveResult(False, message=f"Preset duplicate failed: {exc}", error=exc)
+
+        self._presets = updated_presets
+        self._presets_dirty = False
+        return PresetSaveResult(True, preset=validation.preset, message=f"Duplicated preset: {new_name}")
+
     def delete_preset(self, name):
         if name not in self._presets:
             return PresetDeleteResult(False, message=f"Preset not found: {name}")

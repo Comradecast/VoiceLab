@@ -1106,3 +1106,63 @@ audio, routing, effects, devices, character state, or settings.
   Processed/output overload were NOT TESTED.
 - Hardware failed-start meter coverage is incomplete because Failed Start and
   retry was NOT TESTED.
+
+## M7.2 - Custom Voice Management and Operator Polish
+
+Status: PROVISIONAL
+
+Purpose: make saved custom voices safer and clearer for normal operators by
+distinguishing built-in and custom voices, adding rename and duplicate
+operations, requiring confirmation for delete and overwrite, and protecting
+`Custom - Unsaved` advanced edits from silent discard.
+
+### Scope
+
+- Keep built-in voice characters immutable and unchanged.
+- Keep custom voices in the existing `presets.json` mapping and keep selected
+  voice state in existing operator settings.
+- Add application-service operations for classified voice listing, custom voice
+  name validation, rename, duplicate, delete, and explicit overwrite.
+- Add non-selectable built-in and custom sections to the primary voice selector.
+- Add Rename Custom Voice and Duplicate Custom Voice actions next to existing
+  save/delete custom voice actions.
+- Require delete confirmation for saved custom voices.
+- Require overwrite confirmation before replacing an existing custom voice.
+- Prompt before selecting another voice or Reset Voice would discard
+  `Custom - Unsaved` advanced edits.
+- Keep bypass separate from voice identity.
+
+### Out of Scope
+
+- DSP changes, character target changes, pitch configuration changes, meter
+  changes, routing changes, device behavior changes, soundboard changes,
+  packaging, import/export, and broad visual redesign.
+
+### Completion Notes
+
+- Built-in character definitions remain owned by
+  `voice_lab.config.voice_characters`.
+- Custom voice persistence remains owned by `ConfigurationService` and the
+  existing preset file shape: a mapping of custom voice name to validated
+  `gain`, `robot`, `lowpass`, and `pitch` values.
+- Existing `presets.json` and `settings.json` files load without migration.
+- Custom voice names are trimmed, empty names are rejected, built-in names and
+  `Custom - Unsaved` state names are reserved, and custom-name conflicts are
+  detected case-insensitively for new operations.
+- Rename writes one updated preset mapping, removes the old name, updates the
+  active selection when applicable, and persists through relaunch.
+- Duplicate preserves the source voice, copies validated parameters to the new
+  name, selects the duplicate, and persists through relaunch.
+- Delete is available only for saved custom voices, requires confirmation in
+  the UI, deletes exactly the selected custom voice, and resolves an active
+  deleted custom voice to Natural without changing devices, routing, volumes,
+  processing state, bypass state, soundboard behavior, or audio code.
+- Saving over an existing custom voice requires explicit UI confirmation; a
+  cancel leaves the existing custom voice unchanged.
+- Programmatic UI refresh and startup restoration do not create unsaved prompts.
+- Automated M7.2 coverage passed for custom voice classification, rename,
+  duplicate, delete, overwrite authorization, reserved and conflicting name
+  validation, persistence compatibility, unsaved discard/cancel behavior,
+  bypass identity separation, grouped selector behavior, action enabled states,
+  UI cancel paths, and prohibited UI imports.
+- Manual M7.2 live UI acceptance remains required.

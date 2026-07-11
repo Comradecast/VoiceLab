@@ -561,6 +561,76 @@ Manual M7.1 checklist:
   stopped, Signalsmith active, metallic tail absent, flutter absent, latency
   acceptable, and meters do not audibly affect processing.
 
+## Custom Voice Management
+
+M7.2 Status: PROVISIONAL.
+
+M7.2 improves saved custom voice management without changing DSP, routing,
+devices, meters, soundboard behavior, or built-in character targets.
+
+Behavior:
+
+- The primary voice selector separates built-in voices from custom voices with
+  non-selectable section labels.
+- Built-in voices remain Natural, Deep, Heavy Bass, Higher, Robot, Radio, and
+  Muffled.
+- Custom voices continue to load from the existing `presets.json` mapping.
+- Selected built-in/custom voice and character strength continue to use the
+  existing operator settings fields.
+- `Rename Custom Voice` renames a saved custom voice.
+- `Duplicate Custom Voice` duplicates a saved custom voice under a new name.
+- Saved custom voice deletion requires confirmation.
+- Saving over an existing custom voice requires explicit overwrite
+  confirmation.
+- Built-in names and `Custom - Unsaved` state names are reserved.
+- Empty or whitespace-only custom voice names are rejected.
+- Custom-name conflicts are rejected unless the operator explicitly confirms an
+  overwrite for a save operation.
+- `Custom - Unsaved` advanced edits prompt before selecting another voice or
+  Reset Voice discards them.
+- Cancel keeps the current unsaved parameters and active state unchanged.
+- Discard performs the requested voice change or reset once.
+- Bypass remains separate from voice identity and is not represented as a
+  custom voice.
+
+Manual M7.2 live UI acceptance remains pending.
+
+Manual M7.2 checklist:
+
+- Built-in/custom selector distinction.
+- Select every built-in voice.
+- Select an existing custom voice.
+- Save a new custom voice.
+- Rename Custom Voice.
+- Rename Cancel.
+- Duplicate Custom Voice.
+- Duplicate Cancel.
+- Delete custom voice Cancel.
+- Confirm custom voice deletion.
+- Built-in Rename/Delete protection.
+- Custom-name conflict behavior.
+- Overwrite Cancel.
+- Overwrite confirmation.
+- Unsaved selector-change Cancel.
+- Unsaved selector-change Discard.
+- Unsaved Reset Cancel.
+- Unsaved Reset Discard.
+- Bypass with built-in voice.
+- Bypass with saved custom voice.
+- Bypass with `Custom - Unsaved`.
+- Character strength behavior.
+- Advanced-control behavior.
+- Relaunch persistence.
+- Application still launches stopped.
+- Processing Start/Stop regression.
+- Soundboard regression.
+- Meter regression.
+- Window scrolling/layout.
+- Close and relaunch.
+- Metallic tail absent.
+- Flutter absent.
+- Latency acceptable.
+
 ## Device Failure Recovery
 
 M6.3 normalizes startup and routing failures into stable categories before they

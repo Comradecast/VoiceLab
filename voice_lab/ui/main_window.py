@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -42,6 +43,7 @@ class App(QWidget):
         root_layout.addWidget(scroll_area)
         self.restored_preferences = self.service.operator_preferences() if hasattr(self.service, "operator_preferences") else {}
         self._updating_voice_controls = False
+        self._last_voice_selection = None
 
         layout.addWidget(QLabel("Voice Character"))
         self.character_box = QComboBox()
@@ -162,13 +164,26 @@ class App(QWidget):
         layout.addWidget(self.preset_box)
 
         preset_btns = QHBoxLayout()
-        save_preset = QPushButton("Save Current as Custom Voice")
-        delete_preset = QPushButton("Delete Custom Voice")
-        save_preset.clicked.connect(self.save_current_as_preset)
-        delete_preset.clicked.connect(self.delete_current_preset)
-        preset_btns.addWidget(save_preset)
-        preset_btns.addWidget(delete_preset)
-        self.advanced_widgets.extend((save_preset, delete_preset))
+        self.save_preset_button = QPushButton("Save Current as Custom Voice")
+        self.rename_preset_button = QPushButton("Rename Custom Voice")
+        self.duplicate_preset_button = QPushButton("Duplicate Custom Voice")
+        self.delete_preset_button = QPushButton("Delete Custom Voice")
+        self.save_preset_button.clicked.connect(self.save_current_as_preset)
+        self.rename_preset_button.clicked.connect(self.rename_current_preset)
+        self.duplicate_preset_button.clicked.connect(self.duplicate_current_preset)
+        self.delete_preset_button.clicked.connect(self.delete_current_preset)
+        preset_btns.addWidget(self.save_preset_button)
+        preset_btns.addWidget(self.rename_preset_button)
+        preset_btns.addWidget(self.duplicate_preset_button)
+        preset_btns.addWidget(self.delete_preset_button)
+        self.advanced_widgets.extend(
+            (
+                self.save_preset_button,
+                self.rename_preset_button,
+                self.duplicate_preset_button,
+                self.delete_preset_button,
+            )
+        )
         layout.addLayout(preset_btns)
 
         self.gain = self.slider(layout, "Gain", 0, 50, 10)
@@ -229,6 +244,7 @@ class App(QWidget):
         self.advanced_widgets.append(self.diagnostic_status)
         self.sync_voice_controls_from_service()
         self.set_advanced_visible()
+        self.refresh_custom_voice_actions()
         self.refresh_soundboard()
         self.status_timer = QTimer(self)
         self.status_timer.setInterval(500)
@@ -262,12 +278,24 @@ class App(QWidget):
         self.character_box.blockSignals(True)
         self.character_box.clear()
         self._characters_by_id = {}
-        if hasattr(self.service, "voice_characters"):
+        if hasattr(self.service, "voice_selector_entries"):
+            for entry in self.service.voice_selector_entries():
+                if entry["kind"] == "section":
+                    self.character_box.addItem(entry["label"], ("section", None))
+                    item = self.character_box.model().item(self.character_box.count() - 1)
+                    if item is not None:
+                        item.setEnabled(False)
+                    continue
+                self.character_box.addItem(entry["label"], (entry["kind"], entry["value"]))
+                if entry["kind"] == "built_in":
+                    self._characters_by_id[entry["value"]] = entry
+            self._select_first_selectable_voice()
+        elif hasattr(self.service, "voice_characters"):
             for character in self.service.voice_characters():
                 self._characters_by_id[character["id"]] = character
-                self.character_box.addItem(character["display_name"], character["id"])
+                self.character_box.addItem(character["display_name"], ("built_in", character["id"]))
         else:
-            self.character_box.addItem("Natural", "natural")
+            self.character_box.addItem("Natural", ("built_in", "natural"))
             self._characters_by_id["natural"] = {
                 "id": "natural",
                 "display_name": "Natural",
@@ -275,14 +303,25 @@ class App(QWidget):
                 "strength_enabled": False,
             }
         self.character_box.blockSignals(False)
+        self._last_voice_selection = self.character_box.currentData()
 
     def select_voice_character(self):
         if self._updating_voice_controls or not hasattr(self.service, "select_voice_character"):
             return
-        character_id = self.character_box.currentData()
-        if not character_id:
+        data = self.character_box.currentData()
+        if not data or data[0] == "section":
+            self.sync_voice_controls_from_service()
             return
-        result = self.service.select_voice_character(character_id, strength=self.character_strength.value())
+        if not self.confirm_discard_unsaved_changes("Select another voice?"):
+            self.sync_voice_controls_from_service()
+            return
+        kind, value = data
+        if hasattr(self.service, "select_voice"):
+            result = self.service.select_voice(kind, value, strength=self.character_strength.value())
+        elif kind == "built_in":
+            result = self.service.select_voice_character(value, strength=self.character_strength.value())
+        else:
+            result = self.service.select_preset(value)
         self.display_result(result)
         if result.success:
             self.set_preset_controls(result.metadata["params"], persist_settings=False, mark_custom=False)
@@ -308,6 +347,8 @@ class App(QWidget):
     def reset_voice(self):
         if not hasattr(self.service, "reset_voice"):
             return
+        if not self.confirm_discard_unsaved_changes("Reset Voice?"):
+            return
         result = self.service.reset_voice()
         self.display_result(result)
         if result.success:
@@ -320,7 +361,11 @@ class App(QWidget):
         state = self.service.active_voice_state()
         self._updating_voice_controls = True
         try:
-            self.set_combo(self.character_box, state.get("character_id"))
+            if state.get("kind") == "custom" and state.get("custom_preset"):
+                self.set_combo(self.character_box, ("custom", state.get("custom_preset")))
+            elif state.get("kind") != "unsaved":
+                self.set_combo(self.character_box, ("built_in", state.get("character_id")))
+            self._last_voice_selection = self.character_box.currentData()
             character = self._characters_by_id.get(state.get("character_id"), {})
             self.character_description.setText(character.get("description", ""))
             strength = int(round(float(state.get("strength", 100))))
@@ -341,6 +386,7 @@ class App(QWidget):
                 self.set_preset_controls(preset_params, persist_settings=False, mark_custom=False)
         finally:
             self._updating_voice_controls = False
+        self.refresh_custom_voice_actions()
 
     def set_advanced_visible(self):
         visible = self.advanced_toggle.isChecked()
@@ -397,6 +443,9 @@ class App(QWidget):
         if current in names:
             self.preset_box.setCurrentText(current)
         self.preset_box.blockSignals(False)
+        if hasattr(self, "character_box"):
+            self._populate_character_box()
+        self.refresh_custom_voice_actions()
 
     def current_params(self):
         return {
@@ -412,6 +461,9 @@ class App(QWidget):
     def _apply_selected_preset(self, persist=True):
         name = self.preset_box.currentText()
         if not name:
+            return
+        if not self.confirm_discard_unsaved_changes("Select another custom voice?"):
+            self.sync_voice_controls_from_service()
             return
         try:
             result = self.service.select_preset(name, persist=persist)
@@ -463,18 +515,118 @@ class App(QWidget):
         if not ok or not name:
             return
         result = self.service.save_preset(name, self.current_params())
+        if not result.success and result.metadata.get("conflict"):
+            if not self.confirm_overwrite_custom_voice(name):
+                return
+            result = self.service.save_custom_voice(name, self.current_params(), overwrite=True)
         if not result.success:
             self.display_result(result)
             return
         self.refresh_preset_box()
-        self.preset_box.setCurrentText(name)
+        self.preset_box.setCurrentText(result.metadata.get("name", name))
+        self.sync_voice_controls_from_service()
+        self.display_result(result)
+
+    def rename_current_preset(self):
+        name = self.current_custom_voice_name()
+        if not name:
+            return
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Rename Custom Voice",
+            "New custom voice name:",
+            text=name,
+        )
+        if not ok:
+            return
+        result = self.service.rename_custom_voice(name, new_name)
+        if not result.success:
+            self.display_result(result)
+            return
+        self.refresh_preset_box()
+        self.preset_box.setCurrentText(result.metadata["name"])
+        self.sync_voice_controls_from_service()
+        self.display_result(result)
+
+    def duplicate_current_preset(self):
+        name = self.current_custom_voice_name()
+        if not name:
+            return
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Duplicate Custom Voice",
+            "New custom voice name:",
+        )
+        if not ok:
+            return
+        result = self.service.duplicate_custom_voice(name, new_name)
+        if not result.success:
+            self.display_result(result)
+            return
+        self.refresh_preset_box()
+        self.preset_box.setCurrentText(result.metadata["name"])
+        self.sync_voice_controls_from_service()
         self.display_result(result)
 
     def delete_current_preset(self):
-        name = self.preset_box.currentText()
+        name = self.current_custom_voice_name()
+        if not name:
+            return
+        if not self.confirm_delete_custom_voice(name):
+            return
         result = self.service.delete_preset(name)
         self.refresh_preset_box()
+        self.sync_voice_controls_from_service()
         self.display_result(result)
+
+    def current_custom_voice_name(self):
+        if not hasattr(self.service, "active_voice_state"):
+            return self.preset_box.currentText()
+        state = self.service.active_voice_state()
+        if state.get("kind") != "custom":
+            return ""
+        return state.get("custom_preset") or ""
+
+    def refresh_custom_voice_actions(self):
+        enabled = bool(self.current_custom_voice_name()) if hasattr(self, "preset_box") else False
+        for button_name in ("rename_preset_button", "duplicate_preset_button", "delete_preset_button"):
+            button = getattr(self, button_name, None)
+            if button is not None:
+                button.setEnabled(enabled)
+
+    def confirm_delete_custom_voice(self, name):
+        response = QMessageBox.question(
+            self,
+            "Delete Custom Voice",
+            f"Delete custom voice '{name}'?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        return response == QMessageBox.Yes
+
+    def confirm_overwrite_custom_voice(self, name):
+        response = QMessageBox.question(
+            self,
+            "Overwrite Custom Voice",
+            f"Overwrite existing custom voice '{name}'?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        return response == QMessageBox.Yes
+
+    def confirm_discard_unsaved_changes(self, title):
+        if not hasattr(self.service, "active_voice_state"):
+            return True
+        if self.service.active_voice_state().get("kind") != "unsaved":
+            return True
+        response = QMessageBox.question(
+            self,
+            "Unsaved Changes",
+            f"{title}\n\nDiscard Custom - Unsaved changes?",
+            QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        return response == QMessageBox.Discard
 
     def refresh_soundboard(self):
         while self.soundboard_layout.count():
@@ -547,7 +699,12 @@ class App(QWidget):
 
     def set_combo(self, box, value):
         for i in range(box.count()):
-            if box.itemData(i) == value:
+            item_data = box.itemData(i)
+            if item_data == value or (
+                isinstance(item_data, tuple)
+                and len(item_data) == 2
+                and item_data[1] == value
+            ):
                 box.setCurrentIndex(i)
                 return True
         return False
@@ -556,6 +713,13 @@ class App(QWidget):
         if already_matched or box.count() <= 1:
             return
         box.setCurrentIndex(1)
+
+    def _select_first_selectable_voice(self):
+        for index in range(self.character_box.count()):
+            data = self.character_box.itemData(index)
+            if data and data[0] != "section":
+                self.character_box.setCurrentIndex(index)
+                return
 
     def set_status(self, text):
         self.status.setText(text)
