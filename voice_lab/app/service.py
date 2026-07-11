@@ -8,6 +8,16 @@ from voice_lab.app.devices import describe_devices, resolve_stored_identity
 from voice_lab.app.operator_status import build_operator_status
 from voice_lab.config.config import DEFAULT_INPUT_ID, DEFAULT_MONITOR_ID, DEFAULT_OUTPUT_ID, SOUNDS_DIR
 from voice_lab.config import ConfigurationService
+from voice_lab.config.voice_characters import (
+    DEFAULT_CHARACTER_STRENGTH,
+    NATURAL_CHARACTER_ID,
+    character_by_compatibility_preset,
+    character_by_id,
+    protected_voice_names,
+    resolve_character_parameters,
+    validate_strength,
+    voice_characters,
+)
 from voice_lab.controllers.hotkeys import HotkeyManager
 from voice_lab.controllers.soundboard import SoundboardController
 from voice_lab.engine.audio_engine import AudioEngine
@@ -63,6 +73,15 @@ class ApplicationService(QObject):
         self.current_monitor_volume = settings.monitor_volume
         self.current_soundboard_volume = settings.soundboard_volume
         self.current_selected_preset = settings.selected_preset
+        restored_character = character_by_id(settings.selected_character_id)
+        if restored_character is None:
+            restored_character = character_by_compatibility_preset(settings.selected_preset)
+        self.current_character_id = restored_character.id if restored_character else NATURAL_CHARACTER_ID
+        self.current_character_strength = settings.character_strength
+        self.current_custom_preset = None if restored_character else settings.selected_preset
+        self.active_voice_kind = "character" if restored_character or not settings.selected_preset else "custom"
+        self.effects_bypassed = False
+        self.engine.set_effects_bypassed(False)
         self._processing_state = "stopped"
         self._active_route = {
             "virtual_mic_active": False,
@@ -78,6 +97,7 @@ class ApplicationService(QObject):
         self.soundboard.set_commands(self)
         self.hotkeys.status_signal.connect(self.status_changed)
         self._record_settings_load()
+        self._restore_voice_state()
 
     def devices(self):
         if self._device_descriptors is None:
@@ -250,8 +270,118 @@ class ApplicationService(QObject):
             "soundboard_volume": self.current_soundboard_volume,
             "selected_preset": preset if preset_available else None,
             "selected_preset_missing": preset if preset and not preset_available else None,
+            "selected_character_id": self.current_character_id,
+            "character_strength": self.current_character_strength,
             "settings_issues": issues,
         }
+
+    def voice_characters(self):
+        return tuple(character.asdict() for character in voice_characters())
+
+    def custom_preset_names(self):
+        protected = protected_voice_names()
+        return tuple(name for name in self.preset_names() if name not in protected)
+
+    def active_voice_state(self):
+        character = character_by_id(self.current_character_id)
+        character_name = character.display_name if character else "Unknown"
+        if self.effects_bypassed:
+            text = f"Voice effects bypassed - {self._active_voice_base_text()} remains selected"
+        else:
+            text = self._active_voice_base_text()
+        return {
+            "kind": self.active_voice_kind,
+            "character_id": self.current_character_id,
+            "character_name": character_name,
+            "custom_preset": self.current_custom_preset,
+            "strength": self.current_character_strength,
+            "effects_bypassed": self.effects_bypassed,
+            "parameters": dict(self.current_effect_params),
+            "text": text,
+        }
+
+    def select_voice_character(self, character_id, strength=None, persist=True):
+        character = character_by_id(character_id)
+        if character is None:
+            result = CommandResult.fail(f"Unknown voice character: {character_id}")
+            self.telemetry.record_command_result("select_voice_character", result, character_id=character_id)
+            return result
+        strength = self.current_character_strength if strength is None else strength
+        try:
+            strength = validate_strength(strength)
+            preset, effect_parameters = resolve_character_parameters(character.id, strength)
+        except ValueError as exc:
+            result = CommandResult.fail(str(exc), character_id=character_id)
+            self.telemetry.record_command_result("select_voice_character", result, character_id=character_id)
+            return result
+        applied = self._apply_effect_validation(
+            preset,
+            effect_parameters,
+            persist_settings=False,
+            mark_custom=False,
+        )
+        if not applied.success:
+            return applied
+        self.current_character_id = character.id
+        self.current_character_strength = strength
+        self.current_custom_preset = None
+        self.current_selected_preset = character.compatibility_preset_name or character.display_name
+        self.active_voice_kind = "character"
+        if persist:
+            self._update_operator_settings(
+                selected_character_id=character.id,
+                character_strength=strength,
+                selected_preset=self.current_selected_preset,
+            )
+        self._publish_voice_metadata()
+        result = CommandResult.ok(
+            f"Voice character: {character.display_name}",
+            character=character.asdict(),
+            strength=strength,
+            params=preset.copy(),
+        )
+        self.telemetry.record_event(
+            "voice.character_selected",
+            "info",
+            result.message,
+            character_id=character.id,
+            strength=strength,
+        )
+        self.telemetry.record_command_result("select_voice_character", result, character_id=character.id)
+        return result
+
+    def set_character_strength(self, value, persist=True):
+        try:
+            strength = validate_strength(value)
+        except ValueError as exc:
+            result = CommandResult.fail(str(exc), strength=value)
+            self.telemetry.record_command_result("set_character_strength", result)
+            return result
+        return self.select_voice_character(self.current_character_id, strength=strength, persist=persist)
+
+    def set_effects_bypassed(self, enabled):
+        enabled = bool(enabled)
+        if enabled == self.effects_bypassed:
+            result = CommandResult.ok("Voice effects bypass unchanged.", effects_bypassed=enabled)
+            self.telemetry.record_command_result("set_effects_bypassed", result)
+            return result
+        self.effects_bypassed = enabled
+        self.engine.set_effects_bypassed(enabled)
+        event_type = "voice.bypass_enabled" if enabled else "voice.bypass_disabled"
+        message = "Voice effects bypassed." if enabled else "Voice effects resumed."
+        self._publish_voice_metadata()
+        self.telemetry.record_event(event_type, "info", message, active_voice=self.active_voice_state())
+        result = CommandResult.ok(message, effects_bypassed=enabled)
+        self.telemetry.record_command_result("set_effects_bypassed", result)
+        return result
+
+    def reset_voice(self):
+        self.set_effects_bypassed(False)
+        return self.select_voice_character(
+            NATURAL_CHARACTER_ID,
+            strength=DEFAULT_CHARACTER_STRENGTH,
+            persist=True,
+        )
 
     def record_device_selection(self, role, selected_id):
         if role not in {"input", "virtual_output", "monitor_output"}:
@@ -296,6 +426,7 @@ class ApplicationService(QObject):
         soundboard_volume,
         pitch=0.0,
         persist_settings=True,
+        mark_custom=True,
     ):
         validation = self.config.validate_effect_parameters(gain, robot, lowpass, pitch)
         if not validation.success:
@@ -318,12 +449,17 @@ class ApplicationService(QObject):
         robot = validation.robot
         lowpass = validation.lowpass
         pitch = validation.pitch
-        self.current_effect_params = {
+        new_effect_params = {
             "gain": gain,
             "robot": robot,
             "lowpass": lowpass,
             "pitch": pitch,
         }
+        effect_changed = new_effect_params != self.current_effect_params
+        self.current_effect_params = new_effect_params
+        if mark_custom and effect_changed:
+            self.active_voice_kind = "unsaved"
+            self.current_custom_preset = None
         self.current_monitor_enabled = monitor_enabled
         self.current_monitor_volume = monitor_volume
         self.current_soundboard_volume = soundboard_volume
@@ -341,6 +477,7 @@ class ApplicationService(QObject):
         )
         self.telemetry.set_metadata("current_pitch_semitones", pitch)
         self.telemetry.set_metadata("current_effect_params", self.current_effect_params)
+        self._publish_voice_metadata()
         self.mixer.set_params(
             soundboard_volume=soundboard_volume,
             monitor_volume=monitor_volume,
@@ -358,6 +495,9 @@ class ApplicationService(QObject):
         return result
 
     def select_preset(self, name, persist=True):
+        character = character_by_compatibility_preset(name)
+        if character is not None:
+            return self.select_voice_character(character.id, persist=persist)
         selection = self.config.select_preset(name)
         if not selection.success:
             result = CommandResult.fail(
@@ -371,19 +511,24 @@ class ApplicationService(QObject):
             return result
 
         effect_parameters = selection.effect_parameters
+        self.current_selected_preset = name
+        self.current_character_id = NATURAL_CHARACTER_ID
+        self.current_character_strength = DEFAULT_CHARACTER_STRENGTH
+        self.current_custom_preset = name
+        self.active_voice_kind = "custom"
         if persist:
-            self.current_selected_preset = name
-            self._update_operator_settings(selected_preset=name)
-        self.apply_effect_parameters(
-            gain=effect_parameters.gain,
-            robot=effect_parameters.robot,
-            lowpass=effect_parameters.lowpass,
-            pitch=effect_parameters.pitch,
-            monitor_enabled=self.current_monitor_enabled,
-            monitor_volume=self.current_monitor_volume,
-            soundboard_volume=self.current_soundboard_volume,
-            persist_settings=persist,
+            self._update_operator_settings(
+                selected_preset=name,
+                selected_character_id=None,
+                character_strength=DEFAULT_CHARACTER_STRENGTH,
+            )
+        self._apply_effect_validation(
+            selection.preset,
+            effect_parameters,
+            persist_settings=False,
+            mark_custom=False,
         )
+        self._publish_voice_metadata()
         result = CommandResult.ok(params=selection.preset.copy())
         self.telemetry.record_command_result("select_preset", result, preset=name)
         return result
@@ -403,6 +548,10 @@ class ApplicationService(QObject):
             result = CommandResult.fail("Preset name is required")
             self.telemetry.record_command_result("save_preset", result)
             return result
+        if name in protected_voice_names():
+            result = CommandResult.fail("Built-in voice characters cannot be overwritten")
+            self.telemetry.record_command_result("save_preset", result, preset=name)
+            return result
         saved = self.config.save_preset(name, params)
         if not saved.success:
             result = CommandResult.fail(
@@ -419,6 +568,10 @@ class ApplicationService(QObject):
         return result
 
     def delete_preset(self, name):
+        if name in protected_voice_names():
+            result = CommandResult.fail("Built-in voice characters cannot be deleted")
+            self.telemetry.record_command_result("delete_preset", result, preset=name)
+            return result
         deleted = self.config.delete_preset(name)
         if not deleted.success:
             result = CommandResult.fail(deleted.message)
@@ -555,6 +708,60 @@ class ApplicationService(QObject):
 
     def unload_plugins(self):
         self.engine.stop()
+
+    def _restore_voice_state(self):
+        settings = self._operator_settings()
+        if self.active_voice_kind == "custom" and settings.selected_preset:
+            self.select_preset(settings.selected_preset, persist=False)
+            return
+        if character_by_id(self.current_character_id) is not None:
+            self.select_voice_character(
+                self.current_character_id,
+                strength=settings.character_strength,
+                persist=False,
+            )
+            return
+        self.select_voice_character(NATURAL_CHARACTER_ID, persist=False)
+
+    def _apply_effect_validation(
+        self,
+        preset_params,
+        effect_parameters,
+        *,
+        persist_settings,
+        mark_custom,
+    ):
+        return self.apply_effect_parameters(
+            gain=effect_parameters.gain,
+            robot=effect_parameters.robot,
+            lowpass=effect_parameters.lowpass,
+            pitch=effect_parameters.pitch,
+            monitor_enabled=self.current_monitor_enabled,
+            monitor_volume=self.current_monitor_volume,
+            soundboard_volume=self.current_soundboard_volume,
+            persist_settings=persist_settings,
+            mark_custom=mark_custom,
+        )
+
+    def _publish_voice_metadata(self):
+        state = self.active_voice_state()
+        self.telemetry.set_metadata("effects_bypassed", self.effects_bypassed)
+        self.telemetry.set_metadata("active_voice", state)
+        self.telemetry.set_metadata("selected_character_id", self.current_character_id)
+        self.telemetry.set_metadata("selected_character_strength", self.current_character_strength)
+
+    def _active_voice_base_text(self):
+        if self.active_voice_kind == "custom" and self.current_custom_preset:
+            return f"Active voice: Custom - {self.current_custom_preset}"
+        if self.active_voice_kind == "unsaved":
+            return "Active voice: Custom - Unsaved"
+        character = character_by_id(self.current_character_id)
+        if character is None:
+            return "Active voice: Unknown"
+        if character.id == NATURAL_CHARACTER_ID or not character.strength_enabled:
+            return f"Active voice: {character.display_name}"
+        value = int(self.current_character_strength)
+        return f"Active voice: {character.display_name} - {value}%"
 
     def _record_validation_failure(self, command_name, issues, **metadata):
         self.telemetry.record_event(

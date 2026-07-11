@@ -882,3 +882,96 @@ The numeric PortAudio device index is not stored as persistent identity.
   flutter/choppiness absent, and latency acceptable.
 - Optional destructive/error scenarios remained NOT TESTED because automated
   coverage passed.
+
+## M7 - User-Facing Product Development
+
+Status: In Progress
+
+Purpose: turn the proven technical voice-processing foundation into product
+workflows that normal operators can understand without changing frozen audio,
+plugin, routing, lifecycle, or device-recovery contracts.
+
+## M7.0 - Voice Character Experience
+
+Status: PROVISIONAL
+
+Purpose: make the primary workflow voice-character selection, optional
+character strength adjustment, explicit effects bypass, reset, and custom voice
+management while preserving the existing validated effect chain and
+application-service command boundary.
+
+### Scope
+
+- Add an immutable built-in voice character catalog.
+- Add a pure character-strength resolver over existing preset/effect parameter
+  scales.
+- Expose character selection, strength, bypass, reset, active voice state, and
+  custom voice commands through `ApplicationService`.
+- Keep advanced technical controls available but collapsed by default.
+- Preserve saved custom presets as custom voices.
+- Persist selected built-in character and character strength as optional
+  backward-compatible schema-version-1 settings fields.
+- Add engine-owned user effects bypass that skips voice effects without
+  stopping routing or mutating effect-chain runtime-failure state.
+
+### Out of Scope
+
+- Formant shifting, new DSP plugins, high-pass or band-pass filtering,
+  telephone-style voices, identity-style voices, soundboard redesign, custom
+  icons, import/export, hotkey assignment UI, diagnostics export, packaging,
+  installer, auto-update, external plugin execution, and broad visual redesign.
+
+### Built-In Character Catalog
+
+Initial character targets use the existing preset/UI scale:
+
+| Character | Gain | Robot | Lowpass | Pitch |
+| --- | ---: | ---: | ---: | ---: |
+| Natural | 10 | 0 | 4000 | 0 |
+| Deep | 9 | 0 | 2200 | -4 |
+| Heavy Bass | 10 | 0 | 1800 | -6 |
+| Higher | 9 | 0 | 6500 | 4 |
+| Robot | 12 | 100 | 4000 | 0 |
+| Radio | 16 | 15 | 2300 | 0 |
+| Muffled | 12 | 0 | 900 | 0 |
+
+Compatibility aliases preserve existing built-in preset names where applicable:
+`Natural`, `Deep Voice`, `High Voice`, `Robot`, `Radio`, and `Muffled`.
+`Clean` and `Deep-ish` remain available through saved/custom voice selection.
+
+### Completion Notes
+
+- Character definitions live outside the UI and expose stable identifiers,
+  display names, descriptions, target parameters, strength applicability, and
+  compatibility aliases.
+- Character targets validate through the existing preset/effect validation
+  path before reaching the engine.
+- Character strength is `0` to `100`; `0%` resolves to Natural, `100%` resolves
+  to the character target, gain/robot/pitch interpolate linearly, and lowpass
+  interpolates logarithmically to an integer frequency.
+- Natural disables the strength control because strength has no audible meaning
+  for the neutral baseline.
+- Active voice state distinguishes built-in character, saved custom preset,
+  unsaved custom advanced edits, and bypassed output.
+- Manual Gain, Pitch, Robot, or Lowpass edits mark the active voice as
+  `Custom - Unsaved`. Programmatic updates from character selection, strength,
+  preset selection, reset, or startup restoration do not.
+- Saved custom voices continue to use the existing preset file format and
+  validation. Built-in character names and compatibility aliases cannot be
+  overwritten or deleted through the custom voice commands.
+- User bypass is owned by `ApplicationService` for commands/status and
+  `AudioEngine` for execution. It skips the voice effect chain without stopping
+  routing, disabling monitor output, changing selected devices, mutating
+  effect-chain disabled sets, or clearing runtime-failure bypass state.
+- Bypass defaults off on every launch and is not persisted.
+- Reset Voice selects Natural, restores neutral parameters, sets default
+  strength, turns bypass off, and preserves devices, monitor state, volumes,
+  soundboard state, routing state, and processing state.
+- Automated M7.0 coverage passed for catalog validation, character aliases,
+  strength interpolation, service state transitions, custom-state behavior,
+  built-in protection, bypass frame-contract behavior, bypass/runtime-failure
+  separation, settings compatibility, offscreen UI character controls,
+  advanced-control collapse/expand behavior, prohibited UI imports, and M5.4
+  through M6.5 regression suites.
+- Manual M7.0 hardware voice-character acceptance remains not run in this
+  engineering session.

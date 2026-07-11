@@ -12,6 +12,7 @@ class AudioEngine:
         self.lowpass = 4000
         self.pitch = 0.0
         self.effect_chain = effect_chain or EffectChain()
+        self.effects_bypassed = False
 
     def set_effects(self, effects):
         if isinstance(effects, EffectChain):
@@ -32,6 +33,9 @@ class AudioEngine:
         self.lowpass = lowpass
         self.pitch = pitch
 
+    def set_effects_bypassed(self, enabled):
+        self.effects_bypassed = bool(enabled)
+
     def process_voice(self, audio, frames=None):
         """Process microphone audio.
 
@@ -39,6 +43,13 @@ class AudioEngine:
         code must pass and receive AudioFrame instances.
         """
         if isinstance(audio, AudioFrame):
+            if self.effects_bypassed:
+                return audio.with_samples(
+                    audio.samples.astype(np.float32, copy=False),
+                    channel_count=audio.channel_count,
+                    frame_count=audio.frame_count,
+                    sample_format="float32",
+                )
             context = audio.context.with_stage("engine") if audio.context else None
             processed = self.effect_chain.process(
                 audio.samples,
@@ -65,6 +76,9 @@ class AudioEngine:
                 timestamp=processed_frame.timestamp,
                 context=context,
             )
+
+        if self.effects_bypassed:
+            return np.asarray(audio, dtype=np.float32)
 
         mono = self.effect_chain.process(audio, frames, SAMPLE_RATE)
         return np.clip(mono, -0.95, 0.95).astype(np.float32)

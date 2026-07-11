@@ -8,6 +8,7 @@ class OperatorStatus:
     route: str
     pitch: str
     latency: str
+    active_voice: str
     command_status: str
     actionable_status: str
     start_enabled: bool
@@ -22,11 +23,16 @@ def build_operator_status(snapshot, processing_state, active_route=None):
     active_start_failure = _as_mapping(snapshot.metadata.get("active_start_failure", {}))
     actionable = _latest_actionable(snapshot, pitch_status["actionable"], active_start_failure)
     diagnostics = dict(pitch_status["diagnostics"])
+    active_voice = _as_mapping(snapshot.metadata.get("active_voice", {}))
     diagnostics.update(
         {
             "processing_state": processing_state,
             "route_status": snapshot.route_status,
             "audio_running": snapshot.audio_running,
+            "effects_bypassed": bool(snapshot.metadata.get("effects_bypassed", False)),
+            "active_voice_kind": active_voice.get("kind", ""),
+            "active_voice_character_id": active_voice.get("character_id", ""),
+            "active_voice_strength": active_voice.get("strength", ""),
             "active_start_failure_category": active_start_failure.get("category", ""),
             "active_start_failure_role": active_start_failure.get("role", ""),
             "active_start_failure_recoverable": active_start_failure.get("recoverable", ""),
@@ -37,6 +43,7 @@ def build_operator_status(snapshot, processing_state, active_route=None):
         route=_route_text(snapshot, active_route),
         pitch=pitch_status["text"],
         latency=pitch_status["latency"],
+        active_voice=_active_voice_text(active_voice),
         command_status=_command_status(snapshot),
         actionable_status=actionable,
         start_enabled=processing_state in {"stopped", "failed"},
@@ -158,6 +165,11 @@ def _command_status(snapshot):
     if result is not None and getattr(result, "message", ""):
         return result.message
     return snapshot.latest_status or ""
+
+
+def _active_voice_text(active_voice):
+    text = active_voice.get("text", "")
+    return str(text) if text else "Active voice: Natural"
 
 
 def _latency_text(pitch_status):

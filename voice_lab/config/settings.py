@@ -8,6 +8,7 @@ from typing import Any
 
 from voice_lab.config.config import SETTINGS_PATH
 from voice_lab.config.validation import ValidationIssue
+from voice_lab.config.voice_characters import DEFAULT_CHARACTER_STRENGTH, validate_strength
 
 
 SETTINGS_SCHEMA_VERSION = 1
@@ -50,6 +51,8 @@ class OperatorSettings:
     monitor_volume: float = 0.35
     soundboard_volume: float = 0.70
     selected_preset: str | None = None
+    selected_character_id: str | None = None
+    character_strength: float = DEFAULT_CHARACTER_STRENGTH
 
     def asdict(self):
         return {
@@ -63,6 +66,8 @@ class OperatorSettings:
             "monitor_volume": self.monitor_volume,
             "soundboard_volume": self.soundboard_volume,
             "selected_preset": self.selected_preset,
+            "selected_character_id": self.selected_character_id,
+            "character_strength": self.character_strength,
         }
 
 
@@ -165,6 +170,17 @@ def validate_settings_document(data):
         data.get("selected_preset"),
         issues,
     )
+    selected_character_id = _validate_optional_string(
+        "selected_character_id",
+        data.get("selected_character_id"),
+        issues,
+    )
+    character_strength = _validate_strength(
+        "character_strength",
+        data.get("character_strength", DEFAULT_CHARACTER_STRENGTH),
+        DEFAULT_CHARACTER_STRENGTH,
+        issues,
+    )
     return SettingsLoadResult(
         OperatorSettings(
             devices=devices,
@@ -172,6 +188,8 @@ def validate_settings_document(data):
             monitor_volume=monitor_volume,
             soundboard_volume=soundboard_volume,
             selected_preset=selected_preset,
+            selected_character_id=selected_character_id,
+            character_strength=character_strength,
         ),
         issues=tuple(issues),
     )
@@ -278,3 +296,11 @@ def _validate_optional_string(field, value, issues):
         return value
     issues.append(ValidationIssue(field, f"{field} must be a non-empty string"))
     return None
+
+
+def _validate_strength(field, value, default, issues):
+    try:
+        return validate_strength(value)
+    except ValueError as exc:
+        issues.append(ValidationIssue(field, str(exc)))
+        return default

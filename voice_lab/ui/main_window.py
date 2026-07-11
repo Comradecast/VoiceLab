@@ -29,6 +29,35 @@ class App(QWidget):
 
         layout = QVBoxLayout(self)
         self.restored_preferences = self.service.operator_preferences() if hasattr(self.service, "operator_preferences") else {}
+        self._updating_voice_controls = False
+
+        layout.addWidget(QLabel("Voice Character"))
+        self.character_box = QComboBox()
+        self._populate_character_box()
+        self.character_box.currentIndexChanged.connect(lambda _index: self.select_voice_character())
+        layout.addWidget(self.character_box)
+        self.character_description = QLabel("")
+        self.character_description.setWordWrap(True)
+        layout.addWidget(self.character_description)
+        self.character_strength_label = QLabel("Character Strength: 100%")
+        self.character_strength = QSlider(Qt.Horizontal)
+        self.character_strength.setRange(0, 100)
+        self.character_strength.setValue(100)
+        self.character_strength.valueChanged.connect(self.set_character_strength)
+        layout.addWidget(self.character_strength_label)
+        layout.addWidget(self.character_strength)
+        self.active_voice_status = QLabel("Active voice: Natural")
+        self.active_voice_status.setWordWrap(True)
+        layout.addWidget(self.active_voice_status)
+
+        voice_btns = QHBoxLayout()
+        self.bypass_check = QCheckBox("Bypass Effects")
+        self.bypass_check.stateChanged.connect(lambda _state: self.set_effects_bypassed())
+        self.reset_voice_button = QPushButton("Reset Voice")
+        self.reset_voice_button.clicked.connect(self.reset_voice)
+        voice_btns.addWidget(self.bypass_check)
+        voice_btns.addWidget(self.reset_voice_button)
+        layout.addLayout(voice_btns)
 
         self.input_box = QComboBox()
         self.output_box = QComboBox()
@@ -85,28 +114,49 @@ class App(QWidget):
             int(round(float(self.restored_preferences.get("soundboard_volume", 0.70)) * 100)),
         )
 
-        layout.addWidget(QLabel("Preset"))
+        self.advanced_toggle = QCheckBox("Show Advanced Controls")
+        self.advanced_toggle.stateChanged.connect(lambda _state: self.set_advanced_visible())
+        layout.addWidget(self.advanced_toggle)
+        self.advanced_widgets = []
+
+        saved_voice_label = QLabel("Saved Custom Voice")
+        self.advanced_widgets.append(saved_voice_label)
+        layout.addWidget(saved_voice_label)
         self.preset_box = QComboBox()
         self.refresh_preset_box()
         restored_preset = self.restored_preferences.get("selected_preset")
         if restored_preset:
             self.preset_box.setCurrentText(restored_preset)
         self.preset_box.currentTextChanged.connect(lambda _name: self._apply_selected_preset(persist=True))
+        self.advanced_widgets.append(self.preset_box)
         layout.addWidget(self.preset_box)
 
         preset_btns = QHBoxLayout()
-        save_preset = QPushButton("Save Current as Preset")
-        delete_preset = QPushButton("Delete Preset")
+        save_preset = QPushButton("Save Current as Custom Voice")
+        delete_preset = QPushButton("Delete Custom Voice")
         save_preset.clicked.connect(self.save_current_as_preset)
         delete_preset.clicked.connect(self.delete_current_preset)
         preset_btns.addWidget(save_preset)
         preset_btns.addWidget(delete_preset)
+        self.advanced_widgets.extend((save_preset, delete_preset))
         layout.addLayout(preset_btns)
 
         self.gain = self.slider(layout, "Gain", 0, 50, 10)
         self.pitch = self.slider(layout, "Pitch", -12, 12, 0)
         self.robot = self.slider(layout, "Robot amount", 0, 100, 0)
         self.lowpass = self.slider(layout, "Lowpass Hz", 300, 8000, 4000)
+        self.advanced_widgets.extend(
+            (
+                self.gain._voice_lab_label,
+                self.gain,
+                self.pitch._voice_lab_label,
+                self.pitch,
+                self.robot._voice_lab_label,
+                self.robot,
+                self.lowpass._voice_lab_label,
+                self.lowpass,
+            )
+        )
 
         layout.addWidget(QLabel("Soundboard — F1/F2/F3 for first 3 sounds"))
         self.soundboard_layout = QHBoxLayout()
@@ -146,7 +196,9 @@ class App(QWidget):
             label.setWordWrap(True)
             layout.addWidget(label)
 
-        self._apply_selected_preset(persist=False)
+        self.advanced_widgets.append(self.diagnostic_status)
+        self.sync_voice_controls_from_service()
+        self.set_advanced_visible()
         self.refresh_soundboard()
         self.status_timer = QTimer(self)
         self.status_timer.setInterval(500)
@@ -157,6 +209,95 @@ class App(QWidget):
     def play_sound_by_index(self, index):
         result = self.service.play_sound_by_index(index)
         self.display_result(result)
+
+    def _populate_character_box(self):
+        self.character_box.blockSignals(True)
+        self.character_box.clear()
+        self._characters_by_id = {}
+        if hasattr(self.service, "voice_characters"):
+            for character in self.service.voice_characters():
+                self._characters_by_id[character["id"]] = character
+                self.character_box.addItem(character["display_name"], character["id"])
+        else:
+            self.character_box.addItem("Natural", "natural")
+            self._characters_by_id["natural"] = {
+                "id": "natural",
+                "display_name": "Natural",
+                "description": "",
+                "strength_enabled": False,
+            }
+        self.character_box.blockSignals(False)
+
+    def select_voice_character(self):
+        if self._updating_voice_controls or not hasattr(self.service, "select_voice_character"):
+            return
+        character_id = self.character_box.currentData()
+        if not character_id:
+            return
+        result = self.service.select_voice_character(character_id, strength=self.character_strength.value())
+        self.display_result(result)
+        if result.success:
+            self.set_preset_controls(result.metadata["params"], persist_settings=False, mark_custom=False)
+            self.sync_voice_controls_from_service()
+
+    def set_character_strength(self, value):
+        self.character_strength_label.setText(f"Character Strength: {value}%")
+        if self._updating_voice_controls or not hasattr(self.service, "set_character_strength"):
+            return
+        result = self.service.set_character_strength(value)
+        self.display_result(result)
+        if result.success:
+            self.set_preset_controls(result.metadata["params"], persist_settings=False, mark_custom=False)
+            self.sync_voice_controls_from_service()
+
+    def set_effects_bypassed(self):
+        if self._updating_voice_controls or not hasattr(self.service, "set_effects_bypassed"):
+            return
+        result = self.service.set_effects_bypassed(self.bypass_check.isChecked())
+        self.display_result(result)
+        self.sync_voice_controls_from_service()
+
+    def reset_voice(self):
+        if not hasattr(self.service, "reset_voice"):
+            return
+        result = self.service.reset_voice()
+        self.display_result(result)
+        if result.success:
+            self.set_preset_controls(result.metadata["params"], persist_settings=False, mark_custom=False)
+        self.sync_voice_controls_from_service()
+
+    def sync_voice_controls_from_service(self):
+        if not hasattr(self.service, "active_voice_state"):
+            return
+        state = self.service.active_voice_state()
+        self._updating_voice_controls = True
+        try:
+            self.set_combo(self.character_box, state.get("character_id"))
+            character = self._characters_by_id.get(state.get("character_id"), {})
+            self.character_description.setText(character.get("description", ""))
+            strength = int(round(float(state.get("strength", 100))))
+            self.character_strength.setValue(strength)
+            self.character_strength_label.setText(f"Character Strength: {strength}%")
+            strength_enabled = bool(character.get("strength_enabled", True))
+            self.character_strength.setEnabled(strength_enabled)
+            self.bypass_check.setChecked(bool(state.get("effects_bypassed", False)))
+            self.active_voice_status.setText(state.get("text", "Active voice: Natural"))
+            params = state.get("parameters", {})
+            if params:
+                preset_params = {
+                    "gain": int(round(float(params.get("gain", 1.0)) * 10)),
+                    "robot": int(round(float(params.get("robot", 0.0)) * 100)),
+                    "lowpass": int(params.get("lowpass", 4000)),
+                    "pitch": int(round(float(params.get("pitch", 0.0)))),
+                }
+                self.set_preset_controls(preset_params, persist_settings=False, mark_custom=False)
+        finally:
+            self._updating_voice_controls = False
+
+    def set_advanced_visible(self):
+        visible = self.advanced_toggle.isChecked()
+        for widget in getattr(self, "advanced_widgets", ()):
+            widget.setVisible(visible)
 
     def preselect_devices(self):
         self.set_combo(self.input_box, self.service.default_input_id())
@@ -203,7 +344,7 @@ class App(QWidget):
         current = self.preset_box.currentText()
         self.preset_box.blockSignals(True)
         self.preset_box.clear()
-        names = self.service.preset_names()
+        names = self.service.custom_preset_names() if hasattr(self.service, "custom_preset_names") else self.service.preset_names()
         self.preset_box.addItems(names)
         if current in names:
             self.preset_box.setCurrentText(current)
@@ -231,7 +372,8 @@ class App(QWidget):
         if not result.success:
             self.display_result(result)
             return
-        self.set_preset_controls(result.metadata["params"], persist_settings=persist)
+        self.set_preset_controls(result.metadata["params"], persist_settings=persist, mark_custom=False)
+        self.sync_voice_controls_from_service()
 
     def record_device_selection(self, role, selected_id):
         if hasattr(self.service, "record_device_selection"):
@@ -243,16 +385,18 @@ class App(QWidget):
         result = self.service.select_preset(name)
         if result.success:
             self.preset_box.setCurrentText(name)
-            self.set_preset_controls(result.metadata["params"])
+            self.set_preset_controls(result.metadata["params"], mark_custom=False)
+            self.sync_voice_controls_from_service()
             self.set_status(f"Preset hotkey: {name}")
         else:
             self.display_result(result)
 
     def set_preset_from_service(self, name, params):
         self.preset_box.setCurrentText(name)
-        self.set_preset_controls(params)
+        self.set_preset_controls(params, mark_custom=False)
+        self.sync_voice_controls_from_service()
 
-    def set_preset_controls(self, params, persist_settings=True):
+    def set_preset_controls(self, params, persist_settings=True, mark_custom=False):
         for slider in (self.gain, self.pitch, self.robot, self.lowpass):
             slider.blockSignals(True)
         self.gain.setValue(params.get("gain", 10))
@@ -263,7 +407,7 @@ class App(QWidget):
             slider._voice_lab_label.setText(f"{slider._voice_lab_label_name}: {slider.value()}")
         for slider in (self.gain, self.pitch, self.robot, self.lowpass):
             slider.blockSignals(False)
-        self.apply_current_parameters(persist_settings=persist_settings)
+        self.apply_current_parameters(persist_settings=persist_settings, mark_custom=mark_custom)
 
     def save_current_as_preset(self):
         name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:")
@@ -318,7 +462,9 @@ class App(QWidget):
         result = self.service.play_sound_file(filename)
         self.display_result(result)
 
-    def apply_current_parameters(self, persist_settings=True):
+    def apply_current_parameters(self, persist_settings=True, mark_custom=True):
+        if self._updating_voice_controls:
+            mark_custom = False
         kwargs = {
             "gain": self.gain.value() / 10.0,
             "robot": self.robot.value() / 100.0,
@@ -328,15 +474,17 @@ class App(QWidget):
             "monitor_volume": self.monitor_volume.value() / 100.0,
             "soundboard_volume": self.soundboard_volume.value() / 100.0,
             "persist_settings": persist_settings,
+            "mark_custom": mark_custom,
         }
         try:
             return self.service.apply_effect_parameters(**kwargs)
         except TypeError:
             kwargs.pop("persist_settings")
+            kwargs.pop("mark_custom", None)
             return self.service.apply_effect_parameters(**kwargs)
 
     def start(self):
-        self.apply_current_parameters()
+        self.apply_current_parameters(mark_custom=False)
         monitor_id = self.monitor_box.currentData() if self.monitor_check.isChecked() else None
         result = self.service.start_audio(
             self.input_box.currentData(),
@@ -391,6 +539,11 @@ class App(QWidget):
         self.start_button.setEnabled(status.start_enabled)
         self.stop_button.setEnabled(status.stop_enabled)
         self.refresh_devices_button.setEnabled(status.refresh_enabled)
+        self.active_voice_status.setText(status.active_voice)
+        if hasattr(self, "bypass_check"):
+            self.bypass_check.blockSignals(True)
+            self.bypass_check.setChecked(bool(status.diagnostics.get("effects_bypassed")))
+            self.bypass_check.blockSignals(False)
         details = []
         for key in (
             "pitch_backend",

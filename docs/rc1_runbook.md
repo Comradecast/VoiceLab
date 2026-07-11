@@ -158,7 +158,9 @@ Persisted settings:
 - monitor enabled state;
 - monitor volume;
 - soundboard volume;
-- last explicitly selected preset.
+- last explicitly selected preset;
+- selected built-in voice character, when applicable;
+- character strength, when applicable.
 
 Device identity is serialized with the same exact fields used by the M6.4
 device model: device name, host API, input channel count, output channel count,
@@ -172,6 +174,7 @@ Not persisted:
 - active streams;
 - processing-running state;
 - audio-running or route-active state;
+- effects bypass state;
 - pitch backend processor identity;
 - telemetry event history;
 - arbitrary unsaved effect slider state;
@@ -190,6 +193,10 @@ Startup behavior:
   monitor output.
 - If the saved preset still exists, it is restored through the normal preset
   command path. If it is missing, VoiceLab does not recreate it.
+- If a saved built-in voice character still exists, it is restored through the
+  normal voice-character command path.
+- If both legacy selected-preset data and voice-character data are present, the
+  voice-character fields are the canonical M7 operator state.
 
 Manual `Refresh Devices` cooperates with saved preferred identities. If a
 missing preferred device later returns and resolves uniquely, refresh may
@@ -216,6 +223,61 @@ Corruption and unsupported schema behavior:
 - Unsupported future schema versions are not interpreted as schema `1` and are
   not overwritten automatically on load.
 - Raw serialized identity details are not shown in the primary UI.
+
+## Voice Character Experience
+
+M7.0 Status: PROVISIONAL.
+
+M7.0 changes the primary operator workflow from technical effect tuning to
+voice-character selection. The effect sliders and saved preset tools remain
+available as advanced controls.
+
+Built-in characters:
+
+| Character | Gain | Robot | Lowpass | Pitch |
+| --- | ---: | ---: | ---: | ---: |
+| Natural | 10 | 0 | 4000 | 0 |
+| Deep | 9 | 0 | 2200 | -4 |
+| Heavy Bass | 10 | 0 | 1800 | -6 |
+| Higher | 9 | 0 | 6500 | 4 |
+| Robot | 12 | 100 | 4000 | 0 |
+| Radio | 16 | 15 | 2300 | 0 |
+| Muffled | 12 | 0 | 900 | 0 |
+
+Operator behavior:
+
+- `Voice Character` selects one immutable built-in character.
+- `Character Strength` ranges from `0` to `100`.
+- Strength `0%` resolves to Natural; strength `100%` resolves to the selected
+  character target.
+- Gain, Robot, and Pitch interpolate linearly. Lowpass interpolates
+  logarithmically.
+- Natural disables the strength control.
+- The active voice label distinguishes built-in character, saved custom voice,
+  unsaved advanced edits, and bypassed output.
+- Manual advanced Gain, Pitch, Robot, or Lowpass edits mark the active voice as
+  `Custom - Unsaved`.
+- Saved custom voices continue to use the existing preset storage and
+  validation path.
+- Built-in character names and compatibility aliases cannot be overwritten or
+  deleted as custom voices.
+- `Bypass Effects` skips user voice effects without stopping processing,
+  changing routing, changing selected devices, changing monitor state, or
+  clearing runtime-failure bypass state.
+- Bypass defaults off on every launch and is not persisted.
+- `Reset Voice` selects Natural, sets default strength, turns bypass off, and
+  preserves devices, monitor state, volumes, soundboard state, processing
+  state, and routing state.
+
+Deferred character types:
+
+- Formant-based voices.
+- EQ or high-pass/band-pass based voices.
+- Telephone-style voices.
+- Identity-style voices.
+
+These require additional DSP or product policy decisions and are intentionally
+outside M7.0.
 
 ## Device Failure Recovery
 
