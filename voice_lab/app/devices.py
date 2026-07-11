@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from voice_lab.config.settings import StoredDeviceIdentity
+
 
 @dataclass(frozen=True)
 class DeviceDescriptor:
@@ -40,6 +42,15 @@ class DeviceDescriptor:
             "output_capable": self.output_capable,
         }
 
+    def stored_identity(self):
+        return StoredDeviceIdentity(
+            name=self.name,
+            hostapi=self.hostapi,
+            max_input_channels=self.max_input_channels,
+            max_output_channels=self.max_output_channels,
+            default_samplerate=self.default_samplerate,
+        )
+
 
 def describe_devices(raw_devices):
     return tuple(
@@ -62,3 +73,24 @@ def _optional_float(value):
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def resolve_stored_identity(devices, identity, capability):
+    if identity is None:
+        return None
+    matches = [
+        device
+        for device in devices
+        if device.identity == identity.identity and _has_capability(device, capability)
+    ]
+    if len(matches) == 1:
+        return matches[0].index
+    return None
+
+
+def _has_capability(device, capability):
+    if capability == "input":
+        return device.input_capable
+    if capability == "output":
+        return device.output_capable
+    return False

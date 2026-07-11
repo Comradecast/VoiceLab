@@ -4,7 +4,7 @@ from dataclasses import asdict, is_dataclass
 from PySide6.QtCore import QObject, Signal
 
 from voice_lab.app.commands import CommandResult
-from voice_lab.app.devices import describe_devices
+from voice_lab.app.devices import describe_devices, resolve_stored_identity
 from voice_lab.app.operator_status import build_operator_status
 from voice_lab.config.config import DEFAULT_INPUT_ID, DEFAULT_MONITOR_ID, DEFAULT_OUTPUT_ID, SOUNDS_DIR
 from voice_lab.config import ConfigurationService
@@ -58,9 +58,11 @@ class ApplicationService(QObject):
             "lowpass": 4000,
             "pitch": 0.0,
         }
-        self.current_monitor_enabled = False
-        self.current_monitor_volume = 0.35
-        self.current_soundboard_volume = 0.70
+        settings = self._operator_settings()
+        self.current_monitor_enabled = settings.monitor_enabled
+        self.current_monitor_volume = settings.monitor_volume
+        self.current_soundboard_volume = settings.soundboard_volume
+        self.current_selected_preset = settings.selected_preset
         self._processing_state = "stopped"
         self._active_route = {
             "virtual_mic_active": False,
@@ -70,10 +72,12 @@ class ApplicationService(QObject):
             "monitor_id": None,
         }
         self._device_descriptors = None
+        self._settings_event_keys = set()
 
         self.hotkeys.set_commands(self)
         self.soundboard.set_commands(self)
         self.hotkeys.status_signal.connect(self.status_changed)
+        self._record_settings_load()
 
     def devices(self):
         if self._device_descriptors is None:
@@ -121,6 +125,14 @@ class ApplicationService(QObject):
             ),
             "monitor_output": self._preserve_selection(old_devices, new_devices, monitor_id, "output"),
         }
+        preferred = self._preferred_device_identities()
+        for role, capability in (
+            ("input", "input"),
+            ("virtual_output", "output"),
+            ("monitor_output", "output"),
+        ):
+            if selections[role] is None:
+                selections[role] = resolve_stored_identity(new_devices, preferred.get(role), capability)
         missing_roles = tuple(
             role
             for role, old_id in (
@@ -128,9 +140,10 @@ class ApplicationService(QObject):
                 ("virtual_output", output_id),
                 ("monitor_output", monitor_id),
             )
-            if old_id is not None and selections[role] is None
+            if (old_id is not None or preferred.get(role) is not None) and selections[role] is None
         )
         self._device_descriptors = new_devices
+        self._update_settings_warning(missing_roles)
         message = self._refresh_message(missing_roles)
         result = CommandResult.ok(
             message,
@@ -184,13 +197,82 @@ class ApplicationService(QObject):
         )
 
     def default_input_id(self):
-        return DEFAULT_INPUT_ID
+        return None
 
     def default_output_id(self):
-        return DEFAULT_OUTPUT_ID
+        return None
 
     def default_monitor_id(self):
-        return DEFAULT_MONITOR_ID
+        return None
+
+    def legacy_default_ids(self):
+        return {
+            "input": DEFAULT_INPUT_ID,
+            "virtual_output": DEFAULT_OUTPUT_ID,
+            "monitor_output": DEFAULT_MONITOR_ID,
+        }
+
+    def operator_preferences(self):
+        devices = self.devices()
+        preferred = self._preferred_device_identities()
+        selections = {
+            "input": resolve_stored_identity(devices, preferred.get("input"), "input"),
+            "virtual_output": resolve_stored_identity(devices, preferred.get("virtual_output"), "output"),
+            "monitor_output": resolve_stored_identity(devices, preferred.get("monitor_output"), "output"),
+        }
+        missing_roles = tuple(
+            role
+            for role, identity in preferred.items()
+            if identity is not None and selections.get(role) is None
+        )
+        preset = self.current_selected_preset
+        preset_available = bool(preset and preset in self.preset_names())
+        if preset and not preset_available:
+            self._record_once(
+                f"preset-unavailable:{preset}",
+                "settings.preset_unavailable",
+                "warning",
+                "Saved preset is not currently available.",
+                preset=preset,
+            )
+        self._update_settings_warning(missing_roles, preset_missing=bool(preset and not preset_available))
+        load_result = getattr(self.config, "settings_load_result", lambda: None)()
+        issues = tuple(issue.message for issue in load_result.issues) if load_result else ()
+        return {
+            "selections": selections,
+            "preferred_devices": {
+                role: identity.asdict() if identity is not None else None
+                for role, identity in preferred.items()
+            },
+            "missing_roles": missing_roles,
+            "monitor_enabled": self.current_monitor_enabled,
+            "monitor_volume": self.current_monitor_volume,
+            "soundboard_volume": self.current_soundboard_volume,
+            "selected_preset": preset if preset_available else None,
+            "selected_preset_missing": preset if preset and not preset_available else None,
+            "settings_issues": issues,
+        }
+
+    def record_device_selection(self, role, selected_id):
+        if role not in {"input", "virtual_output", "monitor_output"}:
+            result = CommandResult.fail(f"Unsupported device role: {role}")
+            self.telemetry.record_command_result("record_device_selection", result, role=role)
+            return result
+        identity = None
+        if selected_id is not None:
+            device = self._device_by_index(self.devices(), selected_id)
+            if device is None:
+                result = CommandResult.fail("Selected device is not currently available.", role=role)
+                self.telemetry.record_command_result("record_device_selection", result, role=role)
+                return result
+            identity = device.stored_identity()
+        setter = getattr(self.config, "set_preferred_device", None)
+        if setter is not None:
+            setter(role, identity)
+        self._update_settings_warning(())
+        result = CommandResult.ok("Device preference updated.", role=role)
+        self.telemetry.record_command_result("record_device_selection", result, role=role)
+        return result
 
     def preset_names(self):
         return self.config.preset_names()
@@ -213,6 +295,7 @@ class ApplicationService(QObject):
         monitor_volume,
         soundboard_volume,
         pitch=0.0,
+        persist_settings=True,
     ):
         validation = self.config.validate_effect_parameters(gain, robot, lowpass, pitch)
         if not validation.success:
@@ -244,6 +327,12 @@ class ApplicationService(QObject):
         self.current_monitor_enabled = monitor_enabled
         self.current_monitor_volume = monitor_volume
         self.current_soundboard_volume = soundboard_volume
+        if persist_settings:
+            self._update_operator_settings(
+                monitor_enabled=monitor_enabled,
+                monitor_volume=monitor_volume,
+                soundboard_volume=soundboard_volume,
+            )
         self.engine.set_params(
             gain=gain,
             robot=robot,
@@ -268,7 +357,7 @@ class ApplicationService(QObject):
         )
         return result
 
-    def select_preset(self, name):
+    def select_preset(self, name, persist=True):
         selection = self.config.select_preset(name)
         if not selection.success:
             result = CommandResult.fail(
@@ -282,6 +371,9 @@ class ApplicationService(QObject):
             return result
 
         effect_parameters = selection.effect_parameters
+        if persist:
+            self.current_selected_preset = name
+            self._update_operator_settings(selected_preset=name)
         self.apply_effect_parameters(
             gain=effect_parameters.gain,
             robot=effect_parameters.robot,
@@ -290,6 +382,7 @@ class ApplicationService(QObject):
             monitor_enabled=self.current_monitor_enabled,
             monitor_volume=self.current_monitor_volume,
             soundboard_volume=self.current_soundboard_volume,
+            persist_settings=persist,
         )
         result = CommandResult.ok(params=selection.preset.copy())
         self.telemetry.record_command_result("select_preset", result, preset=name)
@@ -448,7 +541,17 @@ class ApplicationService(QObject):
         return self.telemetry.flush()
 
     def save_configuration(self):
-        self.config.flush()
+        try:
+            self.config.flush()
+        except Exception as exc:
+            self.telemetry.record_event(
+                "settings.save_failed",
+                "error",
+                "Settings could not be saved.",
+                technical_detail=str(exc),
+            )
+            raise
+        self.telemetry.record_event("settings.saved", "info", "Settings saved.")
 
     def unload_plugins(self):
         self.engine.stop()
@@ -515,6 +618,97 @@ class ApplicationService(QObject):
         else:
             joined = ", ".join(missing[:-1]) + f", and {missing[-1]}"
         return f"Audio devices refreshed; {joined} selections require attention."
+
+    def _operator_settings(self):
+        getter = getattr(self.config, "operator_settings", None)
+        if getter is not None:
+            return getter()
+        from voice_lab.config.settings import OperatorSettings
+
+        return OperatorSettings()
+
+    def _preferred_device_identities(self):
+        settings = self._operator_settings()
+        return {
+            "input": settings.devices.get("input"),
+            "virtual_output": settings.devices.get("virtual_output"),
+            "monitor_output": settings.devices.get("monitor_output"),
+        }
+
+    def _update_operator_settings(self, **changes):
+        updater = getattr(self.config, "update_operator_settings", None)
+        if updater is None:
+            return ()
+        issues = updater(**changes)
+        if issues:
+            self._record_validation_failure("update_operator_settings", issues, **changes)
+        return issues
+
+    def _record_settings_load(self):
+        load_result_getter = getattr(self.config, "settings_load_result", None)
+        if load_result_getter is None:
+            return
+        load_result = load_result_getter()
+        if load_result.missing:
+            self.telemetry.record_event("settings.first_run", "info", "No saved operator settings found.")
+            return
+        if load_result.unsupported_schema:
+            self.telemetry.record_event(
+                "settings.unsupported_schema",
+                "warning",
+                "Saved settings use an unsupported schema version.",
+                issues=tuple(issue.message for issue in load_result.issues),
+            )
+            self.telemetry.set_metadata(
+                "operator_settings_warning",
+                "Saved settings use an unsupported schema version.",
+            )
+            return
+        if load_result.read_failed:
+            self.telemetry.record_event(
+                "settings.read_failed",
+                "warning",
+                "Saved settings could not be read.",
+                issues=tuple(issue.message for issue in load_result.issues),
+            )
+            self.telemetry.set_metadata("operator_settings_warning", "Saved settings could not be read.")
+            return
+        severity = "warning" if load_result.issues else "info"
+        event_type = "settings.validation_warning" if load_result.issues else "settings.loaded"
+        message = "Saved settings loaded with warnings." if load_result.issues else "Saved settings loaded."
+        self.telemetry.record_event(
+            event_type,
+            severity,
+            message,
+            issues=tuple(issue.message for issue in load_result.issues),
+        )
+
+    def _update_settings_warning(self, missing_roles, preset_missing=False):
+        messages = []
+        labels = {
+            "input": "Saved microphone is not currently available.",
+            "virtual_output": "Saved virtual microphone output is not currently available.",
+            "monitor_output": "Saved monitor output is not currently available.",
+        }
+        for role in missing_roles:
+            message = labels[role]
+            messages.append(message)
+            self._record_once(
+                f"device-unavailable:{role}",
+                "settings.device_unavailable",
+                "warning",
+                message,
+                role=role,
+            )
+        if preset_missing:
+            messages.append("Saved preset is not currently available.")
+        self.telemetry.set_metadata("operator_settings_warning", " ".join(messages))
+
+    def _record_once(self, key, event_type, severity, message, **metadata):
+        if key in self._settings_event_keys:
+            return
+        self._settings_event_keys.add(key)
+        self.telemetry.record_event(event_type, severity, message, **metadata)
 
     def _validate_start_selection(self, input_id, output_id, monitor_id):
         if input_id is None:

@@ -779,3 +779,85 @@ VoiceLab and without automatic hot-plug behavior.
   pitch `+4`, pitch `-4`, presets, soundboard, Start, Stop, close, and relaunch.
 - Subjective M6.4 audio acceptance passed: metallic tail absent,
   flutter/choppiness absent, and latency acceptable.
+
+## M6.5 - Persistent Operator Settings
+
+Status: PROVISIONAL
+
+Purpose: restore the operator's normal VoiceLab setup across launches without
+persisting transient runtime state or relying on hard-coded numeric audio device
+IDs.
+
+### Scope
+
+- Add a separate versioned project-root `settings.json` for stable operator
+  preferences.
+- Persist selected microphone identity, selected virtual microphone output
+  identity, selected monitor output identity, monitor enabled state, monitor
+  volume, soundboard volume, and last explicitly selected preset.
+- Resolve saved devices through the M6.4 exact identity policy.
+- Restore matching devices only when the stored identity resolves uniquely.
+- Keep VoiceLab launching stopped.
+- Flush dirty settings through the existing lifecycle configuration-save stage.
+
+### Out of Scope
+
+- Automatic audio start, automatic processing restoration, device fallback,
+  approximate device matching, automatic default substitution, background device
+  watchers, persistent telemetry logs, session-log export, AppData migration,
+  installer, packaging, auto-update, profiles, friendly hardware aliases, DSP
+  changes, external plugin execution, and broad UI redesign.
+
+### Settings Schema
+
+- `schema_version`: `1`.
+- `devices.input`, `devices.virtual_output`, and `devices.monitor_output` store
+  exact device identity fields: name, host API, input channel count, output
+  channel count, and default sample rate.
+- `monitor_enabled`: boolean.
+- `monitor_volume`: finite number from `0.0` to `1.0`.
+- `soundboard_volume`: finite number from `0.0` to `1.0`.
+- `selected_preset`: optional preset name.
+
+The numeric PortAudio device index is not stored as persistent identity.
+
+### Completion Notes
+
+- Configuration owns settings schema, validation, loading, dirty state, atomic
+  saving, and lifecycle flush.
+- `ApplicationService` exposes restored preferences, records explicit operator
+  changes, resolves preferred identities against current device enumeration,
+  and records passive telemetry events for settings load/save and restoration
+  warnings.
+- The UI reads restored preferences only through `ApplicationService`; it does
+  not read or write JSON and does not import `AudioIO`, `Router`, or
+  `sounddevice`.
+- First launch no longer silently selects hard-coded numeric default device IDs
+  or the first available devices. Device selectors remain unselected until the
+  operator chooses devices or saved identities resolve uniquely.
+- Hard-coded `DEFAULT_INPUT_ID`, `DEFAULT_OUTPUT_ID`, and `DEFAULT_MONITOR_ID`
+  remain only as legacy development constants and are not authoritative
+  persistence.
+- Missing or ambiguous saved devices leave the corresponding active selector
+  empty, preserve the preferred identity for later refresh, show concise
+  guidance, and never silently select a replacement.
+- If a preferred identity later reappears and resolves uniquely during manual
+  refresh, it may be restored without starting processing.
+- Stored monitor enabled state is restored exactly; if the saved monitor device
+  is missing, monitoring remains enabled and M6.3 start validation requires the
+  operator to select a monitor or disable monitoring.
+- The last explicitly selected preset is restored through the canonical preset
+  command path. Arbitrary unsaved effect slider states are not persisted.
+- Missing, malformed, empty, wrong-root, invalid-field, and unsupported-schema
+  settings files do not prevent launch. Unsupported future schemas are not
+  interpreted as version `1`.
+- Settings writes use a same-directory temporary file, flush, close, and atomic
+  replacement strategy; failed saves leave the prior file intact where the
+  operating system honors replacement atomicity.
+- Automated M6.5 coverage passed for file load/save/corruption handling,
+  validation, atomic-save behavior, device identity restoration, no silent
+  substitution, first-launch unselected behavior, startup-stopped guard, dirty
+  shutdown flush, save-failure telemetry, UI restore, M6.4 refresh cooperation,
+  and prohibited UI persistence/import paths.
+- Manual M6.5 hardware restart verification remains not run in this engineering
+  session.

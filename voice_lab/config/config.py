@@ -3,6 +3,7 @@ BLOCK_SIZE = 1024
 
 SOUNDS_DIR = "sounds"
 PRESET_PATH = "presets.json"
+SETTINGS_PATH = "settings.json"
 
 DEFAULT_INPUT_ID = 23
 DEFAULT_OUTPUT_ID = 18

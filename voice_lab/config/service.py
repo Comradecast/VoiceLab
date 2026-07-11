@@ -2,6 +2,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from voice_lab.config.presets import load_presets, save_presets
+from voice_lab.config.settings import (
+    load_settings,
+    save_settings,
+    update_settings,
+    with_device_identity,
+)
 from voice_lab.config.validation import (
     EffectParameterValidationResult,
     PresetValidationResult,
@@ -37,13 +43,29 @@ class PresetDeleteResult:
 
 
 class ConfigurationService:
-    def __init__(self, load_func=load_presets, save_func=save_presets):
+    def __init__(
+        self,
+        load_func=load_presets,
+        save_func=save_presets,
+        settings_load_func=load_settings,
+        settings_save_func=save_settings,
+    ):
         self._save_func = save_func
+        self._settings_save_func = settings_save_func
         self._presets = load_func()
-        self._dirty = False
+        self._settings_load_result = settings_load_func()
+        self._settings = self._settings_load_result.settings
+        self._presets_dirty = False
+        self._settings_dirty = False
 
     def preset_names(self):
         return sorted(self._presets.keys())
+
+    def operator_settings(self):
+        return self._settings
+
+    def settings_load_result(self):
+        return self._settings_load_result
 
     def validate_effect_parameters(self, gain, robot, lowpass, pitch=0.0):
         return validate_effect_parameters(gain, robot, lowpass, pitch)
@@ -82,7 +104,7 @@ class ConfigurationService:
             return PresetSaveResult(False, message=f"Preset save failed: {exc}", error=exc)
 
         self._presets = updated_presets
-        self._dirty = False
+        self._presets_dirty = False
         return PresetSaveResult(True, preset=validation.preset, message=f"Saved preset: {name}")
 
     def delete_preset(self, name):
@@ -97,14 +119,29 @@ class ConfigurationService:
             return PresetDeleteResult(False, message=f"Preset delete failed: {exc}", error=exc)
 
         self._presets = updated_presets
-        self._dirty = False
+        self._presets_dirty = False
         return PresetDeleteResult(True, message=f"Deleted preset: {name}")
 
     def validation_from_preset(self, preset):
         return validate_preset_parameters(preset)
 
+    def update_operator_settings(self, **changes):
+        settings, issues = update_settings(self._settings, **changes)
+        self._settings = settings
+        self._settings_dirty = True
+        return issues
+
+    def set_preferred_device(self, role, identity):
+        self._settings = with_device_identity(self._settings, role, identity)
+        self._settings_dirty = True
+
+    def mark_settings_dirty(self):
+        self._settings_dirty = True
+
     def flush(self):
-        if not self._dirty:
-            return
-        self._save_func(dict(self._presets))
-        self._dirty = False
+        if self._presets_dirty:
+            self._save_func(dict(self._presets))
+            self._presets_dirty = False
+        if self._settings_dirty:
+            self._settings_save_func(self._settings)
+            self._settings_dirty = False

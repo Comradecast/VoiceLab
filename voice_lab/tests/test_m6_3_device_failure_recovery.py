@@ -378,6 +378,8 @@ class M63DeviceFailureRecoveryTests(unittest.TestCase):
         svc = service(router=FakeRouter([DeviceFailure("device_open_failed", "input")]))
         window = App(svc, on_close=lambda: None)
         self.addCleanup(window.close)
+        window.input_box.setCurrentIndex(1)
+        window.output_box.setCurrentIndex(1)
 
         window.start()
         window.refresh_operator_status()

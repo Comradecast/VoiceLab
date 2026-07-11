@@ -28,6 +28,7 @@ class App(QWidget):
         os.makedirs("sounds", exist_ok=True)
 
         layout = QVBoxLayout(self)
+        self.restored_preferences = self.service.operator_preferences() if hasattr(self.service, "operator_preferences") else {}
 
         self.input_box = QComboBox()
         self.output_box = QComboBox()
@@ -35,12 +36,23 @@ class App(QWidget):
 
         self.populate_device_boxes(
             self.devices,
-            {
-                "input": self.service.default_input_id(),
-                "virtual_output": self.service.default_output_id(),
-                "monitor_output": self.service.default_monitor_id(),
-            },
-            select_first_available=True,
+            self.restored_preferences.get(
+                "selections",
+                {
+                    "input": self.service.default_input_id(),
+                    "virtual_output": self.service.default_output_id(),
+                    "monitor_output": self.service.default_monitor_id(),
+                },
+            ),
+        )
+        self.input_box.currentIndexChanged.connect(
+            lambda _index: self.record_device_selection("input", self.input_box.currentData())
+        )
+        self.output_box.currentIndexChanged.connect(
+            lambda _index: self.record_device_selection("virtual_output", self.output_box.currentData())
+        )
+        self.monitor_box.currentIndexChanged.connect(
+            lambda _index: self.record_device_selection("monitor_output", self.monitor_box.currentData())
         )
 
         layout.addWidget(QLabel("Input device"))
@@ -49,6 +61,8 @@ class App(QWidget):
         layout.addWidget(self.output_box)
 
         self.monitor_check = QCheckBox("Enable monitor output")
+        self.monitor_check.setChecked(bool(self.restored_preferences.get("monitor_enabled", False)))
+        self.monitor_check.stateChanged.connect(lambda _state: self.apply_current_parameters())
         layout.addWidget(self.monitor_check)
         layout.addWidget(QLabel("Monitor output device"))
         layout.addWidget(self.monitor_box)
@@ -56,13 +70,28 @@ class App(QWidget):
         self.refresh_devices_button.clicked.connect(self.refresh_devices)
         layout.addWidget(self.refresh_devices_button)
 
-        self.monitor_volume = self.slider(layout, "Monitor volume", 0, 100, 35)
-        self.soundboard_volume = self.slider(layout, "Soundboard volume", 0, 100, 70)
+        self.monitor_volume = self.slider(
+            layout,
+            "Monitor volume",
+            0,
+            100,
+            int(round(float(self.restored_preferences.get("monitor_volume", 0.35)) * 100)),
+        )
+        self.soundboard_volume = self.slider(
+            layout,
+            "Soundboard volume",
+            0,
+            100,
+            int(round(float(self.restored_preferences.get("soundboard_volume", 0.70)) * 100)),
+        )
 
         layout.addWidget(QLabel("Preset"))
         self.preset_box = QComboBox()
         self.refresh_preset_box()
-        self.preset_box.currentTextChanged.connect(self.apply_selected_preset)
+        restored_preset = self.restored_preferences.get("selected_preset")
+        if restored_preset:
+            self.preset_box.setCurrentText(restored_preset)
+        self.preset_box.currentTextChanged.connect(lambda _name: self._apply_selected_preset(persist=True))
         layout.addWidget(self.preset_box)
 
         preset_btns = QHBoxLayout()
@@ -117,7 +146,7 @@ class App(QWidget):
             label.setWordWrap(True)
             layout.addWidget(label)
 
-        self.apply_selected_preset()
+        self._apply_selected_preset(persist=False)
         self.refresh_soundboard()
         self.status_timer = QTimer(self)
         self.status_timer.setInterval(500)
@@ -163,6 +192,8 @@ class App(QWidget):
         s = QSlider(Qt.Horizontal)
         s.setRange(low, high)
         s.setValue(value)
+        s._voice_lab_label = label
+        s._voice_lab_label_name = name
         s.valueChanged.connect(lambda v: (label.setText(f"{name}: {v}"), self.apply_current_parameters()))
         layout.addWidget(label)
         layout.addWidget(s)
@@ -187,14 +218,26 @@ class App(QWidget):
         }
 
     def apply_selected_preset(self):
+        return self._apply_selected_preset(persist=True)
+
+    def _apply_selected_preset(self, persist=True):
         name = self.preset_box.currentText()
         if not name:
             return
-        result = self.service.select_preset(name)
+        try:
+            result = self.service.select_preset(name, persist=persist)
+        except TypeError:
+            result = self.service.select_preset(name)
         if not result.success:
             self.display_result(result)
             return
-        self.set_preset_controls(result.metadata["params"])
+        self.set_preset_controls(result.metadata["params"], persist_settings=persist)
+
+    def record_device_selection(self, role, selected_id):
+        if hasattr(self.service, "record_device_selection"):
+            result = self.service.record_device_selection(role, selected_id)
+            if not result.success:
+                self.display_result(result)
 
     def set_preset_by_name(self, name):
         result = self.service.select_preset(name)
@@ -209,12 +252,18 @@ class App(QWidget):
         self.preset_box.setCurrentText(name)
         self.set_preset_controls(params)
 
-    def set_preset_controls(self, params):
+    def set_preset_controls(self, params, persist_settings=True):
+        for slider in (self.gain, self.pitch, self.robot, self.lowpass):
+            slider.blockSignals(True)
         self.gain.setValue(params.get("gain", 10))
         self.pitch.setValue(params.get("pitch", 0))
         self.robot.setValue(params.get("robot", 0))
         self.lowpass.setValue(params.get("lowpass", 4000))
-        self.apply_current_parameters()
+        for slider in (self.gain, self.pitch, self.robot, self.lowpass):
+            slider._voice_lab_label.setText(f"{slider._voice_lab_label_name}: {slider.value()}")
+        for slider in (self.gain, self.pitch, self.robot, self.lowpass):
+            slider.blockSignals(False)
+        self.apply_current_parameters(persist_settings=persist_settings)
 
     def save_current_as_preset(self):
         name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:")
@@ -269,16 +318,22 @@ class App(QWidget):
         result = self.service.play_sound_file(filename)
         self.display_result(result)
 
-    def apply_current_parameters(self):
-        return self.service.apply_effect_parameters(
-            gain=self.gain.value() / 10.0,
-            robot=self.robot.value() / 100.0,
-            lowpass=self.lowpass.value(),
-            pitch=self.pitch.value(),
-            monitor_enabled=self.monitor_check.isChecked(),
-            monitor_volume=self.monitor_volume.value() / 100.0,
-            soundboard_volume=self.soundboard_volume.value() / 100.0,
-        )
+    def apply_current_parameters(self, persist_settings=True):
+        kwargs = {
+            "gain": self.gain.value() / 10.0,
+            "robot": self.robot.value() / 100.0,
+            "lowpass": self.lowpass.value(),
+            "pitch": self.pitch.value(),
+            "monitor_enabled": self.monitor_check.isChecked(),
+            "monitor_volume": self.monitor_volume.value() / 100.0,
+            "soundboard_volume": self.soundboard_volume.value() / 100.0,
+            "persist_settings": persist_settings,
+        }
+        try:
+            return self.service.apply_effect_parameters(**kwargs)
+        except TypeError:
+            kwargs.pop("persist_settings")
+            return self.service.apply_effect_parameters(**kwargs)
 
     def start(self):
         self.apply_current_parameters()

@@ -147,6 +147,9 @@ def _latest_actionable(snapshot, pitch_actionable, active_start_failure=None):
     active_start_failure = active_start_failure or {}
     if active_start_failure.get("operator_message"):
         return active_start_failure["operator_message"]
+    settings_warning = snapshot.metadata.get("operator_settings_warning", "")
+    if settings_warning:
+        return str(settings_warning)
     return pitch_actionable
 
 

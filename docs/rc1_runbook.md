@@ -138,6 +138,85 @@ VoiceLab could not refresh audio devices. Check Windows audio services and try a
 
 Technical details remain in telemetry.
 
+## Persistent Operator Settings
+
+M6.5 adds a separate project-root operator settings file:
+
+```text
+settings.json
+```
+
+The file is versioned with `schema_version: 1` and is separate from
+`presets.json`. Presets remain the owner of effect parameter combinations;
+operator settings only remember stable setup preferences.
+
+Persisted settings:
+
+- selected microphone identity;
+- selected virtual microphone output identity;
+- selected monitor output identity;
+- monitor enabled state;
+- monitor volume;
+- soundboard volume;
+- last explicitly selected preset.
+
+Device identity is serialized with the same exact fields used by the M6.4
+device model: device name, host API, input channel count, output channel count,
+and default sample rate. PortAudio numeric device index is not persistent
+identity and must not be used as a fallback.
+
+Not persisted:
+
+- current PortAudio index as identity;
+- backend objects or raw backend mappings;
+- active streams;
+- processing-running state;
+- audio-running or route-active state;
+- pitch backend processor identity;
+- telemetry event history;
+- arbitrary unsaved effect slider state;
+- temporary paths or secrets.
+
+Startup behavior:
+
+- VoiceLab always launches stopped.
+- Saved devices are selected only when the stored identity resolves uniquely.
+- Missing or ambiguous saved devices leave the selector empty.
+- No replacement device is silently selected.
+- First launch does not select hard-coded numeric device IDs or the first
+  available device automatically.
+- If monitoring was saved as enabled but the saved monitor output is missing,
+  monitoring remains enabled and Start requires selecting a monitor or disabling
+  monitor output.
+- If the saved preset still exists, it is restored through the normal preset
+  command path. If it is missing, VoiceLab does not recreate it.
+
+Manual `Refresh Devices` cooperates with saved preferred identities. If a
+missing preferred device later returns and resolves uniquely, refresh may
+restore it. If the identity is still missing or ambiguous, the selector remains
+empty and the operator must choose explicitly.
+
+Write policy:
+
+- Settings are marked dirty on explicit operator changes.
+- Dirty settings flush during normal lifecycle shutdown.
+- Slider movement marks settings dirty in memory but does not write to disk on
+  every UI tick.
+- Saves use a same-directory temporary file followed by atomic replacement where
+  supported by Windows.
+- Save failures are reported through status/telemetry and do not prevent audio
+  shutdown.
+
+Corruption and unsupported schema behavior:
+
+- Missing files use safe first-run state.
+- Empty, malformed, wrong-root, unreadable, or partially invalid files do not
+  prevent launch.
+- Valid fields are preserved where possible when unrelated fields are invalid.
+- Unsupported future schema versions are not interpreted as schema `1` and are
+  not overwritten automatically on load.
+- Raw serialized identity details are not shown in the primary UI.
+
 ## Device Failure Recovery
 
 M6.3 normalizes startup and routing failures into stable categories before they
@@ -404,6 +483,71 @@ Regression:
 - Stop.
 - Close.
 - Relaunch.
+- Metallic tail absent.
+- Flutter absent.
+- Latency acceptable.
+
+## Manual M6.5 Hardware Checklist
+
+M6.5 manual hardware restart verification status in this engineering session:
+NOT RUN.
+
+Persistence across restart:
+
+1. Select normal microphone.
+2. Select VB-CABLE virtual output.
+3. Select monitor output.
+4. Enable monitor.
+5. Set monitor and soundboard volumes.
+6. Select a preset.
+7. Close VoiceLab normally.
+8. Relaunch.
+9. Confirm all settings restore and processing remains stopped.
+
+Missing saved microphone:
+
+1. Save a disposable microphone as selected.
+2. Close VoiceLab.
+3. Disconnect it.
+4. Relaunch.
+5. Confirm microphone selection is empty, no replacement is selected, guidance
+   is understandable, and reconnect plus `Refresh Devices` can restore the same
+   identity if it resolves uniquely.
+
+Missing saved monitor:
+
+1. Save monitor enabled with a disposable monitor device.
+2. Close VoiceLab.
+3. Disconnect it.
+4. Relaunch.
+5. Confirm monitor remains enabled, monitor selection is empty, Start requires
+   selecting a monitor or disabling monitoring, and no silent substitution
+   occurs.
+
+Changed enumeration index:
+
+- Where observable, reconnect devices in a different order, relaunch, and
+  confirm the same identity restores at its new index.
+- If index movement is not observed, automated coverage is sufficient.
+
+Corrupt settings:
+
+- With a backed-up disposable settings file, confirm malformed JSON does not
+  prevent application launch, then restore the valid file.
+
+Regression:
+
+- Normal microphone.
+- Virtual mic.
+- Monitor.
+- Monitor-disabled operation.
+- Dry voice.
+- Effects.
+- Pitch.
+- Presets.
+- Soundboard.
+- Start/Stop.
+- Close/relaunch.
 - Metallic tail absent.
 - Flutter absent.
 - Latency acceptable.
