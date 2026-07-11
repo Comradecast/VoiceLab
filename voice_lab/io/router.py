@@ -9,6 +9,10 @@ class Router:
         self.audio_io = audio_io
         self.capture = capture or Capture()
         self.monitor_queue = queue.Queue(maxsize=1)
+        self.level_monitor = None
+
+    def set_level_monitor(self, level_monitor):
+        self.level_monitor = level_monitor
 
     def validate_route(self, input_id, virtual_mic_id, monitor_id=None):
         devices = self.audio_io.query_devices()
@@ -30,7 +34,16 @@ class Router:
 
                 self.audio_io.write_frame(outdata, buses.main_bus)
 
-                if monitor_enabled and monitor_enabled() and monitor_id is not None:
+                monitor_is_active = monitor_enabled and monitor_enabled() and monitor_id is not None
+                if self.level_monitor is not None:
+                    self.level_monitor.publish(
+                        input_frame=input_frame,
+                        processed_frame=voice_frame,
+                        output_frame=buses.main_bus,
+                        monitor_frame=buses.monitor_bus if monitor_is_active else None,
+                    )
+
+                if monitor_is_active:
                     self._drop_stale_monitor_frame()
                     try:
                         self.monitor_queue.put_nowait(buses.monitor_bus)

@@ -3,6 +3,7 @@ from dataclasses import asdict, is_dataclass
 
 from PySide6.QtCore import QObject, Signal
 
+from voice_lab.audio_levels import AudioLevelMonitor
 from voice_lab.app.commands import CommandResult
 from voice_lab.app.devices import describe_devices, resolve_stored_identity
 from voice_lab.app.operator_status import build_operator_status
@@ -47,6 +48,7 @@ class ApplicationService(QObject):
     ):
         super().__init__()
         self.telemetry = telemetry or TelemetryService()
+        self.level_monitor = AudioLevelMonitor()
         self.engine = engine or AudioEngine()
         self.plugins = plugins or PluginManager()
         self.engine.set_effect_chain(
@@ -59,6 +61,8 @@ class ApplicationService(QObject):
         self.mixer = mixer or Mixer()
         self.audio_io = audio_io or AudioIO()
         self.router = router or Router(self.audio_io)
+        if hasattr(self.router, "set_level_monitor"):
+            self.router.set_level_monitor(self.level_monitor)
         self.config = config or ConfigurationService()
         self.hotkeys = hotkeys or HotkeyManager()
         self.soundboard = soundboard or SoundboardController()
@@ -191,6 +195,11 @@ class ApplicationService(QObject):
             self._processing_state,
             active_route=self._active_route,
         )
+
+    def audio_level_snapshot(self):
+        snapshot = self.level_monitor.snapshot(self._processing_state)
+        self.telemetry.set_metadata("audio_levels", snapshot.asdict())
+        return snapshot
 
     def _refresh_effect_chain_status(self):
         self.telemetry.set_effect_chain_status(self.engine.effect_chain.status())
@@ -607,6 +616,7 @@ class ApplicationService(QObject):
 
     def start_audio(self, input_id, output_id, monitor_id=None):
         self._processing_state = "starting"
+        self.level_monitor.reset("starting")
         selection_failure = self._validate_start_selection(input_id, output_id, monitor_id)
         if selection_failure is not None:
             return self._handle_start_failure(selection_failure, input_id, output_id, monitor_id)
@@ -682,6 +692,7 @@ class ApplicationService(QObject):
         }
         self.telemetry.set_audio_running(False)
         self.telemetry.set_route_status("stopped")
+        self.level_monitor.reset("stopped")
         self.telemetry.set_metadata("active_route", self._active_route)
         if previous_state == "running":
             self.telemetry.set_metadata("active_start_failure", None)
@@ -942,6 +953,7 @@ class ApplicationService(QObject):
         }
         self.telemetry.set_audio_running(False)
         self.telemetry.set_route_status("error")
+        self.level_monitor.reset("failed")
         self.telemetry.set_metadata("active_route", self._active_route)
         self.telemetry.set_metadata("active_start_failure", normalized)
         self.telemetry.record_event(

@@ -1020,3 +1020,70 @@ Compatibility aliases preserve existing built-in preset names where applicable:
   identity-style voices remain deferred outside M7.0.
 - Not tested: destructive device-enumeration failure and unconfigured hotkey
   paths where not safely reproducible or not configured.
+
+## M7.1 - Live Audio Meters and Clipping Indication
+
+Status: PROVISIONAL
+
+Purpose: give the operator passive visual feedback that VoiceLab is receiving
+microphone audio, producing processed voice audio, sending audio to the virtual
+microphone route, and approaching overload, without letting meters control
+audio, routing, effects, devices, character state, or settings.
+
+### Scope
+
+- Add immutable `LevelReading` and `AudioLevelSnapshot` application-facing
+  contracts.
+- Measure raw microphone input after capture, processed voice after the engine,
+  final virtual-microphone output after mixer soundboard combination, and
+  monitor output only when that routed bus is active.
+- Use conventional block RMS and peak dBFS math with a `-60 dBFS` display
+  floor and `0 dBFS` ceiling.
+- Use `Overload` terminology for observed high level at or above `-1 dBFS`.
+- Retain only the latest snapshot with a sequence number and capture timestamp.
+- Rate-limit callback publication to 25 snapshots per second.
+- Poll meters from the UI every 50 ms.
+- Keep peak hold, decay, overload latch, stale-state detection, and no-signal
+  state in the non-real-time presentation layer.
+- Surface passive meter metadata through telemetry snapshots and operator
+  diagnostics without per-block events.
+
+### Out of Scope
+
+- Automatic gain control, input gain, compression, limiting, noise gate,
+  equalizer, device volume control, waveform display, spectrum analyzer,
+  recording, persistent meter history, exported meter logs, LUFS measurement,
+  calibration, microphone sensitivity setup, new DSP plugins, and broad UI
+  redesign.
+
+### Completion Notes
+
+- Raw microphone audio first enters VoiceLab-owned code in
+  `Router.main_callback`, then `Capture.capture_block` creates the capture
+  `AudioFrame`.
+- Processed voice is measured from the `AudioEngine.process_voice` return value
+  before mixer soundboard combination.
+- Output is measured from `OutputBuses.main_bus`, the final bus written to the
+  virtual microphone route.
+- Monitor is measured from `OutputBuses.monitor_bus` only when monitor routing
+  is enabled; otherwise monitor reading is explicitly unavailable.
+- Soundboard-only playback appears on Output and not on Microphone Input or
+  Processed Voice.
+- During Bypass Effects, Processed Voice measures the actual bypassed voice
+  path and may match Microphone Input.
+- Stopped, failed, and starting states reset or invalidate readings so stale
+  running activity is not presented as current.
+- The audio callback performs bounded latest-slot publication only. It does not
+  emit Qt signals, query devices, write files, write settings, or record
+  per-block telemetry events.
+- UI uses only `ApplicationService.audio_level_snapshot()` for meter data.
+- Known limitations: block-level readings are operational feedback rather than
+  laboratory-grade measurement; values are not calibrated SPL or LUFS; display
+  polling may miss transients; post-clamp output readings cannot reveal exact
+  pre-clamp magnitude; silence detection does not prove device disconnection.
+- Automated M7.1 coverage passed for meter math, immutable snapshot behavior,
+  bounded retention, stage attribution, soundboard attribution, bypass truth,
+  service passivity, operator diagnostics, UI meter construction and timer
+  shutdown, display mapping, overload latch, prohibited imports, callback
+  guards, and audio identity preservation.
+- Manual M7.1 live meter hardware acceptance remains pending.

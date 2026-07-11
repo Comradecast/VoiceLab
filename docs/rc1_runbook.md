@@ -400,6 +400,129 @@ Not tested:
 - Unconfigured preset hotkey paths: NOT TESTED where no preset hotkey was
   configured.
 
+## Live Audio Meters
+
+M7.1 Status: PROVISIONAL.
+
+M7.1 adds passive live meters for normal operator feedback. The meters observe
+audio levels but never change gain, normalize audio, compress audio, gate audio,
+control effects, control routing, start or stop processing, select devices, or
+write settings.
+
+Displayed meters:
+
+- `Microphone Input`: raw microphone audio after capture and before effects.
+- `Processed Voice`: microphone audio after the effect chain or bypass path and
+  before soundboard mixing.
+- `Output`: final virtual-microphone bus after soundboard mixing.
+
+Monitor decision:
+
+- A separate monitor reading is captured in the application snapshot only when
+  monitor routing is enabled and the monitor bus is active.
+- The primary UI does not show a fourth monitor meter in M7.1 because the
+  monitor bus is derived from the same mixed output with monitor volume and
+  stereo formatting. Route status remains the operator-facing monitor indicator.
+
+Meter math:
+
+- Peak uses `max(abs(samples))`.
+- RMS uses `sqrt(mean(samples ** 2))`.
+- dBFS uses `20 * log10(value)` with a defined floor.
+- Display floor is `-60 dBFS`.
+- Display ceiling is `0 dBFS`.
+- Empty, NaN, and infinite samples fail safely to finite readings.
+- Raw samples are never exposed to the UI.
+
+Overload terminology:
+
+- The UI uses `Overload`, not `Clipping`, because VoiceLab observes high level
+  but cannot always prove where clipping occurred.
+- Overload threshold is peak at or above `-1 dBFS`.
+- Overload is latched in the UI for about `1.8` seconds so the operator can
+  notice it, then clears automatically.
+
+Signal-present policy:
+
+- Signal threshold is approximately `-55 dBFS` RMS.
+- Running with no current reading shows waiting state.
+- Brief pauses remain quiet signal state.
+- Sustained silence of about `1.5` seconds shows no-signal state.
+- Speaking clears no-signal state immediately.
+- Silence detection does not prove device disconnection and does not replace
+  device-failure messages.
+
+Cadence and retention:
+
+- Audio callback publication is rate-limited to 25 snapshots per second.
+- The meter monitor retains only the latest immutable snapshot.
+- Each snapshot has a sequence number and capture timestamp.
+- The UI polls through `ApplicationService.audio_level_snapshot()` every 50 ms.
+- UI peak hold is about `0.8` seconds and then decays outside the audio
+  callback.
+
+Stage behavior:
+
+- Character changes do not recreate the meter path.
+- Character strength changes affect meters only when actual audio changes.
+- During `Bypass Effects`, Input remains measured, Processed Voice measures the
+  bypassed voice path, and Output remains measured.
+- Soundboard playback appears on Output, not Microphone Input or Processed
+  Voice.
+- Stop, failed start, and startup failure reset or invalidate readings so stale
+  running activity is not shown as current.
+
+Known limitations:
+
+- Block-level meter readings are not laboratory-grade.
+- Meter values are not calibrated SPL.
+- No LUFS measurement.
+- No waveform or spectrum display.
+- Display polling may miss very short transients.
+- Post-clamp output readings cannot reveal exact pre-clamp magnitude.
+- Silence detection does not prove device disconnection.
+- Meter color and overload zones are operational guidance, not mastering
+  standards.
+
+Manual M7.1 live meter acceptance remains pending.
+
+Manual M7.1 checklist:
+
+- Baseline with normal microphone, VB-CABLE output, monitor enabled, Natural,
+  and processing started: meters leave Stopped, Input reacts to speech,
+  Processed reacts to speech, Output reacts to speech, meters decay during
+  silence, normal speech does not constantly overload, UI remains responsive,
+  and audio remains clean.
+- No signal: brief pauses do not immediately show failure, sustained silence
+  shows quiet/no-signal state, speaking clears it immediately, and route remains
+  running.
+- Input overload: a safe loud input reports high level or overload, indication
+  is visible long enough to notice, indication clears, VoiceLab does not alter
+  gain, processing does not stop, and no crash occurs.
+- Processed overload: high-gain custom state shows processed/output overload
+  truthfully, clears automatically, and remains passive.
+- Character changes: Natural, Deep, Heavy Bass, Higher, Robot, Radio, and
+  Muffled keep meters updating with no route restart, frozen meter, stale
+  stage, metallic tail, flutter, or unacceptable latency.
+- Strength sweep: Deep and Robot sweeps reflect actual signal changes and do
+  not move merely because the slider moves while silent.
+- Bypass: Input remains active, Processed remains truthful, Output remains
+  active, character state remains intact, and no stream restart occurs.
+- Soundboard: while silent, soundboard appears on Output and is not
+  misattributed to Microphone Input or Processed Voice.
+- Monitor disabled: Input, Processed, and Output still work and route state is
+  accurate.
+- Stop and restart: meters promptly show Stopped, stale activity clears, meters
+  recover after restart, and no duplicate timer activity appears.
+- Failure recovery: safe missing-selection failure does not show stale running
+  activity, existing failure message remains authoritative, corrected retry
+  restores meters.
+- Final regression: microphone, virtual mic, monitor, monitor disabled, all
+  characters, strength, bypass, reset, custom voices, soundboard, settings,
+  device refresh, failed-start retry, Start, Stop, close, relaunch, launches
+  stopped, Signalsmith active, metallic tail absent, flutter absent, latency
+  acceptable, and meters do not audibly affect processing.
+
 ## Device Failure Recovery
 
 M6.3 normalizes startup and routing failures into stable categories before they

@@ -1,4 +1,5 @@
 import os
+from time import monotonic
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
@@ -7,12 +8,15 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSlider,
     QVBoxLayout,
     QWidget,
 )
+
+from voice_lab.ui.level_display import LevelDisplayModel
 
 
 class App(QWidget):
@@ -57,6 +61,24 @@ class App(QWidget):
         self.active_voice_status = QLabel("Active voice: Natural")
         self.active_voice_status.setWordWrap(True)
         layout.addWidget(self.active_voice_status)
+
+        live_audio_label = QLabel("Live Audio")
+        layout.addWidget(live_audio_label)
+        self.level_display_models = {
+            "input": LevelDisplayModel(),
+            "processed": LevelDisplayModel(),
+            "output": LevelDisplayModel(),
+        }
+        self.level_widgets = {}
+        for key, title in (
+            ("input", "Microphone Input"),
+            ("processed", "Processed Voice"),
+            ("output", "Output"),
+        ):
+            self.level_widgets[key] = self._create_level_meter(layout, title)
+        self.level_summary = QLabel("Input signal: Stopped | Overload: None")
+        self.level_summary.setWordWrap(True)
+        layout.addWidget(self.level_summary)
 
         voice_btns = QHBoxLayout()
         self.bypass_check = QCheckBox("Bypass Effects")
@@ -212,11 +234,29 @@ class App(QWidget):
         self.status_timer.setInterval(500)
         self.status_timer.timeout.connect(self.refresh_operator_status)
         self.status_timer.start()
+        self.meter_timer = QTimer(self)
+        self.meter_timer.setInterval(50)
+        self.meter_timer.timeout.connect(self.refresh_audio_levels)
+        self.meter_timer.start()
         self.refresh_operator_status()
+        self.refresh_audio_levels()
 
     def play_sound_by_index(self, index):
         result = self.service.play_sound_by_index(index)
         self.display_result(result)
+
+    def _create_level_meter(self, layout, title):
+        title_label = QLabel(title)
+        bar = QProgressBar()
+        bar.setRange(0, 100)
+        bar.setValue(0)
+        bar.setTextVisible(False)
+        value_label = QLabel("< -60 dB | Stopped")
+        value_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        layout.addWidget(bar)
+        layout.addWidget(value_label)
+        return {"title": title_label, "bar": bar, "value": value_label}
 
     def _populate_character_box(self):
         self.character_box.blockSignals(True)
@@ -564,9 +604,45 @@ class App(QWidget):
             details.append(f"{key}: {status.diagnostics.get(key)}")
         self.diagnostic_status.setText("Diagnostics: " + "; ".join(details))
 
+    def refresh_audio_levels(self):
+        if not hasattr(self.service, "audio_level_snapshot"):
+            return
+        try:
+            snapshot = self.service.audio_level_snapshot()
+        except Exception:
+            return
+        now = monotonic()
+        overloaded = []
+        signal_state = "Stopped"
+        for key, label in (
+            ("input", "Microphone Input"),
+            ("processed", "Processed Voice"),
+            ("output", "Output"),
+        ):
+            reading = getattr(snapshot, key, None)
+            display = self.level_display_models[key].update(
+                reading,
+                processing_state=snapshot.processing_state,
+                captured_at=snapshot.captured_at,
+                now=now,
+            )
+            widgets = self.level_widgets[key]
+            widgets["bar"].setValue(display.bar_percent)
+            widgets["value"].setText(
+                f"{display.level_text} | peak {display.peak_percent}% | {display.state_text}"
+            )
+            if display.overload_active:
+                overloaded.append(label)
+            if key == "input":
+                signal_state = display.state_text
+        overload_text = ", ".join(overloaded) if overloaded else "None"
+        self.level_summary.setText(f"Input signal: {signal_state} | Overload: {overload_text}")
+
     def closeEvent(self, event):
         if hasattr(self, "status_timer"):
             self.status_timer.stop()
+        if hasattr(self, "meter_timer"):
+            self.meter_timer.stop()
         if self.on_close is not None:
             self.on_close()
         event.accept()

@@ -24,6 +24,10 @@ def build_operator_status(snapshot, processing_state, active_route=None):
     actionable = _latest_actionable(snapshot, pitch_status["actionable"], active_start_failure)
     diagnostics = dict(pitch_status["diagnostics"])
     active_voice = _as_mapping(snapshot.metadata.get("active_voice", {}))
+    audio_levels = _as_mapping(snapshot.metadata.get("audio_levels", {}))
+    input_level = _as_mapping(audio_levels.get("input", {}))
+    processed_level = _as_mapping(audio_levels.get("processed", {}))
+    output_level = _as_mapping(audio_levels.get("output", {}))
     diagnostics.update(
         {
             "processing_state": processing_state,
@@ -33,6 +37,13 @@ def build_operator_status(snapshot, processing_state, active_route=None):
             "active_voice_kind": active_voice.get("kind", ""),
             "active_voice_character_id": active_voice.get("character_id", ""),
             "active_voice_strength": active_voice.get("strength", ""),
+            "audio_level_sequence": audio_levels.get("sequence", 0),
+            "audio_input_peak_dbfs": input_level.get("peak_dbfs", ""),
+            "audio_processed_peak_dbfs": processed_level.get("peak_dbfs", ""),
+            "audio_output_peak_dbfs": output_level.get("peak_dbfs", ""),
+            "audio_input_overloaded": input_level.get("overloaded", False),
+            "audio_processed_overloaded": processed_level.get("overloaded", False),
+            "audio_output_overloaded": output_level.get("overloaded", False),
             "active_start_failure_category": active_start_failure.get("category", ""),
             "active_start_failure_role": active_start_failure.get("role", ""),
             "active_start_failure_recoverable": active_start_failure.get("recoverable", ""),
