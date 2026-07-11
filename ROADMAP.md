@@ -760,5 +760,22 @@ VoiceLab and without automatic hot-plug behavior.
   reporting, enumeration failure, retry after enumeration failure, start-failure
   interaction, UI signal blocking, status polling, prohibited imports, and
   offscreen UI refresh/close.
-- Manual M6.4 hardware verification remains not run in this engineering
-  session. The manual checklist is documented in the runbook.
+- Manual M6.4 live hardware acceptance passed. Baseline refresh preserved the
+  same actual devices, newly connected input/output devices appeared without
+  relaunching, unselected removed devices disappeared without disturbing current
+  selections, and removed selected microphone, monitor, and virtual microphone
+  selections were cleared.
+- Manual M6.4 acceptance confirmed no replacement device was silently selected,
+  monitor enabled state remained explicit, VB-CABLE reappeared after
+  restoration and manual refresh, Refresh Devices was disabled while processing,
+  and Refresh Devices became available again after stopping and after failed
+  starts.
+- Manual M6.4 recovery and corrected retry succeeded, and identity preservation
+  behaved correctly during observed device-list changes.
+- Duplicate ambiguity and forced enumeration failure remained NOT TESTED because
+  they were not safely reproducible.
+- Normal M6.4 regression passed for normal microphone, virtual mic, monitor,
+  monitor-disabled operation, dry voice, Gain, Lowpass, Robot, pitch `0`,
+  pitch `+4`, pitch `-4`, presets, soundboard, Start, Stop, close, and relaunch.
+- Subjective M6.4 audio acceptance passed: metallic tail absent,
+  flutter/choppiness absent, and latency acceptable.

@@ -314,7 +314,51 @@ Pitch guidance:
 
 ## Manual M6.4 Hardware Checklist
 
-M6.4 manual hardware verification status in this engineering session: NOT RUN.
+M6.4 Status: PASS.
+
+Manual M6.4 live hardware acceptance is complete. All applicable manual
+checklist items passed.
+
+Live device-refresh acceptance:
+
+- Baseline refresh preserved the same actual devices.
+- Newly connected input and output devices appeared without relaunching.
+- Unselected removed devices disappeared without disturbing current selections.
+- Removed selected microphone, monitor, and virtual microphone selections were
+  cleared.
+- No replacement device was silently selected.
+- Monitor enabled state remained explicit.
+- VB-CABLE reappeared after restoration and manual refresh.
+- `Refresh Devices` was disabled while processing.
+- `Refresh Devices` became available again after stopping and after failed
+  starts.
+- Recovery and corrected retry succeeded.
+- Identity preservation behaved correctly during observed device-list changes.
+- Duplicate ambiguity: NOT TESTED; not safely reproducible.
+- Forced enumeration failure: NOT TESTED; not safely reproducible.
+
+Normal M6.4 regression:
+
+- Normal microphone operation: PASS.
+- Virtual microphone operation: PASS.
+- Monitor operation: PASS.
+- Monitor-disabled operation: PASS.
+- Dry voice: PASS.
+- Gain: PASS.
+- Lowpass: PASS.
+- Robot: PASS.
+- Pitch `0`: PASS.
+- Pitch `+4`: PASS.
+- Pitch `-4`: PASS.
+- Presets: PASS.
+- Soundboard: PASS.
+- Start: PASS.
+- Stop: PASS.
+- Close: PASS.
+- Relaunch: PASS.
+- Metallic tail: ABSENT.
+- Flutter/choppiness: ABSENT.
+- Latency: ACCEPTABLE.
 
 Connected device appears:
 
