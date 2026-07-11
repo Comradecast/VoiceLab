@@ -893,7 +893,7 @@ plugin, routing, lifecycle, or device-recovery contracts.
 
 ## M7.0 - Voice Character Experience
 
-Status: PROVISIONAL
+Status: PASS
 
 Purpose: make the primary workflow voice-character selection, optional
 character strength adjustment, explicit effects bypass, reset, and custom voice
@@ -977,5 +977,46 @@ Compatibility aliases preserve existing built-in preset names where applicable:
   window minimum height exceeding the usable monitor area. The content now
   scrolls inside the window so the default launch height fits, and the corrected
   launch no longer emits the warning in live use.
-- Manual M7.0 hardware voice-character acceptance remains not run in this
-  engineering session.
+- Manual M7.0 live voice-character acceptance passed after the sizing correction.
+- Product presentation passed: character controls were clear, active state was
+  visible, Advanced Controls began collapsed, technical diagnostics did not
+  dominate normal use, and the layout fit the screen with no clipped or
+  unreachable controls.
+- Character listening passed for Natural, Deep, Heavy Bass, Higher, Robot,
+  Radio, and Muffled. Natural remained a clean baseline; Deep was useful for
+  ordinary transformed speech; Heavy Bass was distinct and stronger; Higher was
+  usable; Robot was clearly robotic; Radio and Muffled were meaningfully
+  different; all remained intelligible enough for their intended purpose.
+- Strength sweeps passed for Deep, Robot, Higher, and Heavy Bass. `0%` matched
+  Natural, intermediate values progressed meaningfully, `100%` reached the
+  target character, labels stayed synchronized, and no stream restart,
+  metallic tail, flutter/choppiness, or cumulative latency increase was
+  observed.
+- Bypass passed while running for pitch and Robot characters. Microphone audio
+  became dry, routing stayed active, virtual mic and monitor remained active,
+  selected character and strength were retained, and disabling bypass restored
+  the prior effect state.
+- Soundboard during bypass passed: soundboard playback remained active while
+  microphone effects were bypassed.
+- Reset Voice passed while running: Natural was restored, bypass turned off,
+  strength returned to policy default, devices, monitor state, monitor volume,
+  soundboard volume, routing, and processing state were preserved.
+- Advanced controls and custom voices passed: controls began collapsed,
+  expanded values matched selected character and strength, manual edits became
+  `Custom - Unsaved`, selecting a character restored canonical values, custom
+  save/select/delete worked, built-in names were protected, and no built-in
+  character was modified.
+- Persistence passed: selected character, strength, devices, monitor state,
+  volumes, and saved custom voice availability restored according to policy;
+  VoiceLab relaunched stopped; bypass relaunched off; Advanced Controls began
+  collapsed.
+- Device and final regression passed: Refresh Devices behavior, failed-start
+  recovery, corrected retry, no silent replacement, microphone, virtual mic,
+  monitor, monitor-disabled operation, Start, Stop, close, relaunch,
+  soundboard, available hotkeys, Signalsmith active status, metallic-tail
+  absence, flutter/choppiness absence, and acceptable latency all passed.
+- No voice-character parameter tuning or naming change was required.
+- Accepted limitations: formant-based, EQ/filter-specific, telephone-style, and
+  identity-style voices remain deferred outside M7.0.
+- Not tested: destructive device-enumeration failure and unconfigured hotkey
+  paths where not safely reproducible or not configured.

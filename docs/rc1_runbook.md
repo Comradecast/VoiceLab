@@ -226,7 +226,7 @@ Corruption and unsupported schema behavior:
 
 ## Voice Character Experience
 
-M7.0 Status: PROVISIONAL.
+M7.0 Status: PASS.
 
 M7.0 changes the primary operator workflow from technical effect tuning to
 voice-character selection. The effect sliders and saved preset tools remain
@@ -280,6 +280,125 @@ Deferred character types:
 
 These require additional DSP or product policy decisions and are intentionally
 outside M7.0.
+
+## Manual M7.0 Hardware Checklist
+
+M7.0 live voice-character acceptance is complete. All required manual scenarios
+passed after the evidence-based window-sizing correction, and no
+voice-character parameter tuning was required.
+
+Product presentation:
+
+- Character controls clear: PASS.
+- Character description readable: PASS.
+- Character Strength understandable: PASS.
+- Active Voice state visible: PASS.
+- Bypass Effects discoverable: PASS.
+- Reset Voice discoverable: PASS.
+- Start and Stop obvious: PASS.
+- Essential device controls accessible: PASS.
+- Advanced Controls began collapsed: PASS.
+- Technical diagnostics did not dominate normal use: PASS.
+- Layout usable with no clipped or unreachable controls: PASS.
+
+Character listening:
+
+- Natural clear baseline: PASS.
+- Natural had no unintended pitch, robot, or severe filtering: PASS.
+- Deep clearly lower, darker, usable, and intelligible: PASS.
+- Heavy Bass distinct from Deep, stronger, understandable, and honestly named:
+  PASS.
+- Higher clearly higher, usable, and free of harsh digital edge: PASS.
+- Robot clearly robotic, intelligible for novelty use, and removable by
+  switching back to Natural: PASS.
+- Radio distinct from Robot and Muffled, intelligible, and honestly named:
+  PASS.
+- Muffled clearly dark and filtered, distinct from Radio, and still audible:
+  PASS.
+
+Live behavior:
+
+- Rapid character switching while processing: PASS.
+- No route restart during character changes: PASS.
+- No stale previous effect after switching: PASS.
+- No accumulated latency: PASS.
+- Deep strength sweep `0/25/50/75/100`: PASS.
+- Robot strength sweep `0/25/50/75/100`: PASS.
+- Higher strength sweep `0/50/100`: PASS.
+- Heavy Bass strength sweep `0/50/100`: PASS.
+- `0%` matched Natural and `100%` reached the defined target: PASS.
+- Labels and advanced values stayed synchronized: PASS.
+- Metallic tail remained absent: PASS.
+- Flutter/choppiness remained absent: PASS.
+- Latency remained acceptable: PASS.
+
+Bypass, reset, and soundboard:
+
+- Bypass while running made microphone audio dry: PASS.
+- Virtual mic, monitor, and routing remained active during bypass: PASS.
+- Selected character, strength, and advanced values remained selected beneath
+  bypass: PASS.
+- Disabling bypass restored the prior effect state: PASS.
+- Runtime failure telemetry remained separate from user bypass: PASS.
+- Soundboard remained audible during bypass and was not incorrectly bypassed:
+  PASS.
+- Reset Voice while running restored Natural, turned bypass off, reset strength
+  according to policy, and preserved devices, monitor state, monitor volume,
+  soundboard volume, routing, and processing state: PASS.
+
+Advanced and custom voice behavior:
+
+- Advanced Controls began collapsed and expanded without altering audio: PASS.
+- Expanded values matched the selected character and strength: PASS.
+- Manual advanced edits changed active state to `Custom - Unsaved`: PASS.
+- Built-in character definitions were not modified by manual edits: PASS.
+- Reselecting a built-in restored canonical values: PASS.
+- Save Current as Custom Voice succeeded: PASS.
+- Saved custom voice restored exact values: PASS.
+- Saved custom voice persisted after relaunch: PASS.
+- Delete Custom Voice succeeded safely: PASS.
+- Built-in characters remained protected from delete and name collision:
+  PASS.
+
+Persistence and regression:
+
+- Selected character restored: PASS.
+- Character strength restored: PASS.
+- Devices, monitor state, and volumes restored: PASS.
+- VoiceLab relaunched stopped: PASS.
+- Bypass relaunched off: PASS.
+- Advanced Controls began collapsed after relaunch: PASS.
+- Refresh Devices while stopped: PASS.
+- Refresh Devices disabled while running: PASS.
+- Safe missing-device start failure, recovery, corrected retry, and no silent
+  replacement: PASS.
+- Microphone, virtual mic, monitor, monitor-disabled operation, Natural, Deep,
+  Heavy Bass, Higher, Robot, Radio, Muffled, strength, bypass, reset, advanced
+  controls, custom voices, persistence, refresh, soundboard, available hotkeys,
+  Start, Stop, close, relaunch, and Signalsmith active status: PASS.
+
+Observed tuning issues:
+
+- None.
+
+Observed UX issues:
+
+- Initial window geometry warning and excessive minimum height were corrected
+  before final acceptance.
+
+Accepted limitations:
+
+- Formant-based voices remain deferred.
+- EQ or high-pass/band-pass based voices remain deferred.
+- Telephone-style voices remain deferred.
+- Identity-style voices remain deferred.
+
+Not tested:
+
+- Destructive device-enumeration failure: NOT TESTED; not required and not
+  safely reproducible.
+- Unconfigured preset hotkey paths: NOT TESTED where no preset hotkey was
+  configured.
 
 ## Device Failure Recovery
 
