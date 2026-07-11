@@ -489,8 +489,71 @@ Regression:
 
 ## Manual M6.5 Hardware Checklist
 
-M6.5 manual hardware restart verification status in this engineering session:
-NOT RUN.
+M6.5 Status: PASS.
+
+Manual M6.5 live operator-settings acceptance is complete. All required manual
+scenarios passed with no issues, and no implementation correction was required.
+
+Clean first launch:
+
+- First launch without `settings.json` opened normally.
+- Input, virtual microphone, and monitor selectors began unselected.
+- Processing did not start automatically.
+- No unrelated first-listed devices were silently selected.
+- UI remained responsive.
+- First-run behavior was understandable.
+
+Normal persistence:
+
+- Selected microphone restored after restart.
+- Selected VB-CABLE virtual output restored.
+- Selected monitor output restored.
+- Monitor-enabled state restored.
+- Monitor volume restored.
+- Soundboard volume restored.
+- Selected preset and its parameters restored.
+- VoiceLab relaunched stopped.
+- Normal processing worked after explicit Start.
+
+Monitor-disabled persistence:
+
+- Monitor-disabled state persisted.
+- Virtual-microphone-only processing worked.
+- Route status did not claim monitor was active.
+
+Missing saved-device behavior:
+
+- Unavailable saved device was not silently replaced.
+- Unavailable role remained unselected.
+- Guidance was understandable.
+- Explicit replacement worked.
+- Reconnect and `Refresh Devices` recovery worked.
+
+Final M6.5 audio regression:
+
+- Microphone: PASS.
+- Virtual mic: PASS.
+- Monitor: PASS.
+- Effects: PASS.
+- Pitch `0`: PASS.
+- Pitch `+4`: PASS.
+- Pitch `-4`: PASS.
+- Presets: PASS.
+- Soundboard: PASS.
+- Start: PASS.
+- Stop: PASS.
+- Close: PASS.
+- Relaunch: PASS.
+- Metallic tail: ABSENT.
+- Flutter/choppiness: ABSENT.
+- Latency: ACCEPTABLE.
+
+Optional destructive/error scenarios:
+
+- Malformed settings file: NOT TESTED - automated coverage passed.
+- Empty/wrong-root settings file: NOT TESTED - automated coverage passed.
+- Unsupported future schema: NOT TESTED - automated coverage passed.
+- Save failure: NOT TESTED - automated coverage passed.
 
 Persistence across restart:
 

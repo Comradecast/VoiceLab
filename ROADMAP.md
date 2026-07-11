@@ -782,7 +782,7 @@ VoiceLab and without automatic hot-plug behavior.
 
 ## M6.5 - Persistent Operator Settings
 
-Status: PROVISIONAL
+Status: PASS
 
 Purpose: restore the operator's normal VoiceLab setup across launches without
 persisting transient runtime state or relying on hard-coded numeric audio device
@@ -859,5 +859,26 @@ The numeric PortAudio device index is not stored as persistent identity.
   substitution, first-launch unselected behavior, startup-stopped guard, dirty
   shutdown flush, save-failure telemetry, UI restore, M6.4 refresh cooperation,
   and prohibited UI persistence/import paths.
-- Manual M6.5 hardware restart verification remains not run in this engineering
-  session.
+- Manual M6.5 live operator-settings acceptance passed with no implementation
+  correction required.
+- First launch without `settings.json` opened normally, all device selectors
+  began unselected, processing did not start automatically, the UI remained
+  responsive, and no unrelated first-listed devices were silently selected.
+- Persisted settings restored after restart: selected microphone, VB-CABLE
+  virtual output, monitor output, monitor-enabled state, monitor volume,
+  soundboard volume, selected preset, and the selected preset's parameters.
+- VoiceLab always relaunched stopped. Normal processing worked after explicit
+  Start.
+- Monitor-disabled state persisted, and virtual-microphone-only processing
+  worked.
+- Unavailable saved devices were not silently replaced; unavailable roles
+  remained unselected and guidance was understandable.
+- Explicit replacement worked, and reconnect plus `Refresh Devices` recovery
+  restored the preferred identity according to policy.
+- Final M6.5 audio regression passed for microphone, virtual mic, monitor,
+  effects, pitch `0`, pitch `+4`, pitch `-4`, presets, soundboard, Start,
+  Stop, close, and relaunch.
+- Subjective M6.5 audio acceptance passed: metallic tail absent,
+  flutter/choppiness absent, and latency acceptable.
+- Optional destructive/error scenarios remained NOT TESTED because automated
+  coverage passed.
