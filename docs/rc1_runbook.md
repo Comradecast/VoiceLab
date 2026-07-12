@@ -685,7 +685,7 @@ Manual M7.2 checklist:
 
 ## Input Processing Foundation
 
-M8.0 Status: PROVISIONAL.
+M8.0 Status: PASS.
 
 M8.0 adds a default-disabled global input-processing foundation for the
 microphone voice path. These settings are operator settings, not custom voice
@@ -735,8 +735,7 @@ Controls and ranges:
 - Limiter: Enabled, Ceiling -12 dBFS through -0.5 dBFS, Release 20 ms through
   500 ms, defaults -1 dBFS and 80 ms, disabled.
 
-Manual M8.0 live acceptance remains pending. Do not mark these scenarios PASS
-until Luke completes live hardware and audible testing.
+Manual M8.0 live acceptance is complete with one explicit waived coverage gap.
 
 Live correction note:
 
@@ -760,8 +759,52 @@ Live correction note:
   above-threshold passage unchanged; Compressor loud-block reduction about
   22.5 dB with quiet material unchanged; Limiter over-ceiling peak constrained
   to the -12 dBFS ceiling with safe material unchanged.
-- M8.0 remains PROVISIONAL. All audible and hardware scenarios below must be
-  repeated after this correction.
+- M8.0 live audible and hardware acceptance was repeated after this correction.
+
+Manual M8.0 PASS results:
+
+- Revised tabbed layout and navigation: PASS.
+- Persistent transport controls: PASS.
+- Processors-disabled baseline transparency: PASS.
+- Existing voice behavior remains acceptable: PASS.
+- High-Pass audible activation: PASS.
+- High-Pass is useful and clearly affects low-frequency content: PASS.
+- Noise Gate audible activation: PASS.
+- Noise Gate is useful with practical settings: PASS.
+- Compressor audible activation: PASS.
+- Compressor behaves as expected with practical settings: PASS.
+- Limiter audible activation: PASS.
+- Limiter is particularly useful and appreciated: PASS.
+- Combined normal processing chain: PASS.
+- Bypass Effects behavior and recovery: PASS.
+- Reset Voice/Input Processing separation: PASS.
+- Routing and normal application behavior: PASS.
+- Processor activity visibility: PASS.
+- No reported metallic tail: PASS.
+- No reported flutter: PASS.
+- Latency remains acceptable: PASS.
+- No observed DSP activation defect: PASS.
+
+Practical starting settings accepted as useful:
+
+- High-Pass: enabled, 80-100 Hz.
+- Noise Gate: approximately -45 dBFS, approximately 200 ms release.
+- Compressor: threshold -18 dBFS, ratio 3:1, attack 10 ms, release 150 ms,
+  makeup gain 0 to +2 dB.
+- Limiter: ceiling -1 dBFS, release 80 ms.
+
+The extreme diagnostic settings were used only to prove audible activation and
+are not normal recommended defaults.
+
+Manual M8.0 NOT TESTED:
+
+- 15-minute combined-processing stability run: NOT TESTED - waived by Luke as
+  non-blocking.
+
+No instability was observed during practical testing. The omitted timed run is
+not represented as completed, no known product failure remains, and prior
+lifecycle acceptance plus fixed-size bounded processor-state evidence support
+treating the omitted run as non-blocking.
 
 M8.0 live acceptance checklist:
 
@@ -856,7 +899,8 @@ Lifecycle and Regression:
 - Relaunch.
 - Settings restoration.
 - Window scrolling/layout.
-- 15-minute combined-processing stability.
+- 15-minute combined-processing stability: NOT TESTED - waived by Luke as
+  non-blocking.
 - No increasing latency.
 - No metallic tail.
 - No flutter.

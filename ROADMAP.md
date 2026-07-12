@@ -1190,7 +1190,7 @@ operations, requiring confirmation for delete and overwrite, and protecting
 
 ## M8.0 - Input Processing Foundation
 
-Status: PROVISIONAL
+Status: PASS
 
 Purpose: add a configurable, default-disabled real-time input-processing
 foundation for microphone clarity, background-noise control, dynamic-range
@@ -1279,6 +1279,26 @@ Signalsmith pitch configuration.
   Compressor reduced a loud block by about 22.5 dB while leaving quiet material
   unchanged; Limiter held an over-ceiling block to the -12 dBFS ceiling while
   leaving safe material unchanged.
-- Live hardware and audible acceptance remains required before M8.0 can be
-  marked PASS. All audible and hardware scenarios must be repeated after the
-  layout and visibility correction.
+- M8.0 live hardware and audible acceptance passed after the layout and
+  visibility correction. Confirmed live PASS results: revised tabbed layout
+  and navigation, persistent transport controls, processors-disabled baseline
+  transparency, existing voice behavior remains acceptable, High-Pass audible
+  activation, High-Pass useful low-frequency effect, Noise Gate audible
+  activation, Noise Gate useful practical settings, Compressor audible
+  activation, Compressor expected practical behavior, Limiter audible
+  activation, Limiter usefulness, combined normal processing chain, Bypass
+  Effects behavior and recovery, Reset Voice/Input Processing separation,
+  routing and normal application behavior, processor activity visibility, no
+  reported metallic tail, no reported flutter, acceptable latency, and no
+  observed DSP activation defect.
+- Practical starting settings accepted as useful: High-Pass enabled at 80-100
+  Hz; Noise Gate around -45 dBFS with about 200 ms release; Compressor
+  threshold -18 dBFS, ratio 3:1, attack 10 ms, release 150 ms, makeup gain
+  0 to +2 dB; Limiter ceiling -1 dBFS and release 80 ms. Extreme diagnostic
+  settings remain activation evidence only, not normal recommended defaults.
+- The 15-minute combined-processing stability run was NOT TESTED and was
+  waived by Luke as non-blocking. No instability was observed during practical
+  testing, the omitted timed run is not represented as completed, no known
+  product failure remains, and prior lifecycle acceptance plus fixed-size
+  bounded processor-state evidence support treating the omitted run as
+  non-blocking.
