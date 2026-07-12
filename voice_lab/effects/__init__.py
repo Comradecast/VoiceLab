@@ -7,6 +7,7 @@ __all__ = [
     "EffectChainStatus",
     "EffectFailureStatus",
     "CompressorEffect",
+    "ExperimentalPitchFormantEffect",
     "GainEffect",
     "HighPassFilterEffect",
     "LowpassEffect",
@@ -22,6 +23,10 @@ def __getattr__(name):
         from .gain import GainEffect
 
         return GainEffect
+    if name == "ExperimentalPitchFormantEffect":
+        from .formant_lab import ExperimentalPitchFormantEffect
+
+        return ExperimentalPitchFormantEffect
     if name == "HighPassFilterEffect":
         from .input_processing import HighPassFilterEffect
 

@@ -70,7 +70,7 @@ class ManifestLoadResult:
         return cls(candidate=candidate, success=False, reason=reason, diagnostics=diagnostics)
 
 
-def builtin_plugin_metadata():
+def builtin_plugin_metadata(formant_lab=False):
     return PluginMetadata(
         plugin_id="voicelab.builtin.effects",
         display_name="VoiceLab Built-In Effects",
@@ -121,36 +121,7 @@ def builtin_plugin_metadata():
                     "makeup_gain_db": {"unit": "dB", "minimum": 0, "maximum": 12, "default": 0},
                 },
             ),
-            EffectDescriptor(
-                effect_id="pitch_shift",
-                display_name="Pitch Shift",
-                category="voice",
-                factory_id="voicelab.factory.pitch_shift",
-                factory=lambda effect_state: PitchShiftEffect(lambda: effect_state.pitch),
-                parameter_metadata={
-                    "semitones": {
-                        "unit": "semitones",
-                        "minimum": -12,
-                        "maximum": 12,
-                        "default": 0,
-                    },
-                    "backend": {
-                        "preferred": "signalsmith",
-                        "fallback": "pedalboard",
-                        "native_module": "voice_lab.effects._signalsmith_pitch",
-                        "prototype_status": "source_available_native_build_pending",
-                    },
-                    "streaming_adapter": {
-                        "processing_window_frames": 2048,
-                        "max_buffer_windows": 2,
-                        "startup_underflow": "silence while priming",
-                        "parameter_change_policy": "reset and re-prime on semitone changes",
-                        "silence_transition_policy": "flush buffers and reset once on exact digital silence",
-                        "processing_window_ms_at_48khz": 42.666666666666664,
-                        "first_output_delay_ms_at_48khz": 21.333333333333332,
-                    }
-                },
-            ),
+            _pitch_descriptor(formant_lab),
             EffectDescriptor(
                 effect_id="voicelab.effect.robot",
                 display_name="Robot",
@@ -187,6 +158,59 @@ def builtin_plugin_metadata():
             ),
         ),
     )
+
+
+def _pitch_descriptor(formant_lab=False):
+    if formant_lab:
+        return EffectDescriptor(
+            effect_id="voicelab.effect.experimental_pitch_formant",
+            display_name="Experimental Pitch/Formant",
+            category="voice",
+            factory_id="voicelab.factory.experimental_pitch_formant",
+            factory=_make_experimental_pitch_formant,
+            parameter_metadata={
+                "pitch_semitones": {"unit": "semitones", "minimum": -12, "maximum": 12, "default": 0},
+                "formant_semitones": {"unit": "semitones", "minimum": -12, "maximum": 12, "default": 0},
+                "formant_factor": {"conversion": "2 ** (formant_semitones / 12)"},
+                "prototype": "isolated formant-lab mode only",
+            },
+        )
+    return EffectDescriptor(
+        effect_id="pitch_shift",
+        display_name="Pitch Shift",
+        category="voice",
+        factory_id="voicelab.factory.pitch_shift",
+        factory=lambda effect_state: PitchShiftEffect(lambda: effect_state.pitch),
+        parameter_metadata={
+            "semitones": {
+                "unit": "semitones",
+                "minimum": -12,
+                "maximum": 12,
+                "default": 0,
+            },
+            "backend": {
+                "preferred": "signalsmith",
+                "fallback": "pedalboard",
+                "native_module": "voice_lab.effects._signalsmith_pitch",
+                "prototype_status": "source_available_native_build_pending",
+            },
+            "streaming_adapter": {
+                "processing_window_frames": 2048,
+                "max_buffer_windows": 2,
+                "startup_underflow": "silence while priming",
+                "parameter_change_policy": "reset and re-prime on semitone changes",
+                "silence_transition_policy": "flush buffers and reset once on exact digital silence",
+                "processing_window_ms_at_48khz": 42.666666666666664,
+                "first_output_delay_ms_at_48khz": 21.333333333333332,
+            },
+        },
+    )
+
+
+def _make_experimental_pitch_formant(effect_state):
+    from voice_lab.effects.formant_lab import ExperimentalPitchFormantEffect
+
+    return ExperimentalPitchFormantEffect(effect_state.formant_lab)
 
 
 def load_effects_from_metadata(metadata, effect_state):
@@ -365,8 +389,8 @@ def _unknown_fields(data, known_fields):
     return sorted(field for field in data if field not in known_fields)
 
 
-def load_builtin_effect_chain(effect_state, runtime_failure_handler=None):
+def load_builtin_effect_chain(effect_state, runtime_failure_handler=None, formant_lab=False):
     return EffectChain(
-        load_effects_from_metadata(builtin_plugin_metadata(), effect_state),
+        load_effects_from_metadata(builtin_plugin_metadata(formant_lab=formant_lab), effect_state),
         runtime_failure_handler=runtime_failure_handler,
     )

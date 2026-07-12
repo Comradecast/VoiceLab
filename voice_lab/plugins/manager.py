@@ -81,8 +81,13 @@ class PluginManager:
     def registration_results(self):
         return tuple(self._registration_results)
 
-    def load_default_effect_chain(self, effect_state, runtime_failure_handler=None):
-        metadata = self._plugins["voicelab.builtin.effects"]
+    def load_default_effect_chain(self, effect_state, runtime_failure_handler=None, formant_lab=False):
+        if formant_lab:
+            from voice_lab.plugins.loader import builtin_plugin_metadata
+
+            metadata = builtin_plugin_metadata(formant_lab=True)
+        else:
+            metadata = self._plugins["voicelab.builtin.effects"]
         return EffectChain(
             load_effects_from_metadata(metadata, effect_state),
             runtime_failure_handler=runtime_failure_handler,

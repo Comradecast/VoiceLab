@@ -1302,3 +1302,54 @@ Signalsmith pitch configuration.
   product failure remains, and prior lifecycle acceptance plus fixed-size
   bounded processor-state evidence support treating the omitted run as
   non-blocking.
+
+## M8.1 - Real-Time Formant Backend Prototype
+
+Status: PROVISIONAL
+
+Purpose: prove whether the existing local Signalsmith backend can support
+real-time formant shifting in a bounded streaming path before any user-facing
+character, preset, persistence, or production-chain integration is attempted.
+
+### Scope
+
+- Add an explicit `main.py --formant-lab` launch mode for isolated prototype
+  evaluation.
+- Preserve normal launch behavior and the production chain:
+  High-Pass, Noise Gate, Compressor, Pitch Shift, Robot, Lowpass, Gain,
+  Limiter.
+- In formant-lab mode only, replace the Pitch Shift stage with an
+  Experimental Pitch/Formant stage in the same chain position.
+- Extend the local native Signalsmith wrapper with `set_formant_semitones`
+  and `set_formant_factor`, backed by the local
+  `signalsmith-stretch.h` `setFormantSemitones` and `setFormantFactor` API.
+- Keep prototype pitch/formant settings session-only. No settings schema,
+  preset schema, custom voice persistence, built-in character targets, routing,
+  devices, meters, soundboard behavior, M8.0 input processing behavior, or
+  Signalsmith production pitch configuration were changed.
+- Add a guarded Formant Lab UI panel only when launched with `--formant-lab`.
+
+### Completion Notes
+
+- Local API evidence exists in
+  `third_party/signalsmith-stretch/signalsmith-stretch.h`: the library exposes
+  `setFormantFactor`, `setFormantSemitones`, and `setFormantBase`. The M8.1
+  prototype uses formant semitones/factor on the same native streaming
+  instance as pitch shifting.
+- Positive formant semitones map to `2 ** (semitones / 12)`, following the
+  local Signalsmith README example where a factor above 1 shifts formants up.
+- Automated focused tests confirm the native and Python wrapper methods are
+  exposed, normal production chain order is unchanged, formant-lab chain order
+  is isolated, normal service launch does not expose Formant Lab, invalid
+  formant values are rejected, service reset returns session values to neutral,
+  and deterministic vowel-like probes preserve F0 while moving the spectral
+  envelope down/up for negative/positive formant settings.
+- Automated smoke evidence confirmed the prototype produces finite output,
+  reports Signalsmith backend telemetry, and reports the expected current
+  formant factor and latency metadata.
+- Accepted prototype limitations: formant quality is only algorithmic evidence
+  until live operator listening; the implementation uses Signalsmith's rough
+  internal F0 estimation by leaving formant base at default; production
+  character integration, persistence, preset storage, and UX naming are
+  deferred to later milestones; M8.1 must not be marked PASS until live
+  hardware/audio acceptance is recorded.

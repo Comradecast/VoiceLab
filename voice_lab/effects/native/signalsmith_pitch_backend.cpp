@@ -23,6 +23,7 @@ public:
 		if (channels != 1) throw std::runtime_error("only mono processing is supported");
 		stretch.presetCheaper(channels, static_cast<float>(sampleRate), false);
 		stretch.setTransposeSemitones(0.0f);
+		stretch.setFormantSemitones(0.0f, false);
 		updatePointers();
 	}
 
@@ -30,6 +31,18 @@ public:
 		if (!std::isfinite(semitones)) throw std::runtime_error("semitones must be finite");
 		this->semitones = semitones;
 		stretch.setTransposeSemitones(semitones);
+	}
+
+	void set_formant_semitones(float semitones) {
+		if (!std::isfinite(semitones)) throw std::runtime_error("formant semitones must be finite");
+		this->formantSemitones = semitones;
+		stretch.setFormantSemitones(semitones, false);
+	}
+
+	void set_formant_factor(float factor) {
+		if (!std::isfinite(factor) || factor <= 0.0f) throw std::runtime_error("formant factor must be finite and positive");
+		this->formantSemitones = 12.0f * std::log2(factor);
+		stretch.setFormantFactor(factor, false);
 	}
 
 	py::array_t<float> process(py::array_t<float, py::array::c_style | py::array::forcecast> samples) {
@@ -53,6 +66,7 @@ public:
 	void reset() {
 		stretch.reset();
 		stretch.setTransposeSemitones(semitones);
+		stretch.setFormantSemitones(formantSemitones, false);
 	}
 
 	int latency_frames() const {
@@ -81,6 +95,7 @@ private:
 	int blockSize;
 	int channels;
 	float semitones = 0.0f;
+	float formantSemitones = 0.0f;
 	signalsmith::stretch::SignalsmithStretch<float> stretch;
 	std::vector<std::vector<float>> input;
 	std::vector<std::vector<float>> output;
@@ -92,6 +107,8 @@ PYBIND11_MODULE(_signalsmith_pitch, module) {
 	py::class_<SignalsmithPitchBackend>(module, "SignalsmithPitchBackend")
 		.def(py::init<int, int, int>())
 		.def("set_semitones", &SignalsmithPitchBackend::set_semitones)
+		.def("set_formant_semitones", &SignalsmithPitchBackend::set_formant_semitones)
+		.def("set_formant_factor", &SignalsmithPitchBackend::set_formant_factor)
 		.def("process", &SignalsmithPitchBackend::process)
 		.def("reset", &SignalsmithPitchBackend::reset)
 		.def("latency_frames", &SignalsmithPitchBackend::latency_frames)

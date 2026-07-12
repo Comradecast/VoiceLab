@@ -9,6 +9,7 @@ from voice_lab.config.input_processing import (
 )
 from voice_lab.core import AudioFrame
 from voice_lab.effects import EffectChain
+from voice_lab.effects.formant_lab import FormantLabState
 
 
 class AudioEngine:
@@ -18,6 +19,7 @@ class AudioEngine:
         self.lowpass = 4000
         self.pitch = 0.0
         self.input_processing = DEFAULT_INPUT_PROCESSING_SETTINGS
+        self.formant_lab = FormantLabState()
         self.effect_chain = effect_chain or EffectChain()
         self.effects_bypassed = False
 
@@ -42,6 +44,28 @@ class AudioEngine:
 
     def set_effects_bypassed(self, enabled):
         self.effects_bypassed = bool(enabled)
+
+    def set_formant_lab(self, *, enabled=None, pitch_semitones=None, formant_semitones=None, bypassed=None):
+        if enabled is not None:
+            self.formant_lab.enabled = bool(enabled)
+        if pitch_semitones is not None:
+            self.formant_lab.pitch_semitones = float(pitch_semitones)
+        if formant_semitones is not None:
+            self.formant_lab.formant_semitones = float(formant_semitones)
+        if bypassed is not None:
+            self.formant_lab.bypassed = bool(bypassed)
+
+    def reset_formant_lab(self):
+        self.formant_lab.reset()
+
+    def formant_lab_status(self):
+        for effect in self.effect_chain.effects:
+            if getattr(effect, "name", "") != "Experimental Pitch/Formant":
+                continue
+            status = getattr(effect, "status", None)
+            if status is not None:
+                return status()
+        return None
 
     def set_input_processing(self, settings):
         self.input_processing = settings

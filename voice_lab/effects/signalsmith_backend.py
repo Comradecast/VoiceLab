@@ -32,6 +32,12 @@ class SignalsmithPitchBackend:
     def set_semitones(self, semitones: float) -> None:
         self._native.set_semitones(float(semitones))
 
+    def set_formant_semitones(self, semitones: float) -> None:
+        self._native.set_formant_semitones(float(semitones))
+
+    def set_formant_factor(self, factor: float) -> None:
+        self._native.set_formant_factor(float(factor))
+
     def process(self, samples: np.ndarray) -> np.ndarray:
         mono = np.asarray(samples, dtype=np.float32)
         output = self._native.process(mono)

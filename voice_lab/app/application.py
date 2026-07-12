@@ -1,13 +1,19 @@
 from PySide6.QtWidgets import QApplication
 
 from voice_lab.app.lifecycle import ApplicationLifecycle
+from voice_lab.app.service import ApplicationService
 
 
-def run():
+def run(formant_lab=False):
     from voice_lab.ui.main_window import App
 
     app = QApplication([])
-    lifecycle = ApplicationLifecycle()
+    lifecycle = ApplicationLifecycle(
+        service_factory=lambda **kwargs: ApplicationService(
+            **kwargs,
+            formant_lab=formant_lab,
+        )
+    )
     service = lifecycle.startup()
     window = App(service, on_close=lifecycle.shutdown)
     window.resize(720, 720)

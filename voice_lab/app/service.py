@@ -53,16 +53,19 @@ class ApplicationService(QObject):
         router=None,
         hotkeys=None,
         soundboard=None,
+        formant_lab=False,
     ):
         super().__init__()
         self.telemetry = telemetry or TelemetryService()
         self.level_monitor = AudioLevelMonitor()
         self.engine = engine or AudioEngine()
         self.plugins = plugins or PluginManager()
+        self.formant_lab_enabled = bool(formant_lab)
         self.engine.set_effect_chain(
             self.plugins.load_default_effect_chain(
                 self.engine,
                 runtime_failure_handler=self._record_effect_runtime_failure,
+                formant_lab=self.formant_lab_enabled,
             )
         )
         self._refresh_effect_chain_status()
@@ -297,6 +300,76 @@ class ApplicationService(QObject):
 
     def input_processing_state(self):
         return self.current_input_processing.asdict()
+
+    def formant_lab_state(self):
+        if not self.formant_lab_enabled:
+            return None
+        status = self.engine.formant_lab_status()
+        if status is None:
+            return {
+                "available": True,
+                "active": False,
+                "bypassed": self.engine.formant_lab.bypassed,
+                "pitch_semitones": self.engine.formant_lab.pitch_semitones,
+                "formant_semitones": self.engine.formant_lab.formant_semitones,
+                "formant_factor": self.engine.formant_lab.formant_factor,
+                "backend": "signalsmith",
+                "latency_frames": 0,
+                "estimated_added_ms": 0.0,
+                "runtime_failure": "",
+                "last_stable_pitch": 0.0,
+                "last_stable_formant": 0.0,
+            }
+        state = status.asdict()
+        state.update(
+            {
+                "bypassed": self.engine.formant_lab.bypassed,
+                "pitch_semitones": self.engine.formant_lab.pitch_semitones,
+                "formant_semitones": self.engine.formant_lab.formant_semitones,
+                "formant_factor": self.engine.formant_lab.formant_factor,
+            }
+        )
+        return state
+
+    def update_formant_lab(self, *, enabled=None, pitch_semitones=None, formant_semitones=None, bypassed=None):
+        if not self.formant_lab_enabled:
+            result = CommandResult.fail("Formant Lab is not enabled.")
+            self.telemetry.record_command_result("update_formant_lab", result)
+            return result
+        try:
+            if pitch_semitones is not None:
+                pitch_semitones = self.config.validate_effect_parameters(1.0, 0.0, 4000, pitch_semitones).pitch
+            if formant_semitones is not None:
+                from voice_lab.effects.formant_lab import validate_formant_semitones
+
+                formant_semitones = validate_formant_semitones(formant_semitones)
+        except Exception as exc:
+            result = CommandResult.fail(str(exc))
+            self.telemetry.record_command_result("update_formant_lab", result)
+            return result
+        self.engine.set_formant_lab(
+            enabled=enabled,
+            pitch_semitones=pitch_semitones,
+            formant_semitones=formant_semitones,
+            bypassed=bypassed,
+        )
+        state = self.formant_lab_state()
+        self.telemetry.set_metadata("formant_lab", state)
+        result = CommandResult.ok("Formant Lab updated.", formant_lab=state)
+        self.telemetry.record_command_result("update_formant_lab", result)
+        return result
+
+    def reset_formant_lab(self):
+        if not self.formant_lab_enabled:
+            result = CommandResult.fail("Formant Lab is not enabled.")
+            self.telemetry.record_command_result("reset_formant_lab", result)
+            return result
+        self.engine.reset_formant_lab()
+        state = self.formant_lab_state()
+        self.telemetry.set_metadata("formant_lab", state)
+        result = CommandResult.ok("Formant Lab reset.", formant_lab=state)
+        self.telemetry.record_command_result("reset_formant_lab", result)
+        return result
 
     def input_processing_activity(self):
         activity = self.engine.input_processing_activity()

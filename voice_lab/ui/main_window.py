@@ -47,7 +47,11 @@ class App(QWidget):
         self.restored_preferences = self.service.operator_preferences() if hasattr(self.service, "operator_preferences") else {}
         self._updating_voice_controls = False
         self._updating_input_processing = False
+        self._updating_formant_lab = False
         self._last_voice_selection = None
+        self.formant_lab_enabled = (
+            hasattr(self.service, "formant_lab_state") and self.service.formant_lab_state() is not None
+        )
 
         layout.addWidget(QLabel("Voice Character"))
         self.character_box = QComboBox()
@@ -157,6 +161,9 @@ class App(QWidget):
         input_processing_layout.addWidget(input_processing_help)
         self._build_input_processing_controls(input_processing_layout)
 
+        if self.formant_lab_enabled:
+            self._build_formant_lab_controls(layout)
+
         self.advanced_toggle = QCheckBox("Show Advanced Controls")
         self.advanced_toggle.stateChanged.connect(lambda _state: self.set_advanced_visible())
         layout.addWidget(self.advanced_toggle)
@@ -256,6 +263,7 @@ class App(QWidget):
         self.advanced_widgets.append(self.diagnostic_status)
         self.sync_voice_controls_from_service()
         self.sync_input_processing_from_service()
+        self.sync_formant_lab_from_service()
         self.set_advanced_visible()
         self.refresh_custom_voice_actions()
         self.refresh_soundboard()
@@ -619,6 +627,104 @@ class App(QWidget):
         self.display_result(result)
         self.sync_input_processing_from_service()
 
+    def _build_formant_lab_controls(self, layout):
+        layout.addWidget(QLabel("Experimental Formant Lab"))
+        self.formant_lab_enable = QCheckBox("Enable Prototype")
+        self.formant_lab_enable.stateChanged.connect(lambda _state: self.update_formant_lab())
+        layout.addWidget(self.formant_lab_enable)
+        self.formant_lab_bypass = QCheckBox("Prototype A/B Bypass")
+        self.formant_lab_bypass.stateChanged.connect(lambda _state: self.update_formant_lab())
+        layout.addWidget(self.formant_lab_bypass)
+        self.formant_lab_pitch = self._formant_lab_slider(layout, "Prototype Pitch", -24, 24)
+        self.formant_lab_formant = self._formant_lab_slider(layout, "Formant", -24, 24)
+        self.formant_lab_status = QLabel("Formant Lab: inactive")
+        self.formant_lab_status.setWordWrap(True)
+        layout.addWidget(self.formant_lab_status)
+        self.formant_lab_reset = QPushButton("Reset Prototype")
+        self.formant_lab_reset.clicked.connect(self.reset_formant_lab)
+        layout.addWidget(self.formant_lab_reset)
+
+    def _formant_lab_slider(self, layout, name, low, high):
+        label = QLabel("")
+        slider = QSlider(Qt.Horizontal)
+        slider.setRange(low, high)
+        slider._voice_lab_label = label
+        slider._voice_lab_label_name = name
+        slider.valueChanged.connect(
+            lambda _value, s=slider: (
+                self._set_formant_lab_slider_label(s),
+                self.update_formant_lab(),
+            )
+        )
+        layout.addWidget(label)
+        layout.addWidget(slider)
+        return slider
+
+    def _set_formant_lab_slider_label(self, slider):
+        semitones = slider.value() / 2.0
+        if slider is getattr(self, "formant_lab_formant", None):
+            factor = 2.0 ** (semitones / 12.0)
+            slider._voice_lab_label.setText(
+                f"{slider._voice_lab_label_name}: {semitones:.1f} st | {factor:.3f}x"
+            )
+        else:
+            slider._voice_lab_label.setText(f"{slider._voice_lab_label_name}: {semitones:.1f} st")
+
+    def sync_formant_lab_from_service(self):
+        if not self.formant_lab_enabled:
+            return
+        state = self.service.formant_lab_state()
+        if state is None:
+            return
+        self._updating_formant_lab = True
+        try:
+            self.formant_lab_enable.setChecked(bool(state.get("available", True)))
+            self.formant_lab_bypass.setChecked(bool(state.get("bypassed", False)))
+            self.formant_lab_pitch.setValue(int(round(float(state.get("pitch_semitones", 0.0)) * 2.0)))
+            self.formant_lab_formant.setValue(int(round(float(state.get("formant_semitones", 0.0)) * 2.0)))
+            self._set_formant_lab_slider_label(self.formant_lab_pitch)
+            self._set_formant_lab_slider_label(self.formant_lab_formant)
+        finally:
+            self._updating_formant_lab = False
+        self.refresh_formant_lab_status()
+
+    def update_formant_lab(self):
+        if self._updating_formant_lab or not self.formant_lab_enabled:
+            return
+        result = self.service.update_formant_lab(
+            enabled=self.formant_lab_enable.isChecked(),
+            pitch_semitones=self.formant_lab_pitch.value() / 2.0,
+            formant_semitones=self.formant_lab_formant.value() / 2.0,
+            bypassed=self.formant_lab_bypass.isChecked(),
+        )
+        self.display_result(result)
+        if result.success:
+            self.refresh_formant_lab_status()
+        else:
+            self.sync_formant_lab_from_service()
+
+    def reset_formant_lab(self):
+        if not self.formant_lab_enabled:
+            return
+        result = self.service.reset_formant_lab()
+        self.display_result(result)
+        self.sync_formant_lab_from_service()
+
+    def refresh_formant_lab_status(self):
+        if not self.formant_lab_enabled:
+            return
+        state = self.service.formant_lab_state()
+        if state is None:
+            return
+        active = "active" if state.get("active") else "inactive"
+        bypassed = "bypassed" if state.get("bypassed") else "engaged"
+        self.formant_lab_status.setText(
+            "Formant Lab: "
+            f"{active} | {bypassed} | pitch {float(state.get('pitch_semitones', 0.0)):.1f} st | "
+            f"formant {float(state.get('formant_semitones', 0.0)):.1f} st | "
+            f"latency {int(state.get('latency_frames', 0))} frames"
+        )
+
     def refresh_input_processing_activity(self):
         if not hasattr(self.service, "input_processing_activity") or not hasattr(self, "input_processing_controls"):
             return
@@ -962,6 +1068,7 @@ class App(QWidget):
         self.stop_button.setEnabled(status.stop_enabled)
         self.refresh_devices_button.setEnabled(status.refresh_enabled)
         self.active_voice_status.setText(status.active_voice)
+        self.refresh_formant_lab_status()
         if hasattr(self, "bypass_check"):
             self.bypass_check.blockSignals(True)
             self.bypass_check.setChecked(bool(status.diagnostics.get("effects_bypassed")))

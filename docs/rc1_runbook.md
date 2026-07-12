@@ -906,6 +906,93 @@ Lifecycle and Regression:
 - No flutter.
 - No new audible block boundaries.
 
+## Real-Time Formant Backend Prototype
+
+M8.1 Status: PROVISIONAL.
+
+M8.1 adds an isolated experimental formant-shift prototype for local evidence
+gathering only. Launch it with:
+
+```powershell
+.\.venv\Scripts\python.exe main.py --formant-lab
+```
+
+Normal launch remains:
+
+```powershell
+.\.venv\Scripts\python.exe main.py
+```
+
+Normal launch must not show Formant Lab controls and must preserve the
+production chain:
+
+- High-Pass.
+- Noise Gate.
+- Compressor.
+- Pitch Shift.
+- Robot.
+- Lowpass.
+- Gain.
+- Limiter.
+
+Formant Lab launch replaces only the Pitch Shift stage with:
+
+- Experimental Pitch/Formant.
+
+Prototype controls:
+
+- Enable Prototype.
+- Prototype A/B Bypass.
+- Prototype Pitch, -12.0 through +12.0 semitones.
+- Formant, -12.0 through +12.0 semitones.
+- Reset Prototype.
+
+Automated M8.1 evidence:
+
+- Local native Signalsmith wrapper exposes `set_formant_semitones`.
+- Local native Signalsmith wrapper exposes `set_formant_factor`.
+- Python backend wrapper exposes both formant controls.
+- Formant semitone validation rejects non-finite and out-of-range values.
+- Formant factor conversion is `2 ** (formant_semitones / 12)`.
+- Normal effect-chain order remains unchanged.
+- Formant Lab effect-chain order is isolated to explicit prototype launch.
+- Normal service launch does not expose Formant Lab state.
+- Prototype service launch exposes Formant Lab state.
+- Prototype updates and reset are session-only.
+- Deterministic vowel-like probes preserve estimated F0 under formant-only
+  changes.
+- Deterministic vowel-like probes move the spectral envelope down for negative
+  formant settings and up for positive formant settings.
+- Prototype output remains finite.
+- Prototype backend telemetry reports Signalsmith latency/status metadata.
+
+Manual M8.1 acceptance checklist:
+
+- Normal `main.py` launch opens without Formant Lab controls.
+- Normal voice behavior remains unchanged.
+- `main.py --formant-lab` opens with Formant Lab controls.
+- Formant Lab launch starts stopped.
+- Start/Stop behavior remains normal in Formant Lab.
+- Prototype Pitch `0`, `+4`, and `-4` produce expected pitch movement.
+- Formant `0` is neutral enough for practical listening.
+- Formant `+4` sounds brighter/smaller without changing perceived pitch more
+  than expected.
+- Formant `-4` sounds darker/larger without changing perceived pitch more than
+  expected.
+- Combined pitch plus formant movement is stable.
+- Prototype A/B Bypass returns to the unmodified prototype input path while
+  processing continues.
+- Reset Prototype returns pitch/formant to `0.0` and clears bypass.
+- Normal microphone, virtual microphone, monitor, monitor-disabled operation,
+  soundboard, Bypass Effects, device refresh, close, and relaunch regressions
+  remain acceptable.
+- Metallic tail remains absent.
+- Flutter/choppiness remains absent.
+- Latency remains acceptable for prototype evaluation.
+
+M8.1 must remain PROVISIONAL until live hardware/audio acceptance is complete.
+Do not record unexecuted manual scenarios as passed.
+
 ## Device Failure Recovery
 
 M6.3 normalizes startup and routing failures into stable categories before they
