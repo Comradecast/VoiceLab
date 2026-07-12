@@ -1,7 +1,9 @@
 import math
+import os
 import unittest
 
 import numpy as np
+from PySide6.QtWidgets import QApplication
 
 from voice_lab.app.service import ApplicationService
 from voice_lab.config.service import ConfigurationService
@@ -9,12 +11,14 @@ from voice_lab.effects.formant_lab import (
     ExperimentalPitchFormantEffect,
     FormantLabState,
     formant_factor,
+    formant_lab_parameters,
     validate_formant_semitones,
 )
 from voice_lab.effects.signalsmith_backend import SignalsmithPitchBackend, signalsmith_status
 from voice_lab.engine.audio_engine import AudioEngine
 from voice_lab.mixer import Mixer
 from voice_lab.plugins import PluginManager
+from voice_lab.ui.main_window import App
 from voice_lab.tests.test_m6_3_device_failure_recovery import FakeHotkeys, FakeRouter, FakeSoundboard
 from voice_lab.tests.test_m6_5_operator_settings import SettingsAudioIO
 from voice_lab.tests.test_m7_2_custom_voice_management import PresetStore, SettingsStore
@@ -65,8 +69,7 @@ def vowel_like_signal(f0=140.0, seconds=1.2):
 
 def process_prototype(source, pitch=0.0, formant=0.0):
     state = FormantLabState()
-    state.pitch_semitones = pitch
-    state.formant_semitones = formant
+    state.replace(formant_lab_parameters(pitch_semitones=pitch, formant_semitones=formant))
     effect = ExperimentalPitchFormantEffect(state)
     blocks = []
     for start in range(0, source.shape[0], BLOCK_SIZE):
@@ -96,6 +99,33 @@ def spectral_centroid(samples, low_hz, high_hz):
     mask = (freqs >= low_hz) & (freqs <= high_hz)
     weights = spectrum[mask] + 1e-12
     return float(np.sum(freqs[mask] * weights) / np.sum(weights))
+
+
+def formant_effect(service):
+    for effect in service.engine.effect_chain.effects:
+        if getattr(effect, "name", "") == "Experimental Pitch/Formant":
+            return effect
+    raise AssertionError("Experimental Pitch/Formant effect not found")
+
+
+def qt_application():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    return QApplication.instance() or QApplication([])
+
+
+class ChangingSnapshotState:
+    def __init__(self):
+        self.snapshots = (
+            formant_lab_parameters(pitch_semitones=-4.0, formant_semitones=-4.0),
+            formant_lab_parameters(pitch_semitones=4.0, formant_semitones=4.0),
+        )
+        self.read_count = 0
+
+    @property
+    def parameters(self):
+        snapshot = self.snapshots[min(self.read_count, len(self.snapshots) - 1)]
+        self.read_count += 1
+        return snapshot
 
 
 @unittest.skipUnless(signalsmith_status().available, signalsmith_status().reason)
@@ -145,8 +175,7 @@ class M81SignalsmithFormantBackendTests(unittest.TestCase):
         state = FormantLabState()
         effect = ExperimentalPitchFormantEffect(state)
         first = effect.process(source[:BLOCK_SIZE], BLOCK_SIZE, SAMPLE_RATE)
-        state.pitch_semitones = 4.0
-        state.formant_semitones = -4.0
+        state.replace(formant_lab_parameters(pitch_semitones=4.0, formant_semitones=-4.0))
         second = effect.process(source[BLOCK_SIZE : BLOCK_SIZE * 2], BLOCK_SIZE, SAMPLE_RATE)
 
         self.assertEqual(first.shape, (BLOCK_SIZE,))
@@ -157,6 +186,33 @@ class M81SignalsmithFormantBackendTests(unittest.TestCase):
         self.assertEqual(status["last_stable_pitch"], 4.0)
         self.assertEqual(status["last_stable_formant"], -4.0)
         self.assertGreater(status["latency_frames"], 0)
+
+    def test_effect_reads_one_whole_snapshot_per_processing_block(self):
+        source = vowel_like_signal(seconds=0.05)[:BLOCK_SIZE]
+        state = ChangingSnapshotState()
+        effect = ExperimentalPitchFormantEffect(state)
+
+        effect.process(source, BLOCK_SIZE, SAMPLE_RATE)
+
+        self.assertEqual(state.read_count, 1)
+        status = effect.status().asdict()
+        self.assertEqual(status["last_stable_pitch"], -4.0)
+        self.assertEqual(status["last_stable_formant"], -4.0)
+
+    def test_coordinated_updates_replace_complete_logical_configuration(self):
+        source = vowel_like_signal(seconds=0.1)
+        state = FormantLabState()
+        effect = ExperimentalPitchFormantEffect(state)
+        first = formant_lab_parameters(pitch_semitones=-4.0, formant_semitones=-4.0)
+        second = formant_lab_parameters(pitch_semitones=4.0, formant_semitones=4.0)
+
+        state.replace(first)
+        effect.process(source[:BLOCK_SIZE], BLOCK_SIZE, SAMPLE_RATE)
+        state.replace(second)
+        effect.process(source[BLOCK_SIZE : BLOCK_SIZE * 2], BLOCK_SIZE, SAMPLE_RATE)
+
+        self.assertEqual(effect.status().last_stable_pitch, 4.0)
+        self.assertEqual(effect.status().last_stable_formant, 4.0)
 
 
 class M81IsolationAndServiceTests(unittest.TestCase):
@@ -214,6 +270,109 @@ class M81IsolationAndServiceTests(unittest.TestCase):
         self.assertEqual(reset.metadata["formant_lab"]["pitch_semitones"], 0.0)
         self.assertEqual(reset.metadata["formant_lab"]["formant_semitones"], 0.0)
         self.assertFalse(reset.metadata["formant_lab"]["bypassed"])
+
+    def test_prototype_bypass_preserves_complete_snapshot_and_resumes_values(self):
+        service = make_service(formant_lab=True)
+        service.update_formant_lab(pitch_semitones=2.0, formant_semitones=1.0, bypassed=False)
+        bypassed = service.update_formant_lab(bypassed=True)
+        resumed = service.update_formant_lab(bypassed=False)
+
+        self.assertEqual(bypassed.metadata["formant_lab"]["pitch_semitones"], 2.0)
+        self.assertEqual(bypassed.metadata["formant_lab"]["formant_semitones"], 1.0)
+        self.assertTrue(bypassed.metadata["formant_lab"]["bypassed"])
+        self.assertEqual(resumed.metadata["formant_lab"]["pitch_semitones"], 2.0)
+        self.assertEqual(resumed.metadata["formant_lab"]["formant_semitones"], 1.0)
+        self.assertFalse(resumed.metadata["formant_lab"]["bypassed"])
+
+    def test_normal_bypass_does_not_erase_formant_lab_values(self):
+        service = make_service(formant_lab=True)
+        service.update_formant_lab(pitch_semitones=-2.0, formant_semitones=1.5)
+
+        service.set_effects_bypassed(True)
+        service.set_effects_bypassed(False)
+
+        state = service.formant_lab_state()
+        self.assertEqual(state["pitch_semitones"], -2.0)
+        self.assertEqual(state["formant_semitones"], 1.5)
+
+    def test_stop_clears_native_adapter_while_session_values_remain(self):
+        service = make_service(formant_lab=True)
+        service.update_formant_lab(pitch_semitones=2.0, formant_semitones=-1.0)
+        effect = formant_effect(service)
+        source = vowel_like_signal(seconds=0.05)[:BLOCK_SIZE]
+        effect.process(source, BLOCK_SIZE, SAMPLE_RATE)
+        self.assertIsNotNone(effect._adapter)
+
+        service.stop_audio()
+
+        self.assertIsNone(effect._adapter)
+        state = service.formant_lab_state()
+        self.assertEqual(state["pitch_semitones"], 2.0)
+        self.assertEqual(state["formant_semitones"], -1.0)
+
+    def test_reset_prototype_restores_defaults_without_touching_operator_state(self):
+        service = make_service(formant_lab=True)
+        original_input_processing = service.input_processing_state()
+        original_devices = service.devices()
+        original_monitor = service.current_monitor_enabled
+        original_monitor_volume = service.current_monitor_volume
+        original_soundboard_volume = service.current_soundboard_volume
+        original_voice = service.active_voice_state()
+        service.update_formant_lab(enabled=False, pitch_semitones=3.0, formant_semitones=-2.0, bypassed=True)
+
+        result = service.reset_formant_lab()
+
+        self.assertTrue(result.success)
+        state = result.metadata["formant_lab"]
+        self.assertTrue(service.engine.formant_lab.enabled)
+        self.assertTrue(state["available"])
+        self.assertFalse(state["bypassed"])
+        self.assertEqual(state["pitch_semitones"], 0.0)
+        self.assertEqual(state["formant_semitones"], 0.0)
+        self.assertEqual(service.input_processing_state(), original_input_processing)
+        self.assertEqual(service.devices(), original_devices)
+        self.assertEqual(service.current_monitor_enabled, original_monitor)
+        self.assertEqual(service.current_monitor_volume, original_monitor_volume)
+        self.assertEqual(service.current_soundboard_volume, original_soundboard_volume)
+        self.assertEqual(service.active_voice_state()["parameters"], original_voice["parameters"])
+
+    def test_mode_isolation_for_launch_state_chain_and_ui(self):
+        app = qt_application()
+        normal = make_service(formant_lab=False)
+        prototype = make_service(formant_lab=True)
+        normal_window = App(normal)
+        prototype_window = App(prototype)
+        try:
+            self.assertEqual(normal._processing_state, "stopped")
+            self.assertEqual(prototype._processing_state, "stopped")
+            self.assertFalse(normal_window.formant_lab_enabled)
+            self.assertFalse(hasattr(normal_window, "formant_lab_formant"))
+            self.assertTrue(prototype_window.formant_lab_enabled)
+            self.assertTrue(hasattr(prototype_window, "formant_lab_formant"))
+            self.assertNotIn("Experimental Pitch/Formant", normal.engine.effect_chain.effect_names())
+            self.assertNotIn("Pitch Shift", prototype.engine.effect_chain.effect_names())
+        finally:
+            normal_window.close()
+            prototype_window.close()
+            app.processEvents()
+
+    def test_formant_validation_rejects_non_finite_and_wrong_types(self):
+        invalid_values = (
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            "1.0",
+            object(),
+            True,
+            13.0,
+            -13.0,
+        )
+        for value in invalid_values:
+            with self.subTest(value=repr(value)):
+                with self.assertRaises(ValueError):
+                    validate_formant_semitones(value)
+                result = make_service(formant_lab=True).update_formant_lab(formant_semitones=value)
+                self.assertFalse(result.success)
 
 
 if __name__ == "__main__":

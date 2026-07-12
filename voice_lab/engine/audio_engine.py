@@ -45,15 +45,8 @@ class AudioEngine:
     def set_effects_bypassed(self, enabled):
         self.effects_bypassed = bool(enabled)
 
-    def set_formant_lab(self, *, enabled=None, pitch_semitones=None, formant_semitones=None, bypassed=None):
-        if enabled is not None:
-            self.formant_lab.enabled = bool(enabled)
-        if pitch_semitones is not None:
-            self.formant_lab.pitch_semitones = float(pitch_semitones)
-        if formant_semitones is not None:
-            self.formant_lab.formant_semitones = float(formant_semitones)
-        if bypassed is not None:
-            self.formant_lab.bypassed = bool(bypassed)
+    def set_formant_lab(self, parameters):
+        self.formant_lab.replace(parameters)
 
     def reset_formant_lab(self):
         self.formant_lab.reset()

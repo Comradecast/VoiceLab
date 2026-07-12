@@ -959,12 +959,32 @@ Automated M8.1 evidence:
 - Normal service launch does not expose Formant Lab state.
 - Prototype service launch exposes Formant Lab state.
 - Prototype updates and reset are session-only.
+- Prototype runtime updates use one immutable whole-configuration snapshot.
+  Validation happens before the callback, the active snapshot is replaced by
+  one reference, and the callback-side effect reads one snapshot at the start
+  of each process block. There is no callback lock, queue, history, stream
+  restart, device reopen, route interruption, settings write, preset write, or
+  native backend reconstruction for ordinary Formant Lab parameter changes.
 - Deterministic vowel-like probes preserve estimated F0 under formant-only
   changes.
 - Deterministic vowel-like probes move the spectral envelope down for negative
   formant settings and up for positive formant settings.
 - Prototype output remains finite.
 - Prototype backend telemetry reports Signalsmith latency/status metadata.
+
+Live perceptual findings recorded before final closeout:
+
+- Neutral operation is usable.
+- Subtle formant changes can be useful.
+- Approximately +/-0.5 to +/-2 semitones is the plausible natural-character
+  range.
+- Approximately +/-3 and beyond commonly sounded unnatural.
+- Pitch plus formant alone is insufficient for intended production character
+  targeting.
+- Pitch +3 / formant +1 sounded like a man attempting to imitate a woman.
+- The backend remains viable as an M8.2 character-transformation component.
+- Raw standalone formant controls are not sufficient for production character
+  targeting.
 
 Manual M8.1 acceptance checklist:
 
@@ -990,8 +1010,9 @@ Manual M8.1 acceptance checklist:
 - Flutter/choppiness remains absent.
 - Latency remains acceptable for prototype evaluation.
 
-M8.1 must remain PROVISIONAL until live hardware/audio acceptance is complete.
-Do not record unexecuted manual scenarios as passed.
+M8.1 remains PROVISIONAL until the immutable-snapshot correction is briefly
+live-smoked and final acceptance is committed. Do not record unexecuted manual
+scenarios as passed.
 
 ## Device Failure Recovery
 

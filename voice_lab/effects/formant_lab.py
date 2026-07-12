@@ -12,6 +12,24 @@ FORMANT_MAX = 12.0
 
 
 @dataclass(frozen=True)
+class FormantLabParameters:
+    enabled: bool = True
+    bypassed: bool = False
+    pitch_semitones: float = 0.0
+    formant_semitones: float = 0.0
+    formant_factor: float = 1.0
+
+    def asdict(self):
+        return {
+            "enabled": self.enabled,
+            "bypassed": self.bypassed,
+            "pitch_semitones": self.pitch_semitones,
+            "formant_semitones": self.formant_semitones,
+            "formant_factor": self.formant_factor,
+        }
+
+
+@dataclass(frozen=True)
 class FormantPrototypeSnapshot:
     available: bool
     active: bool
@@ -45,20 +63,39 @@ class FormantPrototypeSnapshot:
 
 class FormantLabState:
     def __init__(self):
-        self.enabled = True
-        self.pitch_semitones = 0.0
-        self.formant_semitones = 0.0
-        self.bypassed = False
+        self._parameters = formant_lab_parameters()
+
+    @property
+    def parameters(self):
+        return self._parameters
+
+    @property
+    def enabled(self):
+        return self._parameters.enabled
+
+    @property
+    def pitch_semitones(self):
+        return self._parameters.pitch_semitones
+
+    @property
+    def formant_semitones(self):
+        return self._parameters.formant_semitones
+
+    @property
+    def bypassed(self):
+        return self._parameters.bypassed
 
     @property
     def formant_factor(self):
-        return formant_factor(self.formant_semitones)
+        return self._parameters.formant_factor
+
+    def replace(self, parameters):
+        if not isinstance(parameters, FormantLabParameters):
+            raise TypeError("FormantLabState.replace expects FormantLabParameters")
+        self._parameters = parameters
 
     def reset(self):
-        self.enabled = True
-        self.pitch_semitones = 0.0
-        self.formant_semitones = 0.0
-        self.bypassed = False
+        self._parameters = formant_lab_parameters()
 
 
 class SignalsmithPitchFormantAdapter(SignalsmithStreamingAdapter):
@@ -100,11 +137,12 @@ class ExperimentalPitchFormantEffect(Effect):
 
     def process(self, mono, frames, sample_rate):
         source = np.asarray(mono, dtype=np.float32)
-        pitch = float(self.state.pitch_semitones)
-        formant = validate_formant_semitones(self.state.formant_semitones)
-        factor = formant_factor(formant)
-        if not self.state.enabled or self.state.bypassed:
-            self._snapshot = self._make_snapshot(False, self.state.bypassed, pitch, formant, factor)
+        parameters = self.state.parameters
+        pitch = parameters.pitch_semitones
+        formant = parameters.formant_semitones
+        factor = parameters.formant_factor
+        if not parameters.enabled or parameters.bypassed:
+            self._snapshot = self._make_snapshot(False, parameters.bypassed, pitch, formant, factor)
             return source.astype(np.float32, copy=False)
         try:
             if self._adapter is None:
@@ -155,7 +193,14 @@ class ExperimentalPitchFormantEffect(Effect):
     def reset(self):
         if self._adapter is not None:
             self._adapter.reset()
-        self._snapshot = self._make_snapshot(False, self.state.bypassed, self.state.pitch_semitones, self.state.formant_semitones, self.state.formant_factor)
+        parameters = self.state.parameters
+        self._snapshot = self._make_snapshot(
+            False,
+            parameters.bypassed,
+            parameters.pitch_semitones,
+            parameters.formant_semitones,
+            parameters.formant_factor,
+        )
 
     def close(self):
         if self._adapter is not None:
@@ -193,3 +238,23 @@ def validate_formant_semitones(value):
 
 def formant_factor(semitones):
     return 2.0 ** (validate_formant_semitones(semitones) / 12.0)
+
+
+def formant_lab_parameters(
+    *,
+    enabled=True,
+    bypassed=False,
+    pitch_semitones=0.0,
+    formant_semitones=0.0,
+):
+    formant_semitones = validate_formant_semitones(formant_semitones)
+    if not isinstance(pitch_semitones, (int, float)) or isinstance(pitch_semitones, bool) or not isfinite(float(pitch_semitones)):
+        raise ValueError("pitch semitones must be finite")
+    pitch_semitones = float(pitch_semitones)
+    return FormantLabParameters(
+        enabled=bool(enabled),
+        bypassed=bool(bypassed),
+        pitch_semitones=pitch_semitones,
+        formant_semitones=formant_semitones,
+        formant_factor=formant_factor(formant_semitones),
+    )

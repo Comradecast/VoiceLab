@@ -337,22 +337,24 @@ class ApplicationService(QObject):
             self.telemetry.record_command_result("update_formant_lab", result)
             return result
         try:
+            from voice_lab.effects.formant_lab import formant_lab_parameters
+
+            current = self.engine.formant_lab.parameters
             if pitch_semitones is not None:
                 pitch_semitones = self.config.validate_effect_parameters(1.0, 0.0, 4000, pitch_semitones).pitch
-            if formant_semitones is not None:
-                from voice_lab.effects.formant_lab import validate_formant_semitones
-
-                formant_semitones = validate_formant_semitones(formant_semitones)
+            parameters = formant_lab_parameters(
+                enabled=current.enabled if enabled is None else enabled,
+                bypassed=current.bypassed if bypassed is None else bypassed,
+                pitch_semitones=current.pitch_semitones if pitch_semitones is None else pitch_semitones,
+                formant_semitones=(
+                    current.formant_semitones if formant_semitones is None else formant_semitones
+                ),
+            )
         except Exception as exc:
             result = CommandResult.fail(str(exc))
             self.telemetry.record_command_result("update_formant_lab", result)
             return result
-        self.engine.set_formant_lab(
-            enabled=enabled,
-            pitch_semitones=pitch_semitones,
-            formant_semitones=formant_semitones,
-            bypassed=bypassed,
-        )
+        self.engine.set_formant_lab(parameters)
         state = self.formant_lab_state()
         self.telemetry.set_metadata("formant_lab", state)
         result = CommandResult.ok("Formant Lab updated.", formant_lab=state)

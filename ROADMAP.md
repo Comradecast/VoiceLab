@@ -1328,6 +1328,11 @@ character, preset, persistence, or production-chain integration is attempted.
   devices, meters, soundboard behavior, M8.0 input processing behavior, or
   Signalsmith production pitch configuration were changed.
 - Add a guarded Formant Lab UI panel only when launched with `--formant-lab`.
+- Use an immutable whole-configuration runtime snapshot for Formant Lab
+  parameters. ApplicationService validates a complete snapshot outside the
+  callback, AudioEngine replaces the active snapshot as one reference, and the
+  Experimental Pitch/Formant effect reads one snapshot reference at the start
+  of each process block.
 
 ### Completion Notes
 
@@ -1347,9 +1352,24 @@ character, preset, persistence, or production-chain integration is attempted.
 - Automated smoke evidence confirmed the prototype produces finite output,
   reports Signalsmith backend telemetry, and reports the expected current
   formant factor and latency metadata.
+- The M8.1 runtime hardening correction removes the pre-live audit's mixed
+  scalar-update risk. The callback path uses no lock, queue, history, stream
+  restart, device reopen, route interruption, settings write, preset write, or
+  native backend reconstruction for ordinary Formant Lab parameter changes.
+- Luke's live evaluation confirmed the backend is technically viable and that
+  neutral operation is usable. Subtle formant moves can be useful, with the
+  plausible natural-character range around +/-0.5 to +/-2 semitones.
+  Approximately +/-3 already commonly sounded odd, and larger standalone
+  values generally did not sound natural.
+- Live evaluation also confirmed that pitch plus formant alone is insufficient
+  for intended production character targeting: pitch +3 / formant +1 sounded
+  like a man attempting to imitate a woman. The backend remains viable as an
+  M8.2 character-transformation component, but raw standalone formant controls
+  are not sufficient production character targets.
 - Accepted prototype limitations: formant quality is only algorithmic evidence
   until live operator listening; the implementation uses Signalsmith's rough
   internal F0 estimation by leaving formant base at default; production
   character integration, persistence, preset storage, and UX naming are
-  deferred to later milestones; M8.1 must not be marked PASS until live
-  hardware/audio acceptance is recorded.
+  deferred to later milestones; M8.1 must remain PROVISIONAL until the
+  immutable-snapshot correction is briefly live-smoked and final acceptance is
+  committed.
