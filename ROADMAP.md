@@ -1109,7 +1109,7 @@ audio, routing, effects, devices, character state, or settings.
 
 ## M7.2 - Custom Voice Management and Operator Polish
 
-Status: PROVISIONAL
+Status: PASS
 
 Purpose: make saved custom voices safer and clearer for normal operators by
 distinguishing built-in and custom voices, adding rename and duplicate
@@ -1165,4 +1165,25 @@ operations, requiring confirmation for delete and overwrite, and protecting
   validation, persistence compatibility, unsaved discard/cancel behavior,
   bypass identity separation, grouped selector behavior, action enabled states,
   UI cancel paths, and prohibited UI imports.
-- Manual M7.2 live UI acceptance remains required.
+- Manual M7.2 live UI acceptance is complete with documented limits.
+- Luke confirmed that every M7.2 scenario he could practically test passed.
+  No live product failure was observed.
+- Live PASS results were recorded for built-in/custom selector distinction,
+  custom voice save, rename, duplicate, delete confirmation, overwrite
+  confirmation, unsaved-change Cancel and Discard behavior, relaunch
+  persistence, application regression behavior, and final audio regression.
+- Final audio regression where tested: metallic tail remained absent, flutter
+  remained absent, latency remained acceptable.
+- Untested scenarios are not represented as passed. Any manual edge scenario
+  not practically executed remains NOT TESTED.
+- The pre-acceptance audit identified automated-test/evidence coverage gaps,
+  not known product failures. These remain non-blocking automated coverage
+  debt:
+  rename empty-string rejection; exact em dash `Custom — Unsaved` reserved-name
+  rejection; rename conflict unchanged-data assertion; unrelated custom voice
+  unchanged during overwrite; advanced manual change direct `Custom - Unsaved`
+  pre-reset assertion; cancelled Reset preserving unsaved selection and
+  parameters; confirmed selector discard executing exactly once; programmatic
+  selector rebuild false-prompt prevention; startup restoration false-prompt
+  condition; direct disabled section-header assertion; and
+  Rename/Duplicate/Delete disabled state for `Custom - Unsaved`.

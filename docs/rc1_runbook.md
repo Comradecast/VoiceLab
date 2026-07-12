@@ -563,7 +563,7 @@ Manual M7.1 checklist:
 
 ## Custom Voice Management
 
-M7.2 Status: PROVISIONAL.
+M7.2 Status: PASS.
 
 M7.2 improves saved custom voice management without changing DSP, routing,
 devices, meters, soundboard behavior, or built-in character targets.
@@ -593,7 +593,59 @@ Behavior:
 - Bypass remains separate from voice identity and is not represented as a
   custom voice.
 
-Manual M7.2 live UI acceptance remains pending.
+Manual M7.2 live UI acceptance is complete with documented limits. Luke
+confirmed that every M7.2 scenario he could practically test passed. No live
+failure was observed. Untested scenarios are not represented as passed.
+
+Manual M7.2 PASS results:
+
+- Built-in/custom selector distinction: PASS.
+- Custom voice save: PASS.
+- Rename Custom Voice: PASS.
+- Duplicate Custom Voice: PASS.
+- Delete Custom Voice confirmation: PASS.
+- Overwrite confirmation: PASS.
+- Unsaved-change Cancel behavior: PASS.
+- Unsaved-change Discard behavior: PASS.
+- Relaunch persistence: PASS.
+- Application launches stopped: PASS.
+- Processing Start/Stop regression: PASS.
+- Soundboard regression: PASS.
+- Meter regression: PASS.
+- Window scrolling/layout: PASS.
+- Close and relaunch: PASS.
+- Metallic tail remained absent: PASS.
+- Flutter remained absent: PASS.
+- Latency remained acceptable: PASS.
+
+Manual M7.2 NOT TESTED:
+
+- Any scenario not practically executed by Luke remains NOT TESTED.
+- No additional specific live failure scenario was reported.
+
+Automated coverage debt from the pre-acceptance audit:
+
+- Rename empty-string rejection: AUTOMATED COVERAGE DEBT.
+- Exact em dash `Custom — Unsaved` reserved-name rejection: AUTOMATED
+  COVERAGE DEBT.
+- Rename conflict unchanged-data assertion: AUTOMATED COVERAGE DEBT.
+- Overwrite unrelated custom voice unchanged assertion: AUTOMATED COVERAGE
+  DEBT.
+- Advanced manual change direct `Custom - Unsaved` pre-reset assertion:
+  AUTOMATED COVERAGE DEBT.
+- Cancelled Reset preserving unsaved selection and parameters: AUTOMATED
+  COVERAGE DEBT.
+- Confirmed selector discard executing exactly once: AUTOMATED COVERAGE DEBT.
+- Programmatic selector rebuild false-prompt prevention: AUTOMATED COVERAGE
+  DEBT.
+- Startup restoration false-prompt condition: AUTOMATED COVERAGE DEBT.
+- Section header disabled/non-selectable model behavior direct assertion:
+  AUTOMATED COVERAGE DEBT.
+- Rename/Duplicate/Delete disabled for `Custom - Unsaved`: AUTOMATED COVERAGE
+  DEBT.
+
+These coverage-debt items are not known product failures and did not block live
+operator acceptance.
 
 Manual M7.2 checklist:
 
