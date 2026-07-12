@@ -116,11 +116,12 @@ def validate_preset_parameters(preset):
     if issues:
         return PresetValidationResult(False, issues=tuple(issues))
 
-    normalized_preset = dict(preset)
-    normalized_preset["gain"] = int(preset_gain) if float(preset_gain).is_integer() else preset_gain
-    normalized_preset["robot"] = int(preset_robot) if float(preset_robot).is_integer() else preset_robot
-    normalized_preset["lowpass"] = preset_lowpass
-    normalized_preset["pitch"] = int(preset_pitch) if float(preset_pitch).is_integer() else preset_pitch
+    normalized_preset = {
+        "gain": int(preset_gain) if float(preset_gain).is_integer() else preset_gain,
+        "robot": int(preset_robot) if float(preset_robot).is_integer() else preset_robot,
+        "lowpass": preset_lowpass,
+        "pitch": int(preset_pitch) if float(preset_pitch).is_integer() else preset_pitch,
+    }
     effect_parameters = validate_effect_parameters(
         gain=preset_gain / 10.0,
         robot=preset_robot / 100.0,

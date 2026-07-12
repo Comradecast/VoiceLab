@@ -683,6 +683,160 @@ Manual M7.2 checklist:
 - Flutter absent.
 - Latency acceptable.
 
+## Input Processing Foundation
+
+M8.0 Status: PROVISIONAL.
+
+M8.0 adds a default-disabled global input-processing foundation for the
+microphone voice path. These settings are operator settings, not custom voice
+parameters, and are not stored in `presets.json`.
+
+Signal order:
+
+- Raw Microphone.
+- High-Pass Filter.
+- Noise Gate.
+- Compressor.
+- Pitch Shift.
+- Robot.
+- Lowpass.
+- Gain.
+- Voice-path Limiter.
+- Mixer.
+- Router outputs.
+
+Ownership and limitations:
+
+- AudioEngine owns the processors and existing character effects.
+- Mixer still owns soundboard mixing and final bus clipping.
+- Router still owns route delivery.
+- UI updates settings only through ApplicationService.
+- The Limiter acts on the processed voice path before Mixer. It does not limit
+  soundboard audio or the final mixed Output bus.
+- Output meter still observes the existing post-clamp final mixed bus.
+- Microphone Input meter remains raw pre-processing.
+- Processed Voice meter reflects active input processing, character effects,
+  and the voice limiter.
+- Bypass Effects uses the existing bypass path and does not erase
+  input-processing settings.
+
+Controls and ranges:
+
+- High-Pass Filter: Enabled, Cutoff 40 Hz through 200 Hz, default 80 Hz,
+  disabled.
+- Noise Gate: Enabled, Threshold -70 dBFS through -20 dBFS, Release 40 ms
+  through 1000 ms, defaults -45 dBFS and 180 ms, disabled. Internally this is
+  a conservative downward expander with fixed attack, hold, ratio, and
+  attenuation floor.
+- Compressor: Enabled, Threshold -40 dBFS through 0 dBFS, Ratio 1.0:1 through
+  10.0:1, Attack 1 ms through 100 ms, Release 20 ms through 1000 ms, Makeup
+  Gain 0 dB through +12 dB, defaults -18 dBFS, 3.0:1, 10 ms, 150 ms, 0 dB,
+  disabled.
+- Limiter: Enabled, Ceiling -12 dBFS through -0.5 dBFS, Release 20 ms through
+  500 ms, defaults -1 dBFS and 80 ms, disabled.
+
+Manual M8.0 live acceptance remains pending. Do not mark these scenarios PASS
+until Luke completes live hardware and audible testing.
+
+M8.0 live acceptance checklist:
+
+Baseline Compatibility:
+
+- Application launches stopped.
+- All new processors default disabled on legacy settings.
+- Baseline Natural voice unchanged with processors disabled.
+- Existing characters remain distinct.
+- Metallic tail absent.
+- Flutter absent.
+- Latency remains acceptable.
+- No audible difference when all four processors are disabled.
+
+High-Pass Filter:
+
+- Enable while running.
+- Disable while running.
+- Cutoff sweep.
+- Low-frequency rumble reduction.
+- Normal speech remains intelligible.
+- No clicks during enable/disable.
+- Persistence after relaunch.
+
+Noise Gate:
+
+- Enable while running.
+- Disable while running.
+- Background noise attenuation.
+- Quiet speech remains audible.
+- Initial consonants are not cut off.
+- Ordinary pauses do not chatter.
+- Release sweep.
+- Threshold sweep.
+- Persistence after relaunch.
+
+Compressor:
+
+- Enable while running.
+- Disable while running.
+- Quiet/loud speech consistency.
+- Threshold sweep.
+- Ratio sweep.
+- Attack sweep.
+- Release sweep.
+- Makeup gain.
+- No obvious pumping under ordinary settings.
+- No crackle or discontinuity.
+- Persistence after relaunch.
+
+Limiter:
+
+- Enable while running.
+- Disable while running.
+- Loud voice peak control.
+- Ceiling sweep.
+- Release sweep.
+- No crackle.
+- No persistent gain reduction after speech stops.
+- Persistence after relaunch.
+
+Combined Chain:
+
+- All four enabled together.
+- Switch every built-in voice.
+- Select a saved custom voice.
+- Edit advanced voice controls.
+- Character strength sweep.
+- Bypass Effects.
+- Disable bypass and recover exact configuration.
+- Reset Voice does not reset input processing.
+- Reset Input Processing does not reset voice.
+- Reset Input Processing Cancel.
+- Reset Input Processing confirmation.
+- Voice plus soundboard.
+- Soundboard-only attribution.
+- Monitor enabled.
+- Monitor disabled.
+- Meters remain truthful.
+- Input meter remains raw.
+- Processed meter reflects processing.
+- Output meter includes soundboard.
+
+Lifecycle and Regression:
+
+- Repeated Start/Stop.
+- Change processor parameters while running.
+- Device refresh while stopped.
+- Failed Start and retry where practical.
+- Stop clears active meter state.
+- Close while running.
+- Relaunch.
+- Settings restoration.
+- Window scrolling/layout.
+- 15-minute combined-processing stability.
+- No increasing latency.
+- No metallic tail.
+- No flutter.
+- No new audible block boundaries.
+
 ## Device Failure Recovery
 
 M6.3 normalizes startup and routing failures into stable categories before they

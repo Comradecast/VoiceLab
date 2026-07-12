@@ -1187,3 +1187,75 @@ operations, requiring confirmation for delete and overwrite, and protecting
   selector rebuild false-prompt prevention; startup restoration false-prompt
   condition; direct disabled section-header assertion; and
   Rename/Duplicate/Delete disabled state for `Custom - Unsaved`.
+
+## M8.0 - Input Processing Foundation
+
+Status: PROVISIONAL
+
+Purpose: add a configurable, default-disabled real-time input-processing
+foundation for microphone clarity, background-noise control, dynamic-range
+control, and voice-path peak protection without changing existing voice
+characters, routing, device behavior, meters, soundboard behavior, or
+Signalsmith pitch configuration.
+
+### Scope
+
+- Add global operator settings for High-Pass Filter, Noise Gate, Compressor,
+  and voice-path Limiter.
+- Keep all four processors disabled by default so legacy `settings.json` and
+  `presets.json` files load without migration and preserve the pre-M8 voice
+  path when processors remain disabled.
+- Keep M8.0 input-processing settings out of custom voice presets.
+- Preserve the existing character-effect order: Pitch Shift, Robot, Lowpass,
+  Gain.
+- Use the final voice path: High-Pass, Noise Gate, Compressor, Pitch Shift,
+  Robot, Lowpass, Gain, Limiter.
+- Keep AudioEngine as the owner of voice processing, Mixer as the only owner of
+  combining voice and soundboard audio, Router as the owner of route delivery,
+  AudioIO as the owner of sounddevice, and UI communication through
+  ApplicationService.
+- Preserve Bypass Effects as the single bypass path. Bypass remains inside
+  active routing, does not stop audio, does not change routes, and does not
+  erase input-processing settings.
+
+### Processor Controls
+
+- High-Pass Filter: Enabled, Cutoff 40 Hz through 200 Hz; default 80 Hz and
+  disabled.
+- Noise Gate: Enabled, Threshold -70 dBFS through -20 dBFS, Release 40 ms
+  through 1000 ms; defaults -45 dBFS, 180 ms, disabled. Internally this is a
+  conservative downward expander with fixed 8 ms attack, 50 ms hold, 2.5:1
+  ratio, and -36 dB attenuation floor.
+- Compressor: Enabled, Threshold -40 dBFS through 0 dBFS, Ratio 1.0:1 through
+  10.0:1, Attack 1 ms through 100 ms, Release 20 ms through 1000 ms, Makeup
+  Gain 0 dB through +12 dB; defaults -18 dBFS, 3.0:1, 10 ms, 150 ms, 0 dB,
+  disabled.
+- Limiter: Enabled, Ceiling -12 dBFS through -0.5 dBFS, Release 20 ms through
+  500 ms; defaults -1 dBFS, 80 ms, disabled.
+
+### Completion Notes
+
+- M8.0 processors are built-in effects with stable plugin metadata and
+  deterministic chain order. The order is not dependent on filesystem
+  discovery.
+- Runtime parameter changes update effect configuration through
+  ApplicationService and AudioEngine without restarting streams, reopening
+  devices, writing files from the callback, or moving ownership into Router or
+  Mixer.
+- Processor state is bounded to filter/envelope scalars; no unbounded
+  histories, FFT processing, callback queues, callback Qt activity, callback
+  settings writes, callback device queries, or repetitive callback logging were
+  added.
+- Microphone Input meters remain pre-processing, Processed Voice meters remain
+  post input-processing, character processing, and limiter, and Output meters
+  remain the existing post-mix post-clamp bus.
+- The M8.0 Limiter acts only on the processed voice path before Mixer. Mixer
+  still owns final bus clipping, soundboard audio is not limited by M8.0, and
+  Output still observes the existing post-clamp final bus.
+- Automated verification covers processor contracts, high-pass attenuation,
+  gate attenuation and release, compressor ratio and smoothing, limiter ceiling,
+  chain order, bypass, settings compatibility, presets compatibility,
+  UI/service boundaries, callback/source guards, and bounded repeated
+  processing.
+- Live hardware and audible acceptance remains required before M8.0 can be
+  marked PASS.

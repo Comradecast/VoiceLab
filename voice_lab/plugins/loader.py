@@ -2,7 +2,17 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
 
-from voice_lab.effects import EffectChain, GainEffect, LowpassEffect, PitchShiftEffect, RobotEffect
+from voice_lab.effects import (
+    CompressorEffect,
+    EffectChain,
+    GainEffect,
+    HighPassFilterEffect,
+    LowpassEffect,
+    NoiseGateEffect,
+    PitchShiftEffect,
+    RobotEffect,
+    VoiceLimiterEffect,
+)
 from voice_lab.plugins.discovery import BUILTIN_PLUGIN_SOURCE
 from voice_lab.plugins.metadata import (
     Compatibility,
@@ -66,9 +76,51 @@ def builtin_plugin_metadata():
         display_name="VoiceLab Built-In Effects",
         version="1.0.0",
         provider="VoiceLab",
-        description="Built-in Pitch Shift, Robot, Lowpass, and Gain effects.",
+        description="Built-in input processing, Pitch Shift, Robot, Lowpass, Gain, and limiter effects.",
         compatibility=Compatibility(min_api_version="1.0.0", max_api_version="1.0.0"),
         effects=(
+            EffectDescriptor(
+                effect_id="voicelab.effect.high_pass",
+                display_name="High-Pass",
+                category="filter",
+                factory_id="voicelab.factory.high_pass",
+                factory=lambda effect_state: HighPassFilterEffect(effect_state.input_processing.high_pass),
+                parameter_metadata={
+                    "enabled": {"default": False},
+                    "cutoff_hz": {"unit": "Hz", "minimum": 40, "maximum": 200, "default": 80},
+                },
+            ),
+            EffectDescriptor(
+                effect_id="voicelab.effect.noise_gate",
+                display_name="Noise Gate",
+                category="dynamics",
+                factory_id="voicelab.factory.noise_gate",
+                factory=lambda effect_state: NoiseGateEffect(effect_state.input_processing.noise_gate),
+                parameter_metadata={
+                    "enabled": {"default": False},
+                    "threshold_dbfs": {"unit": "dBFS", "minimum": -70, "maximum": -20, "default": -45},
+                    "release_ms": {"unit": "ms", "minimum": 40, "maximum": 1000, "default": 180},
+                    "attack_ms": {"fixed": 8},
+                    "hold_ms": {"fixed": 50},
+                    "ratio": {"fixed": 2.5},
+                    "attenuation_floor_db": {"fixed": -36},
+                },
+            ),
+            EffectDescriptor(
+                effect_id="voicelab.effect.compressor",
+                display_name="Compressor",
+                category="dynamics",
+                factory_id="voicelab.factory.compressor",
+                factory=lambda effect_state: CompressorEffect(effect_state.input_processing.compressor),
+                parameter_metadata={
+                    "enabled": {"default": False},
+                    "threshold_dbfs": {"unit": "dBFS", "minimum": -40, "maximum": 0, "default": -18},
+                    "ratio": {"unit": ":1", "minimum": 1.0, "maximum": 10.0, "default": 3.0},
+                    "attack_ms": {"unit": "ms", "minimum": 1, "maximum": 100, "default": 10},
+                    "release_ms": {"unit": "ms", "minimum": 20, "maximum": 1000, "default": 150},
+                    "makeup_gain_db": {"unit": "dB", "minimum": 0, "maximum": 12, "default": 0},
+                },
+            ),
             EffectDescriptor(
                 effect_id="pitch_shift",
                 display_name="Pitch Shift",
@@ -119,6 +171,19 @@ def builtin_plugin_metadata():
                 category="utility",
                 factory_id="voicelab.factory.gain",
                 factory=lambda effect_state: GainEffect(lambda: effect_state.gain),
+            ),
+            EffectDescriptor(
+                effect_id="voicelab.effect.limiter",
+                display_name="Limiter",
+                category="dynamics",
+                factory_id="voicelab.factory.limiter",
+                factory=lambda effect_state: VoiceLimiterEffect(effect_state.input_processing.limiter),
+                parameter_metadata={
+                    "enabled": {"default": False},
+                    "ceiling_dbfs": {"unit": "dBFS", "minimum": -12, "maximum": -0.5, "default": -1},
+                    "release_ms": {"unit": "ms", "minimum": 20, "maximum": 500, "default": 80},
+                    "scope": "processed voice path before Mixer",
+                },
             ),
         ),
     )

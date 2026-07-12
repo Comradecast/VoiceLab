@@ -7,6 +7,11 @@ from numbers import Real
 from typing import Any
 
 from voice_lab.config.config import SETTINGS_PATH
+from voice_lab.config.input_processing import (
+    DEFAULT_INPUT_PROCESSING_SETTINGS,
+    InputProcessingSettings,
+    validate_input_processing_document,
+)
 from voice_lab.config.validation import ValidationIssue
 from voice_lab.config.voice_characters import DEFAULT_CHARACTER_STRENGTH, validate_strength
 
@@ -53,6 +58,9 @@ class OperatorSettings:
     selected_preset: str | None = None
     selected_character_id: str | None = None
     character_strength: float = DEFAULT_CHARACTER_STRENGTH
+    input_processing: InputProcessingSettings = field(
+        default_factory=lambda: DEFAULT_INPUT_PROCESSING_SETTINGS
+    )
 
     def asdict(self):
         return {
@@ -68,6 +76,7 @@ class OperatorSettings:
             "selected_preset": self.selected_preset,
             "selected_character_id": self.selected_character_id,
             "character_strength": self.character_strength,
+            "input_processing": self.input_processing.asdict(),
         }
 
 
@@ -181,6 +190,10 @@ def validate_settings_document(data):
         DEFAULT_CHARACTER_STRENGTH,
         issues,
     )
+    input_processing, input_processing_issues = validate_input_processing_document(
+        data.get("input_processing")
+    )
+    issues.extend(input_processing_issues)
     return SettingsLoadResult(
         OperatorSettings(
             devices=devices,
@@ -190,6 +203,7 @@ def validate_settings_document(data):
             selected_preset=selected_preset,
             selected_character_id=selected_character_id,
             character_strength=character_strength,
+            input_processing=input_processing,
         ),
         issues=tuple(issues),
     )

@@ -93,3 +93,10 @@ class EffectChain:
             if close is None:
                 continue
             close()
+
+    def reset(self):
+        for effect in self.effects:
+            reset = getattr(effect, "reset", None)
+            if reset is None:
+                continue
+            reset()

@@ -9,6 +9,11 @@ from voice_lab.app.devices import describe_devices, resolve_stored_identity
 from voice_lab.app.operator_status import build_operator_status
 from voice_lab.config.config import DEFAULT_INPUT_ID, DEFAULT_MONITOR_ID, DEFAULT_OUTPUT_ID, SOUNDS_DIR
 from voice_lab.config import ConfigurationService
+from voice_lab.config.input_processing import (
+    DEFAULT_INPUT_PROCESSING_SETTINGS,
+    input_processing_ranges,
+    update_input_processing,
+)
 from voice_lab.config.voice_characters import (
     DEFAULT_CHARACTER_STRENGTH,
     NATURAL_CHARACTER_ID,
@@ -76,6 +81,8 @@ class ApplicationService(QObject):
             "pitch": 0.0,
         }
         settings = self._operator_settings()
+        self.current_input_processing = settings.input_processing
+        self.engine.set_input_processing(self.current_input_processing)
         self.current_monitor_enabled = settings.monitor_enabled
         self.current_monitor_volume = settings.monitor_volume
         self.current_soundboard_volume = settings.soundboard_volume
@@ -285,7 +292,61 @@ class ApplicationService(QObject):
             "selected_character_id": self.current_character_id,
             "character_strength": self.current_character_strength,
             "settings_issues": issues,
+            "input_processing": self.current_input_processing.asdict(),
         }
+
+    def input_processing_state(self):
+        return self.current_input_processing.asdict()
+
+    def input_processing_parameter_ranges(self):
+        return input_processing_ranges()
+
+    def update_input_processing(self, processor, **changes):
+        try:
+            updated, issues = update_input_processing(
+                self.current_input_processing,
+                processor,
+                **changes,
+            )
+        except (TypeError, ValueError) as exc:
+            result = CommandResult.fail(str(exc), processor=processor)
+            self.telemetry.record_command_result("update_input_processing", result)
+            return result
+        if issues:
+            self._record_validation_failure("update_input_processing", issues, processor=processor)
+            result = CommandResult.fail(
+                "Invalid input processing settings.",
+                issues=issues,
+                processor=processor,
+            )
+            self.telemetry.record_command_result("update_input_processing", result)
+            return result
+        self.current_input_processing = updated
+        self.engine.set_input_processing(updated)
+        self._update_operator_settings(input_processing=updated)
+        self.telemetry.set_metadata("input_processing", updated.asdict())
+        result = CommandResult.ok("Input processing updated.", input_processing=updated.asdict())
+        self.telemetry.record_command_result("update_input_processing", result, processor=processor)
+        return result
+
+    def reset_input_processing(self):
+        if self.current_input_processing == DEFAULT_INPUT_PROCESSING_SETTINGS:
+            result = CommandResult.ok(
+                "Input processing already at defaults.",
+                input_processing=self.current_input_processing.asdict(),
+            )
+            self.telemetry.record_command_result("reset_input_processing", result)
+            return result
+        self.current_input_processing = DEFAULT_INPUT_PROCESSING_SETTINGS
+        self.engine.set_input_processing(self.current_input_processing)
+        self._update_operator_settings(input_processing=self.current_input_processing)
+        self.telemetry.set_metadata("input_processing", self.current_input_processing.asdict())
+        result = CommandResult.ok(
+            "Input processing reset.",
+            input_processing=self.current_input_processing.asdict(),
+        )
+        self.telemetry.record_command_result("reset_input_processing", result)
+        return result
 
     def voice_characters(self):
         return tuple(character.asdict() for character in voice_characters())

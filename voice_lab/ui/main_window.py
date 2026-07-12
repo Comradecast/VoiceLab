@@ -43,6 +43,7 @@ class App(QWidget):
         root_layout.addWidget(scroll_area)
         self.restored_preferences = self.service.operator_preferences() if hasattr(self.service, "operator_preferences") else {}
         self._updating_voice_controls = False
+        self._updating_input_processing = False
         self._last_voice_selection = None
 
         layout.addWidget(QLabel("Voice Character"))
@@ -146,6 +147,12 @@ class App(QWidget):
             int(round(float(self.restored_preferences.get("soundboard_volume", 0.70)) * 100)),
         )
 
+        self.input_processing_toggle = QCheckBox("Input Processing")
+        self.input_processing_toggle.stateChanged.connect(lambda _state: self.set_input_processing_visible())
+        layout.addWidget(self.input_processing_toggle)
+        self.input_processing_widgets = []
+        self._build_input_processing_controls(layout)
+
         self.advanced_toggle = QCheckBox("Show Advanced Controls")
         self.advanced_toggle.stateChanged.connect(lambda _state: self.set_advanced_visible())
         layout.addWidget(self.advanced_toggle)
@@ -243,6 +250,8 @@ class App(QWidget):
 
         self.advanced_widgets.append(self.diagnostic_status)
         self.sync_voice_controls_from_service()
+        self.sync_input_processing_from_service()
+        self.set_input_processing_visible()
         self.set_advanced_visible()
         self.refresh_custom_voice_actions()
         self.refresh_soundboard()
@@ -433,6 +442,168 @@ class App(QWidget):
         layout.addWidget(label)
         layout.addWidget(s)
         return s
+
+    def _build_input_processing_controls(self, layout):
+        self.input_processing_controls = {}
+        self._add_input_processing_group(
+            layout,
+            "high_pass",
+            "High-Pass Filter",
+            (("cutoff_hz", "Cutoff", 40, 200, "Hz", 1.0),),
+        )
+        self._add_input_processing_group(
+            layout,
+            "noise_gate",
+            "Noise Gate",
+            (
+                ("threshold_dbfs", "Threshold", -70, -20, "dBFS", 1.0),
+                ("release_ms", "Release", 40, 1000, "ms", 1.0),
+            ),
+        )
+        self._add_input_processing_group(
+            layout,
+            "compressor",
+            "Compressor",
+            (
+                ("threshold_dbfs", "Threshold", -40, 0, "dBFS", 1.0),
+                ("ratio", "Ratio", 10, 100, ":1", 10.0),
+                ("attack_ms", "Attack", 1, 100, "ms", 1.0),
+                ("release_ms", "Release", 20, 1000, "ms", 1.0),
+                ("makeup_gain_db", "Makeup Gain", 0, 12, "dB", 1.0),
+            ),
+        )
+        self._add_input_processing_group(
+            layout,
+            "limiter",
+            "Limiter",
+            (
+                ("ceiling_dbfs", "Ceiling", -120, -5, "dBFS", 10.0),
+                ("release_ms", "Release", 20, 500, "ms", 1.0),
+            ),
+        )
+        self.reset_input_processing_button = QPushButton("Reset Input Processing")
+        self.reset_input_processing_button.clicked.connect(self.reset_input_processing)
+        self.input_processing_widgets.append(self.reset_input_processing_button)
+        layout.addWidget(self.reset_input_processing_button)
+
+    def _add_input_processing_group(self, layout, processor, title, params):
+        title_label = QLabel(title)
+        enabled = QCheckBox("Enabled")
+        enabled.stateChanged.connect(lambda _state, p=processor: self.update_input_processing(p))
+        self.input_processing_widgets.extend((title_label, enabled))
+        layout.addWidget(title_label)
+        layout.addWidget(enabled)
+        controls = {"enabled": enabled, "params": {}}
+        for key, label_text, low, high, unit, scale in params:
+            slider = self.input_processing_slider(layout, processor, key, label_text, low, high, unit, scale)
+            controls["params"][key] = slider
+        self.input_processing_controls[processor] = controls
+
+    def input_processing_slider(self, layout, processor, key, name, low, high, unit, scale):
+        label = QLabel("")
+        slider = QSlider(Qt.Horizontal)
+        slider.setRange(low, high)
+        slider._voice_lab_label = label
+        slider._voice_lab_processor = processor
+        slider._voice_lab_param = key
+        slider._voice_lab_label_name = name
+        slider._voice_lab_unit = unit
+        slider._voice_lab_scale = scale
+        slider.valueChanged.connect(
+            lambda value, s=slider: (
+                self._set_input_processing_slider_label(s),
+                self.update_input_processing(s._voice_lab_processor),
+            )
+        )
+        layout.addWidget(label)
+        layout.addWidget(slider)
+        self.input_processing_widgets.extend((label, slider))
+        return slider
+
+    def set_input_processing_visible(self):
+        visible = self.input_processing_toggle.isChecked()
+        for widget in getattr(self, "input_processing_widgets", ()):
+            widget.setVisible(visible)
+
+    def sync_input_processing_from_service(self):
+        if not hasattr(self.service, "input_processing_state") or not hasattr(self, "input_processing_controls"):
+            return
+        state = self.service.input_processing_state()
+        self._updating_input_processing = True
+        try:
+            for processor, controls in self.input_processing_controls.items():
+                processor_state = state.get(processor, {})
+                controls["enabled"].setChecked(bool(processor_state.get("enabled", False)))
+                for key, slider in controls["params"].items():
+                    value = processor_state.get(key, 0)
+                    slider.setValue(int(round(float(value) * float(slider._voice_lab_scale))))
+                    self._set_input_processing_slider_label(slider)
+                self._set_input_processing_params_enabled(processor)
+        finally:
+            self._updating_input_processing = False
+
+    def update_input_processing(self, processor):
+        if self._updating_input_processing or not hasattr(self.service, "update_input_processing"):
+            return
+        controls = self.input_processing_controls[processor]
+        changes = {"enabled": controls["enabled"].isChecked()}
+        for key, slider in controls["params"].items():
+            changes[key] = slider.value() / float(slider._voice_lab_scale)
+        result = self.service.update_input_processing(processor, **changes)
+        self.display_result(result)
+        if result.success:
+            self._set_input_processing_params_enabled(processor)
+        else:
+            self.sync_input_processing_from_service()
+
+    def _set_input_processing_params_enabled(self, processor):
+        controls = self.input_processing_controls[processor]
+        enabled = controls["enabled"].isChecked()
+        for slider in controls["params"].values():
+            slider.setEnabled(enabled)
+            slider._voice_lab_label.setEnabled(enabled)
+
+    def _set_input_processing_slider_label(self, slider):
+        value = slider.value() / float(slider._voice_lab_scale)
+        if slider._voice_lab_scale == 1.0:
+            text_value = f"{int(round(value))}"
+        else:
+            text_value = f"{value:.1f}"
+        slider._voice_lab_label.setText(
+            f"{slider._voice_lab_label_name}: {text_value} {slider._voice_lab_unit}"
+        )
+
+    def reset_input_processing(self):
+        if not hasattr(self.service, "reset_input_processing"):
+            return
+        defaults = {}
+        if hasattr(self.service, "input_processing_state"):
+            defaults = self.service.input_processing_state()
+        if defaults != {
+            "high_pass": {"enabled": False, "cutoff_hz": 80.0},
+            "noise_gate": {"enabled": False, "threshold_dbfs": -45.0, "release_ms": 180.0},
+            "compressor": {
+                "enabled": False,
+                "threshold_dbfs": -18.0,
+                "ratio": 3.0,
+                "attack_ms": 10.0,
+                "release_ms": 150.0,
+                "makeup_gain_db": 0.0,
+            },
+            "limiter": {"enabled": False, "ceiling_dbfs": -1.0, "release_ms": 80.0},
+        }:
+            response = QMessageBox.question(
+                self,
+                "Reset Input Processing",
+                "Reset input processing to defaults?",
+                QMessageBox.Yes | QMessageBox.Cancel,
+                QMessageBox.Cancel,
+            )
+            if response != QMessageBox.Yes:
+                return
+        result = self.service.reset_input_processing()
+        self.display_result(result)
+        self.sync_input_processing_from_service()
 
     def refresh_preset_box(self):
         current = self.preset_box.currentText()

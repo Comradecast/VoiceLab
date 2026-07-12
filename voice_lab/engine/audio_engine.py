@@ -1,6 +1,7 @@
 import numpy as np
 
 from voice_lab.config.config import SAMPLE_RATE
+from voice_lab.config.input_processing import DEFAULT_INPUT_PROCESSING_SETTINGS
 from voice_lab.core import AudioFrame
 from voice_lab.effects import EffectChain
 
@@ -11,6 +12,7 @@ class AudioEngine:
         self.robot = 0.0
         self.lowpass = 4000
         self.pitch = 0.0
+        self.input_processing = DEFAULT_INPUT_PROCESSING_SETTINGS
         self.effect_chain = effect_chain or EffectChain()
         self.effects_bypassed = False
 
@@ -35,6 +37,25 @@ class AudioEngine:
 
     def set_effects_bypassed(self, enabled):
         self.effects_bypassed = bool(enabled)
+
+    def set_input_processing(self, settings):
+        self.input_processing = settings
+        for effect in self.effect_chain.effects:
+            updater = getattr(effect, "update_config", None)
+            if updater is None:
+                continue
+            if getattr(effect, "name", "") == "High-Pass":
+                updater(settings.high_pass)
+                self.effect_chain.set_enabled("High-Pass", settings.high_pass.enabled)
+            elif getattr(effect, "name", "") == "Noise Gate":
+                updater(settings.noise_gate)
+                self.effect_chain.set_enabled("Noise Gate", settings.noise_gate.enabled)
+            elif getattr(effect, "name", "") == "Compressor":
+                updater(settings.compressor)
+                self.effect_chain.set_enabled("Compressor", settings.compressor.enabled)
+            elif getattr(effect, "name", "") == "Limiter":
+                updater(settings.limiter)
+                self.effect_chain.set_enabled("Limiter", settings.limiter.enabled)
 
     def process_voice(self, audio, frames=None):
         """Process microphone audio.
@@ -84,6 +105,9 @@ class AudioEngine:
         return np.clip(mono, -0.95, 0.95).astype(np.float32)
 
     def stop(self):
+        reset = getattr(self.effect_chain, "reset", None)
+        if reset is not None:
+            reset()
         close = getattr(self.effect_chain, "close", None)
         if close is not None:
             close()

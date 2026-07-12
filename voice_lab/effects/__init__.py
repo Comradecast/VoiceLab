@@ -6,10 +6,14 @@ __all__ = [
     "EffectChain",
     "EffectChainStatus",
     "EffectFailureStatus",
+    "CompressorEffect",
     "GainEffect",
+    "HighPassFilterEffect",
     "LowpassEffect",
+    "NoiseGateEffect",
     "PitchShiftEffect",
     "RobotEffect",
+    "VoiceLimiterEffect",
 ]
 
 
@@ -18,6 +22,18 @@ def __getattr__(name):
         from .gain import GainEffect
 
         return GainEffect
+    if name == "HighPassFilterEffect":
+        from .input_processing import HighPassFilterEffect
+
+        return HighPassFilterEffect
+    if name == "NoiseGateEffect":
+        from .input_processing import NoiseGateEffect
+
+        return NoiseGateEffect
+    if name == "CompressorEffect":
+        from .input_processing import CompressorEffect
+
+        return CompressorEffect
     if name == "LowpassEffect":
         from .lowpass import LowpassEffect
 
@@ -30,4 +46,8 @@ def __getattr__(name):
         from .robot import RobotEffect
 
         return RobotEffect
+    if name == "VoiceLimiterEffect":
+        from .input_processing import VoiceLimiterEffect
+
+        return VoiceLimiterEffect
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
