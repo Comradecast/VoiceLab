@@ -93,6 +93,76 @@ class InputProcessingSettings:
 DEFAULT_INPUT_PROCESSING_SETTINGS = InputProcessingSettings()
 
 
+@dataclass(frozen=True)
+class ProcessorActivity:
+    enabled: bool = False
+    active: bool = False
+    state: str = "Off"
+    gain_reduction_db: float = 0.0
+    cutoff_hz: float | None = None
+    ceiling_hit: bool = False
+    bypassed: bool = False
+
+    def asdict(self):
+        return {
+            "enabled": self.enabled,
+            "active": self.active,
+            "state": self.state,
+            "gain_reduction_db": self.gain_reduction_db,
+            "cutoff_hz": self.cutoff_hz,
+            "ceiling_hit": self.ceiling_hit,
+            "bypassed": self.bypassed,
+        }
+
+
+@dataclass(frozen=True)
+class InputProcessingActivity:
+    high_pass: ProcessorActivity = field(default_factory=ProcessorActivity)
+    noise_gate: ProcessorActivity = field(default_factory=ProcessorActivity)
+    compressor: ProcessorActivity = field(default_factory=ProcessorActivity)
+    limiter: ProcessorActivity = field(default_factory=ProcessorActivity)
+    bypassed: bool = False
+
+    def asdict(self):
+        return {
+            "high_pass": self.high_pass.asdict(),
+            "noise_gate": self.noise_gate.asdict(),
+            "compressor": self.compressor.asdict(),
+            "limiter": self.limiter.asdict(),
+            "bypassed": self.bypassed,
+        }
+
+
+DEFAULT_INPUT_PROCESSING_ACTIVITY = InputProcessingActivity()
+
+
+def bypassed_input_processing_activity(settings):
+    return InputProcessingActivity(
+        high_pass=ProcessorActivity(
+            enabled=settings.high_pass.enabled,
+            state="Bypassed" if settings.high_pass.enabled else "Off",
+            cutoff_hz=settings.high_pass.cutoff_hz,
+            bypassed=settings.high_pass.enabled,
+        ),
+        noise_gate=ProcessorActivity(
+            enabled=settings.noise_gate.enabled,
+            state="Bypassed" if settings.noise_gate.enabled else "Off",
+            bypassed=settings.noise_gate.enabled,
+        ),
+        compressor=ProcessorActivity(
+            enabled=settings.compressor.enabled,
+            state="Bypassed" if settings.compressor.enabled else "Off",
+            bypassed=settings.compressor.enabled,
+        ),
+        limiter=ProcessorActivity(
+            enabled=settings.limiter.enabled,
+            state="Bypassed" if settings.limiter.enabled else "Off",
+            bypassed=settings.limiter.enabled,
+        ),
+        bypassed=True,
+    )
+
+
 def input_processing_ranges():
     return {
         "high_pass": {

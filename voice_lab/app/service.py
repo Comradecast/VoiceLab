@@ -298,6 +298,11 @@ class ApplicationService(QObject):
     def input_processing_state(self):
         return self.current_input_processing.asdict()
 
+    def input_processing_activity(self):
+        activity = self.engine.input_processing_activity()
+        self.telemetry.set_metadata("input_processing_activity", activity.asdict())
+        return activity.asdict()
+
     def input_processing_parameter_ranges(self):
         return input_processing_ranges()
 

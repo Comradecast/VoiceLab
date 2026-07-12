@@ -8,6 +8,7 @@ from voice_lab.config.input_processing import (
     HighPassSettings,
     LimiterSettings,
     NoiseGateSettings,
+    ProcessorActivity,
 )
 from voice_lab.effects.base import Effect
 
@@ -36,22 +37,45 @@ class HighPassFilterEffect(Effect):
         self._b = None
         self._a = None
         self._zi = None
+        self._activity = ProcessorActivity(enabled=self._config.enabled, cutoff_hz=self._config.cutoff_hz)
 
     def update_config(self, config):
         self._config = config
         self._sample_rate = None
+        self._activity = ProcessorActivity(
+            enabled=config.enabled,
+            active=config.enabled,
+            state="ENABLED" if config.enabled else "OFF",
+            cutoff_hz=config.cutoff_hz,
+        )
 
     def process(self, mono, frames, sample_rate):
         source = sanitize_audio(mono)
         if not self._config.enabled:
+            self._activity = ProcessorActivity(enabled=False, state="OFF", cutoff_hz=self._config.cutoff_hz)
             return source.astype(np.float32, copy=True)
         self._ensure_filter(sample_rate)
         output, self._zi = lfilter(self._b, self._a, source, zi=self._zi)
+        self._activity = ProcessorActivity(
+            enabled=True,
+            active=True,
+            state="ENABLED",
+            cutoff_hz=self._config.cutoff_hz,
+        )
         return output.astype(np.float32)
 
     def reset(self):
         self._zi = None
         self._sample_rate = None
+        self._activity = ProcessorActivity(
+            enabled=self._config.enabled,
+            active=False,
+            state="Ready" if self._config.enabled else "OFF",
+            cutoff_hz=self._config.cutoff_hz,
+        )
+
+    def activity(self):
+        return self._activity
 
     def _ensure_filter(self, sample_rate):
         if self._sample_rate == sample_rate and self._b is not None and self._zi is not None:
@@ -69,13 +93,20 @@ class NoiseGateEffect(Effect):
         self._config = config or NoiseGateSettings()
         self._gain = 1.0
         self._hold_samples_remaining = 0
+        self._activity = ProcessorActivity(enabled=self._config.enabled)
 
     def update_config(self, config):
         self._config = config
+        self._activity = ProcessorActivity(
+            enabled=config.enabled,
+            active=False,
+            state="Ready" if config.enabled else "OFF",
+        )
 
     def process(self, mono, frames, sample_rate):
         source = sanitize_audio(mono)
         if not self._config.enabled:
+            self._activity = ProcessorActivity(enabled=False, state="OFF")
             return source.astype(np.float32, copy=True)
         threshold = db_to_amplitude(self._config.threshold_dbfs)
         floor_gain = db_to_amplitude(GATE_FLOOR_DB)
@@ -101,11 +132,26 @@ class NoiseGateEffect(Effect):
             coeff = attack_coeff if target_gain > self._gain else release_coeff
             self._gain = target_gain + coeff * (self._gain - target_gain)
             output[index] = sample * self._gain
+        reduction = gain_reduction_db(self._gain)
+        self._activity = ProcessorActivity(
+            enabled=True,
+            active=reduction > 0.1,
+            state="Reducing" if reduction > 0.1 else "Open",
+            gain_reduction_db=reduction,
+        )
         return output
 
     def reset(self):
         self._gain = 1.0
         self._hold_samples_remaining = 0
+        self._activity = ProcessorActivity(
+            enabled=self._config.enabled,
+            active=False,
+            state="Ready" if self._config.enabled else "OFF",
+        )
+
+    def activity(self):
+        return self._activity
 
 
 class CompressorEffect(Effect):
@@ -114,13 +160,20 @@ class CompressorEffect(Effect):
     def __init__(self, config=None):
         self._config = config or CompressorSettings()
         self._gain = 1.0
+        self._activity = ProcessorActivity(enabled=self._config.enabled)
 
     def update_config(self, config):
         self._config = config
+        self._activity = ProcessorActivity(
+            enabled=config.enabled,
+            active=False,
+            state="Ready" if config.enabled else "OFF",
+        )
 
     def process(self, mono, frames, sample_rate):
         source = sanitize_audio(mono)
         if not self._config.enabled:
+            self._activity = ProcessorActivity(enabled=False, state="OFF")
             return source.astype(np.float32, copy=True)
         threshold = db_to_amplitude(self._config.threshold_dbfs)
         makeup = db_to_amplitude(self._config.makeup_gain_db)
@@ -141,10 +194,25 @@ class CompressorEffect(Effect):
             coeff = attack_coeff if target_gain < self._gain else release_coeff
             self._gain = target_gain + coeff * (self._gain - target_gain)
             output[index] = sample * self._gain * makeup
+        reduction = gain_reduction_db(self._gain)
+        self._activity = ProcessorActivity(
+            enabled=True,
+            active=reduction > 0.1,
+            state="Reducing" if reduction > 0.1 else "Open",
+            gain_reduction_db=reduction,
+        )
         return output
 
     def reset(self):
         self._gain = 1.0
+        self._activity = ProcessorActivity(
+            enabled=self._config.enabled,
+            active=False,
+            state="Ready" if self._config.enabled else "OFF",
+        )
+
+    def activity(self):
+        return self._activity
 
 
 class VoiceLimiterEffect(Effect):
@@ -153,33 +221,63 @@ class VoiceLimiterEffect(Effect):
     def __init__(self, config=None):
         self._config = config or LimiterSettings()
         self._gain = 1.0
+        self._activity = ProcessorActivity(enabled=self._config.enabled)
 
     def update_config(self, config):
         self._config = config
+        self._activity = ProcessorActivity(
+            enabled=config.enabled,
+            active=False,
+            state="Ready" if config.enabled else "OFF",
+        )
 
     def process(self, mono, frames, sample_rate):
         source = sanitize_audio(mono)
         if not self._config.enabled:
+            self._activity = ProcessorActivity(enabled=False, state="OFF")
             return source.astype(np.float32, copy=True)
         ceiling = db_to_amplitude(self._config.ceiling_dbfs)
         release_coeff = _time_coeff(self._config.release_ms, sample_rate)
         output = np.empty_like(source, dtype=np.float32)
+        ceiling_hit = False
 
         for index, sample in enumerate(source):
             level = abs(float(sample))
             target_gain = 1.0 if level <= ceiling or level <= EPSILON else ceiling / level
+            ceiling_hit = ceiling_hit or target_gain < 1.0
             if target_gain < self._gain:
                 self._gain = target_gain
             else:
                 self._gain = target_gain + release_coeff * (self._gain - target_gain)
             limited = sample * min(self._gain, 1.0)
             output[index] = np.clip(limited, -ceiling, ceiling)
+        reduction = gain_reduction_db(self._gain)
+        self._activity = ProcessorActivity(
+            enabled=True,
+            active=reduction > 0.1 or ceiling_hit,
+            state="Limiting" if reduction > 0.1 or ceiling_hit else "Open",
+            gain_reduction_db=reduction,
+            ceiling_hit=ceiling_hit,
+        )
         return output
 
     def reset(self):
         self._gain = 1.0
+        self._activity = ProcessorActivity(
+            enabled=self._config.enabled,
+            active=False,
+            state="Ready" if self._config.enabled else "OFF",
+        )
+
+    def activity(self):
+        return self._activity
 
 
 def _time_coeff(milliseconds, sample_rate):
     seconds = max(float(milliseconds), 0.001) / 1000.0
     return exp(-1.0 / (seconds * float(sample_rate)))
+
+
+def gain_reduction_db(gain):
+    safe_gain = max(float(gain), EPSILON)
+    return max(0.0, float(-20.0 * np.log10(safe_gain)))

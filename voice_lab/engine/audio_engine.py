@@ -1,7 +1,12 @@
 import numpy as np
 
 from voice_lab.config.config import SAMPLE_RATE
-from voice_lab.config.input_processing import DEFAULT_INPUT_PROCESSING_SETTINGS
+from voice_lab.config.input_processing import (
+    DEFAULT_INPUT_PROCESSING_ACTIVITY,
+    DEFAULT_INPUT_PROCESSING_SETTINGS,
+    InputProcessingActivity,
+    bypassed_input_processing_activity,
+)
 from voice_lab.core import AudioFrame
 from voice_lab.effects import EffectChain
 
@@ -56,6 +61,32 @@ class AudioEngine:
             elif getattr(effect, "name", "") == "Limiter":
                 updater(settings.limiter)
                 self.effect_chain.set_enabled("Limiter", settings.limiter.enabled)
+
+    def input_processing_activity(self):
+        if self.effects_bypassed:
+            return bypassed_input_processing_activity(self.input_processing)
+        activity = {}
+        for effect in self.effect_chain.effects:
+            reader = getattr(effect, "activity", None)
+            if reader is None:
+                continue
+            name = getattr(effect, "name", "")
+            if name == "High-Pass":
+                activity["high_pass"] = reader()
+            elif name == "Noise Gate":
+                activity["noise_gate"] = reader()
+            elif name == "Compressor":
+                activity["compressor"] = reader()
+            elif name == "Limiter":
+                activity["limiter"] = reader()
+        if not activity:
+            return DEFAULT_INPUT_PROCESSING_ACTIVITY
+        return InputProcessingActivity(
+            high_pass=activity.get("high_pass", DEFAULT_INPUT_PROCESSING_ACTIVITY.high_pass),
+            noise_gate=activity.get("noise_gate", DEFAULT_INPUT_PROCESSING_ACTIVITY.noise_gate),
+            compressor=activity.get("compressor", DEFAULT_INPUT_PROCESSING_ACTIVITY.compressor),
+            limiter=activity.get("limiter", DEFAULT_INPUT_PROCESSING_ACTIVITY.limiter),
+        )
 
     def process_voice(self, audio, frames=None):
         """Process microphone audio.

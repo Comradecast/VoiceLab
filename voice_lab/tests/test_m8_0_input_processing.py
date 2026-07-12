@@ -422,5 +422,136 @@ class M80UiAndArchitectureTests(unittest.TestCase):
             self.assertEqual(set(effect.__dict__), state_keys)
 
 
+class M80LiveCorrectionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+
+        cls.qt_app = QApplication.instance() or QApplication([])
+
+    def test_service_enabled_state_reaches_active_effect_chain_and_updates_live(self):
+        svc, _store, _settings = make_service()
+        status = svc.engine.effect_chain.status()
+        self.assertIn("High-Pass", status.disabled_effects)
+
+        result = svc.update_input_processing("high_pass", enabled=True, cutoff_hz=200)
+        status = svc.engine.effect_chain.status()
+
+        self.assertTrue(result.success)
+        self.assertNotIn("High-Pass", status.disabled_effects)
+        self.assertIn("High-Pass", status.active_effects)
+        self.assertEqual(svc.engine.input_processing.high_pass.cutoff_hz, 200)
+
+        svc.update_input_processing("high_pass", enabled=True, cutoff_hz=120)
+        self.assertEqual(svc.engine.input_processing.high_pass.cutoff_hz, 120)
+
+    def test_enabled_processors_measurably_change_diagnostic_inputs_and_bypass_restores_dry_path(self):
+        svc, _store, _settings = make_service()
+        source = np.ones(512, dtype=np.float32) * 0.9
+        svc.update_input_processing("limiter", enabled=True, ceiling_dbfs=-12, release_ms=100)
+        processed = svc.engine.process_voice(source, len(source))
+
+        svc.set_effects_bypassed(True)
+        bypassed = svc.engine.process_voice(source, len(source))
+        bypass_activity = svc.input_processing_activity()
+        svc.set_effects_bypassed(False)
+        restored = svc.engine.process_voice(source, len(source))
+
+        self.assertLess(float(np.max(np.abs(processed))), 0.3)
+        np.testing.assert_allclose(bypassed, source, atol=1e-7)
+        self.assertTrue(bypass_activity["bypassed"])
+        self.assertTrue(bypass_activity["limiter"]["bypassed"])
+        self.assertLess(float(np.max(np.abs(restored))), 0.3)
+        self.assertTrue(svc.current_input_processing.limiter.enabled)
+
+    def test_activity_snapshot_is_latest_finite_bounded_and_resets_on_stop(self):
+        svc, _store, _settings = make_service()
+        svc.update_input_processing("noise_gate", enabled=True, threshold_dbfs=-25, release_ms=100)
+        quiet = np.ones(48000, dtype=np.float32) * db_to_amplitude(-45)
+        svc.engine.process_voice(quiet, len(quiet))
+        first = svc.input_processing_activity()
+        keys = set(svc.engine.effect_chain.effects[1].__dict__)
+
+        svc.engine.process_voice(quiet, len(quiet))
+        second = svc.input_processing_activity()
+        svc.stop_audio()
+        stopped = svc.input_processing_activity()
+
+        self.assertEqual(set(svc.engine.effect_chain.effects[1].__dict__), keys)
+        self.assertEqual(first["noise_gate"]["state"], "Reducing")
+        self.assertGreater(first["noise_gate"]["gain_reduction_db"], 10.0)
+        self.assertTrue(np.isfinite(second["noise_gate"]["gain_reduction_db"]))
+        self.assertEqual(stopped["noise_gate"]["state"], "Ready")
+
+    def test_compressor_and_limiter_activity_correspond_to_signal_behavior(self):
+        svc, _store, _settings = make_service()
+        loud = np.ones(48000, dtype=np.float32) * db_to_amplitude(-10)
+        svc.update_input_processing(
+            "compressor",
+            enabled=True,
+            threshold_dbfs=-35,
+            ratio=10,
+            attack_ms=2,
+            release_ms=250,
+            makeup_gain_db=0,
+        )
+        svc.engine.process_voice(loud, len(loud))
+        compressor = svc.input_processing_activity()["compressor"]
+
+        svc.update_input_processing(
+            "compressor",
+            enabled=False,
+            threshold_dbfs=-35,
+            ratio=10,
+            attack_ms=2,
+            release_ms=250,
+            makeup_gain_db=0,
+        )
+        svc.update_input_processing("limiter", enabled=True, ceiling_dbfs=-12, release_ms=100)
+        svc.engine.process_voice(np.ones(512, dtype=np.float32) * 0.9, 512)
+        limiter = svc.input_processing_activity()["limiter"]
+
+        self.assertEqual(compressor["state"], "Reducing")
+        self.assertGreater(compressor["gain_reduction_db"], 10.0)
+        self.assertEqual(limiter["state"], "Limiting")
+        self.assertTrue(limiter["ceiling_hit"])
+
+    def test_tabbed_layout_and_processor_controls_are_reachable_without_global_checkbox(self):
+        from voice_lab.ui.main_window import App
+
+        svc, _store, _settings = make_service()
+        window = App(svc, on_close=lambda: None)
+        self.addCleanup(window.close)
+        window.show()
+        self.qt_app.processEvents()
+
+        tab_names = [window.tabs.tabText(index) for index in range(window.tabs.count())]
+
+        self.assertEqual(tab_names, ["Voice", "Input Processing", "Routing", "Soundboard", "Diagnostics"])
+        self.assertFalse(hasattr(window, "input_processing_toggle"))
+        self.assertTrue(window.start_button.isVisible())
+        self.assertTrue(window.stop_button.isVisible())
+        self.assertTrue(window.bypass_check.isVisible())
+        for processor, controls in window.input_processing_controls.items():
+            self.assertIn("enabled", controls)
+            self.assertIn("status", controls)
+            self.assertTrue(controls["status"].text().startswith("State:"))
+            controls["enabled"].setChecked(False)
+            window._set_input_processing_params_enabled(processor)
+            self.assertTrue(all(not slider.isEnabled() for slider in controls["params"].values()))
+
+    def test_programmatic_input_processing_refresh_does_not_write_settings(self):
+        svc, _store, settings = make_service()
+        from voice_lab.ui.main_window import App
+
+        window = App(svc, on_close=lambda: None)
+        self.addCleanup(window.close)
+        before = len(settings.saved)
+        window.sync_input_processing_from_service()
+
+        self.assertEqual(len(settings.saved), before)
+
+
 if __name__ == "__main__":
     unittest.main()

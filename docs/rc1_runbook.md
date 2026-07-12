@@ -738,6 +738,31 @@ Controls and ranges:
 Manual M8.0 live acceptance remains pending. Do not mark these scenarios PASS
 until Luke completes live hardware and audible testing.
 
+Live correction note:
+
+- Initial M8.0 live launch found that the single-column scrolling layout was
+  confusing and made Input Processing look like a global checkbox.
+- The operator could not determine whether High-Pass, Noise Gate, Compressor,
+  or Limiter were audibly acting.
+- The corrected layout uses a persistent transport area plus Voice, Input
+  Processing, Routing, Soundboard, and Diagnostics tabs.
+- Start Processing, Stop Processing, Bypass Effects, current processing state,
+  current route state, and active voice remain visible outside the tabs.
+- Input Processing is a tab, not a global DSP enable checkbox.
+- Each processor panel shows its own Enabled control, current values and
+  units, OFF/ENABLED state, and passive activity feedback.
+- Activity feedback is latest-state only: High-Pass reports active cutoff,
+  Noise Gate reports Open/Reducing and gain reduction, Compressor reports gain
+  reduction, and Limiter reports gain reduction plus ceiling-hit indication.
+- Deterministic activation evidence confirmed measurable response at diagnostic
+  settings: High-Pass 50 Hz RMS attenuation to about 6.2% with 1 kHz preserved
+  at about 99.9%; Noise Gate below-threshold RMS to about 3.2% with
+  above-threshold passage unchanged; Compressor loud-block reduction about
+  22.5 dB with quiet material unchanged; Limiter over-ceiling peak constrained
+  to the -12 dBFS ceiling with safe material unchanged.
+- M8.0 remains PROVISIONAL. All audible and hardware scenarios below must be
+  repeated after this correction.
+
 M8.0 live acceptance checklist:
 
 Baseline Compatibility:

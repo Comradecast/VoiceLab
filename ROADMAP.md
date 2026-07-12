@@ -1257,5 +1257,28 @@ Signalsmith pitch configuration.
   chain order, bypass, settings compatibility, presets compatibility,
   UI/service boundaries, callback/source guards, and bounded repeated
   processing.
+- Live M8.0 launch found acceptance issues before PASS: the single-column
+  scrolling layout was confusing, Input Processing looked like a global
+  checkbox, and the operator could not tell whether High-Pass, Noise Gate,
+  Compressor, or Limiter were acting.
+- The correction replaces the long single-column layout with a persistent
+  transport area and five top-level tabs: Voice, Input Processing, Routing,
+  Soundboard, and Diagnostics. Start, Stop, Bypass Effects, processing state,
+  route state, and active voice remain visible outside the tabs.
+- Input Processing is now a navigation tab, not a global enable control. Each
+  processor panel has its own Enabled control, parameter values and units, an
+  OFF/ENABLED state, and passive activity feedback.
+- Processor-activity feedback is latest-state only and bounded: High-Pass
+  reports enabled state and cutoff, Noise Gate reports Open/Reducing and gain
+  reduction, Compressor reports gain reduction, and Limiter reports gain
+  reduction plus ceiling-hit indication.
+- Deterministic activation probes confirmed measurable DSP response at
+  diagnostic settings: High-Pass attenuated 50 Hz to about 6.2% RMS while
+  preserving 1 kHz at about 99.9%; Noise Gate reduced a below-threshold block
+  to about 3.2% RMS while passing an above-threshold block unchanged;
+  Compressor reduced a loud block by about 22.5 dB while leaving quiet material
+  unchanged; Limiter held an over-ceiling block to the -12 dBFS ceiling while
+  leaving safe material unchanged.
 - Live hardware and audible acceptance remains required before M8.0 can be
-  marked PASS.
+  marked PASS. All audible and hardware scenarios must be repeated after the
+  layout and visibility correction.

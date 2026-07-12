@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSlider,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -34,13 +35,15 @@ class App(QWidget):
         os.makedirs("sounds", exist_ok=True)
 
         root_layout = QVBoxLayout(self)
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        scroll_area.setWidget(content)
-        root_layout.addWidget(scroll_area)
+        transport_layout = QVBoxLayout()
+        root_layout.addLayout(transport_layout)
+        self.tabs = QTabWidget()
+        root_layout.addWidget(self.tabs)
+        layout = self._create_tab("Voice")
+        input_processing_layout = self._create_tab("Input Processing")
+        routing_layout = self._create_tab("Routing")
+        soundboard_tab_layout = self._create_tab("Soundboard")
+        diagnostics_layout = self._create_tab("Diagnostics")
         self.restored_preferences = self.service.operator_preferences() if hasattr(self.service, "operator_preferences") else {}
         self._updating_voice_controls = False
         self._updating_input_processing = False
@@ -63,7 +66,7 @@ class App(QWidget):
         layout.addWidget(self.character_strength)
         self.active_voice_status = QLabel("Active voice: Natural")
         self.active_voice_status.setWordWrap(True)
-        layout.addWidget(self.active_voice_status)
+        transport_layout.addWidget(self.active_voice_status)
 
         live_audio_label = QLabel("Live Audio")
         layout.addWidget(live_audio_label)
@@ -83,14 +86,12 @@ class App(QWidget):
         self.level_summary.setWordWrap(True)
         layout.addWidget(self.level_summary)
 
-        voice_btns = QHBoxLayout()
         self.bypass_check = QCheckBox("Bypass Effects")
         self.bypass_check.stateChanged.connect(lambda _state: self.set_effects_bypassed())
+        transport_layout.addWidget(self.bypass_check)
         self.reset_voice_button = QPushButton("Reset Voice")
         self.reset_voice_button.clicked.connect(self.reset_voice)
-        voice_btns.addWidget(self.bypass_check)
-        voice_btns.addWidget(self.reset_voice_button)
-        layout.addLayout(voice_btns)
+        layout.addWidget(self.reset_voice_button)
 
         self.input_box = QComboBox()
         self.output_box = QComboBox()
@@ -117,41 +118,44 @@ class App(QWidget):
             lambda _index: self.record_device_selection("monitor_output", self.monitor_box.currentData())
         )
 
-        layout.addWidget(QLabel("Input device"))
-        layout.addWidget(self.input_box)
-        layout.addWidget(QLabel("Output to virtual mic"))
-        layout.addWidget(self.output_box)
+        routing_layout.addWidget(QLabel("Input device"))
+        routing_layout.addWidget(self.input_box)
+        routing_layout.addWidget(QLabel("Output to virtual mic"))
+        routing_layout.addWidget(self.output_box)
 
         self.monitor_check = QCheckBox("Enable monitor output")
         self.monitor_check.setChecked(bool(self.restored_preferences.get("monitor_enabled", False)))
         self.monitor_check.stateChanged.connect(lambda _state: self.apply_current_parameters())
-        layout.addWidget(self.monitor_check)
-        layout.addWidget(QLabel("Monitor output device"))
-        layout.addWidget(self.monitor_box)
+        routing_layout.addWidget(self.monitor_check)
+        routing_layout.addWidget(QLabel("Monitor output device"))
+        routing_layout.addWidget(self.monitor_box)
         self.refresh_devices_button = QPushButton("Refresh Devices")
         self.refresh_devices_button.clicked.connect(self.refresh_devices)
-        layout.addWidget(self.refresh_devices_button)
+        routing_layout.addWidget(self.refresh_devices_button)
 
         self.monitor_volume = self.slider(
-            layout,
+            routing_layout,
             "Monitor volume",
             0,
             100,
             int(round(float(self.restored_preferences.get("monitor_volume", 0.35)) * 100)),
         )
         self.soundboard_volume = self.slider(
-            layout,
+            routing_layout,
             "Soundboard volume",
             0,
             100,
             int(round(float(self.restored_preferences.get("soundboard_volume", 0.70)) * 100)),
         )
 
-        self.input_processing_toggle = QCheckBox("Input Processing")
-        self.input_processing_toggle.stateChanged.connect(lambda _state: self.set_input_processing_visible())
-        layout.addWidget(self.input_processing_toggle)
         self.input_processing_widgets = []
-        self._build_input_processing_controls(layout)
+        input_processing_help = QLabel(
+            "Input processors are global operator settings, not custom voices. "
+            "Bypass Effects temporarily skips them without erasing settings."
+        )
+        input_processing_help.setWordWrap(True)
+        input_processing_layout.addWidget(input_processing_help)
+        self._build_input_processing_controls(input_processing_layout)
 
         self.advanced_toggle = QCheckBox("Show Advanced Controls")
         self.advanced_toggle.stateChanged.connect(lambda _state: self.set_advanced_visible())
@@ -210,13 +214,13 @@ class App(QWidget):
             )
         )
 
-        layout.addWidget(QLabel("Soundboard — F1/F2/F3 for first 3 sounds"))
+        soundboard_tab_layout.addWidget(QLabel("Soundboard - F1/F2/F3 for first 3 sounds"))
         self.soundboard_layout = QHBoxLayout()
-        layout.addLayout(self.soundboard_layout)
+        soundboard_tab_layout.addLayout(self.soundboard_layout)
 
         refresh_sounds = QPushButton("Refresh Sounds")
         refresh_sounds.clicked.connect(self.refresh_soundboard)
-        layout.addWidget(refresh_sounds)
+        soundboard_tab_layout.addWidget(refresh_sounds)
 
         btns = QHBoxLayout()
         self.start_button = QPushButton("Start Processing")
@@ -225,10 +229,10 @@ class App(QWidget):
         self.stop_button.clicked.connect(self.stop)
         btns.addWidget(self.start_button)
         btns.addWidget(self.stop_button)
-        layout.addLayout(btns)
+        transport_layout.addLayout(btns)
 
         self.status = QLabel("Stopped")
-        layout.addWidget(self.status)
+        diagnostics_layout.addWidget(self.status)
         self.processing_status = QLabel("Processing: Stopped")
         self.route_status = QLabel("Routes stopped")
         self.pitch_status = QLabel("Pitch: Off")
@@ -236,9 +240,10 @@ class App(QWidget):
         self.command_status = QLabel("")
         self.warning_status = QLabel("Warnings: None")
         self.diagnostic_status = QLabel("")
+        for label in (self.processing_status, self.route_status):
+            label.setWordWrap(True)
+            transport_layout.addWidget(label)
         for label in (
-            self.processing_status,
-            self.route_status,
             self.pitch_status,
             self.latency_status,
             self.command_status,
@@ -246,12 +251,11 @@ class App(QWidget):
             self.diagnostic_status,
         ):
             label.setWordWrap(True)
-            layout.addWidget(label)
+            diagnostics_layout.addWidget(label)
 
         self.advanced_widgets.append(self.diagnostic_status)
         self.sync_voice_controls_from_service()
         self.sync_input_processing_from_service()
-        self.set_input_processing_visible()
         self.set_advanced_visible()
         self.refresh_custom_voice_actions()
         self.refresh_soundboard()
@@ -265,6 +269,16 @@ class App(QWidget):
         self.meter_timer.start()
         self.refresh_operator_status()
         self.refresh_audio_levels()
+
+    def _create_tab(self, title):
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        scroll_area.setWidget(content)
+        self.tabs.addTab(scroll_area, title)
+        return layout
 
     def play_sound_by_index(self, index):
         result = self.service.play_sound_by_index(index)
@@ -490,10 +504,13 @@ class App(QWidget):
         title_label = QLabel(title)
         enabled = QCheckBox("Enabled")
         enabled.stateChanged.connect(lambda _state, p=processor: self.update_input_processing(p))
-        self.input_processing_widgets.extend((title_label, enabled))
+        status_label = QLabel("State: OFF")
+        status_label.setWordWrap(True)
+        self.input_processing_widgets.extend((title_label, enabled, status_label))
         layout.addWidget(title_label)
         layout.addWidget(enabled)
-        controls = {"enabled": enabled, "params": {}}
+        layout.addWidget(status_label)
+        controls = {"enabled": enabled, "status": status_label, "params": {}}
         for key, label_text, low, high, unit, scale in params:
             slider = self.input_processing_slider(layout, processor, key, label_text, low, high, unit, scale)
             controls["params"][key] = slider
@@ -520,11 +537,6 @@ class App(QWidget):
         self.input_processing_widgets.extend((label, slider))
         return slider
 
-    def set_input_processing_visible(self):
-        visible = self.input_processing_toggle.isChecked()
-        for widget in getattr(self, "input_processing_widgets", ()):
-            widget.setVisible(visible)
-
     def sync_input_processing_from_service(self):
         if not hasattr(self.service, "input_processing_state") or not hasattr(self, "input_processing_controls"):
             return
@@ -539,6 +551,7 @@ class App(QWidget):
                     slider.setValue(int(round(float(value) * float(slider._voice_lab_scale))))
                     self._set_input_processing_slider_label(slider)
                 self._set_input_processing_params_enabled(processor)
+            self.refresh_input_processing_activity()
         finally:
             self._updating_input_processing = False
 
@@ -553,6 +566,7 @@ class App(QWidget):
         self.display_result(result)
         if result.success:
             self._set_input_processing_params_enabled(processor)
+            self.refresh_input_processing_activity()
         else:
             self.sync_input_processing_from_service()
 
@@ -604,6 +618,31 @@ class App(QWidget):
         result = self.service.reset_input_processing()
         self.display_result(result)
         self.sync_input_processing_from_service()
+
+    def refresh_input_processing_activity(self):
+        if not hasattr(self.service, "input_processing_activity") or not hasattr(self, "input_processing_controls"):
+            return
+        try:
+            activity = self.service.input_processing_activity()
+        except Exception:
+            return
+        for processor, controls in self.input_processing_controls.items():
+            state = activity.get(processor, {})
+            enabled = bool(state.get("enabled", False))
+            status = state.get("state", "OFF")
+            gain_reduction = float(state.get("gain_reduction_db", 0.0) or 0.0)
+            details = f"State: {'ENABLED' if enabled else 'OFF'}"
+            if enabled:
+                details += f" | {status}"
+                if processor == "high_pass":
+                    details += f" | cutoff {state.get('cutoff_hz', 0):g} Hz"
+                else:
+                    details += f" | reduction {gain_reduction:.1f} dB"
+                if processor == "limiter" and state.get("ceiling_hit"):
+                    details += " | ceiling hit"
+                if state.get("bypassed"):
+                    details += " | bypassed"
+            controls["status"].setText(details)
 
     def refresh_preset_box(self):
         current = self.preset_box.currentText()
@@ -942,6 +981,7 @@ class App(QWidget):
     def refresh_audio_levels(self):
         if not hasattr(self.service, "audio_level_snapshot"):
             return
+        self.refresh_input_processing_activity()
         try:
             snapshot = self.service.audio_level_snapshot()
         except Exception:
