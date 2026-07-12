@@ -18,3 +18,4 @@ dist/
 *.lib
 *.exp
 /settings.json
+/presets.json
