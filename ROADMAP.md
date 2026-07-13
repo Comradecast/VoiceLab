@@ -1812,8 +1812,11 @@ experimental diagnostic/adaptive behavior.
 
 ## M9.3 - Calibrate, Lock, and Manual Trim
 
-Status: PROVISIONAL. Automated contract coverage is in place; final live
-hardware acceptance has not been recorded.
+Status: PASS. Luke completed practical live Calibrate/Lock Lab acceptance.
+
+M9.3 is accepted as the primary stable experimental control workflow.
+Continuous adaptation remains optional experimental behavior and is not the
+default character-control model.
 
 M9.3 adds an isolated stable-control workflow on top of the accepted M9.0,
 M9.1, and M9.2 labs. It does not change normal production launch behavior,
@@ -1858,6 +1861,43 @@ or the audio effect chain.
 - No target file, plan file, execution cache, settings entry, preset entry, or
   production character state is created by M9.3.
 
+### Live Acceptance
+
+- Calibrate/Lock Lab launches stopped with Source Analysis, Target Planner,
+  Plan Execution, and Calibrate & Lock tabs present.
+- Execution launches disabled, Adaptive Updating defaults Off, no calibration,
+  suggestion, or lock exists at launch, and pitch/formant trims begin at zero.
+- Source collecting/ready states and live source-analysis values update
+  visibly. Calibrate Source succeeds after the source becomes ready, captured
+  calibration values remain frozen, and live source measurements continue
+  updating separately.
+- Calibration does not alter audio. Recalibration produces a new suggestion and
+  does not alter the active lock.
+- Suggested transformation appears after calibration. Lock Suggested
+  Transformation succeeds and does not automatically enable execution; the
+  operator must explicitly enable execution.
+- Locked values remain fixed. Live source changes, collecting/ready changes,
+  target edits, character-strength edits, and newer suggestions do not move or
+  neutralize a valid locked plan while Adaptive Updating is Off.
+- Enabling execution makes the locked transformation audible. The resulting
+  voice is usable/decent, runtime values converge to their fixed targets, and
+  locked execution is more predictable than continuous reactive replanning.
+- Pitch and formant trims change predictably, remain fixed until deliberate
+  change, preserve immutable locked base values, report clamps clearly, and do
+  not restart the stream.
+- Return to Suggested Plan clears trims, restores the locked base, and does not
+  silently apply a newer unlocked suggestion.
+- Continuous mode uses live adaptive planning only when explicitly selected.
+  Switching back to Off restores the retained lock without reopening the stream
+  or leaving stale maximum/corrupted targets.
+- Return to Neutral disables execution, returns pitch/formant to neutral,
+  clears plan-driven dynamics overrides, and preserves calibration, suggestion,
+  lock, and documented trim session state for re-enable.
+- Luke operated the Calibrate/Lock Lab for approximately 30 minutes with no
+  crackle, flutter, metallic tail, growing delay, sudden unexplained target
+  jumps, UI freeze, analyzer failure, or controller failure. Stable locked
+  behavior remained usable over the extended run.
+
 ### Verification Notes
 
 - Focused M9.3 automated tests cover immutable calibration/suggestion/lock/trim
@@ -1870,5 +1910,19 @@ or the audio effect chain.
   Continuous behavior, dynamics lock/relock behavior, Return to Neutral,
   guarded UI exposure, effect-chain isolation, disabled audio equivalence, and
   bounded repeated operations without settings or preset mutation.
-- M9.3 remains a controlled lab workflow and is not a finished production
-  character system.
+- Accepted corrective commit: `abdfb61019e70b28f91a66362711b7006f2e0172`
+  (`Reject nonfinite calibration evidence`). NaN and infinity cannot enter a
+  successful frozen calibration; required pitch evidence must be finite,
+  positive, ordered, and within the accepted M9.0 range; source age and voiced
+  evidence must be finite and nonnegative; optional numeric descriptors may be
+  `None` but must be finite when present; validation completes before state
+  mutation and failed capture preserves prior calibration, suggestion, lock,
+  trims, mode, execution state, and runtime target.
+- Known non-blocking debt: diagnostic target profiles remain provisional; no
+  finished production feminine or deep-masculine character exists yet;
+  pitch-range mapping, parametric EQ, spectral-tilt execution, de-essing,
+  breathiness synthesis, and harmonic enhancement remain unsupported; backend
+  availability is visible through Plan Execution rather than duplicated fully
+  in Calibrate & Lock; long-term neural conversion remains an optional plugin
+  concern unrelated to M9.3; no persistence of calibration/lock/trim is
+  currently intended. These are future milestones, not M9.3 failures.

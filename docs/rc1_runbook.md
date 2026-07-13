@@ -2134,79 +2134,206 @@ Known non-blocking M9.2 debt:
 
 These are future milestones rather than M9.2 failures.
 
-## M9.3 Calibrate, Lock, and Manual Trim Pre-Live Acceptance
+## M9.3 Calibrate, Lock, and Manual Trim Live Acceptance
 
-Status: PROVISIONAL.
+Status: PASS.
 
-M9.3 is ready for controlled live acceptance, but final hardware PASS has not
-been recorded. Launch with:
+Luke completed practical live Calibrate/Lock Lab acceptance. M9.3 is accepted
+as the primary stable experimental control workflow. Continuous adaptation
+remains an optional experimental mode and is not the default character-control
+model. Launch with:
 
 ```powershell
 .\.venv\Scripts\python.exe main.py --calibrate-lock-lab
 ```
 
-Expected launch and isolation behavior:
+Mode and initial state PASS results:
 
-- Normal launch remains unchanged.
-- `--calibrate-lock-lab` launches stopped.
-- Source Analysis, Target Planner, Plan Execution, and Calibrate & Lock tabs
-  are present.
-- Calibrate & Lock is absent from normal, Formant Lab, Voice Analysis Lab,
-  Target Planner Lab, and Transformation Execution Lab launches.
-- The effect chain still has one combined experimental pitch/formant stage and
-  no second full-latency pitch/formant stage.
-- No settings, presets, target references, plans, or execution state persist
-  across relaunch.
+- Calibrate/Lock Lab launches: PASS.
+- Required tabs are present: PASS.
+- Application launches stopped: PASS.
+- Execution launches disabled: PASS.
+- Adaptive Updating defaults Off: PASS.
+- No calibration exists at launch: PASS.
+- No suggestion exists at launch: PASS.
+- No lock exists at launch: PASS.
+- Pitch and formant trims begin at zero: PASS.
 
-Expected workflow behavior:
+Source analysis and calibration PASS results:
 
-- Start processing with execution disabled.
-- Speak enough voiced material for the rolling Source Analysis profile to reach
-  ready.
-- Press Calibrate Source. Calibration should succeed only from an active,
-  non-stale, ready rolling source profile with sufficient pitch evidence.
+- Collecting and ready state changes are visible: PASS.
+- Source-analysis values update visibly: PASS.
+- Calibrate Source succeeds after the source becomes ready: PASS.
+- Captured calibration values remain frozen: PASS.
+- Live source measurements continue updating separately: PASS.
+- Calibration does not alter audio: PASS.
+- Recalibration produces a new suggestion: PASS.
+- Recalibration does not alter the active lock: PASS.
 - Successful calibration snapshots should contain only finite numeric evidence
   or explicit unavailable values. NaN, infinity, boolean, nonnumeric,
   out-of-range, or inconsistent pitch evidence must fail before any calibration
   state changes.
 - Failed calibration attempts should preserve the prior calibration,
   suggestion, lock, trims, execution-enabled state, and runtime target.
-- A Suggested Plan should appear from the frozen calibration, current target,
-  and Character Strength.
-- Press Lock Suggested Transformation. Execution authority should become the
-  locked plan while Adaptive Updating is Off.
-- Enable execution. Target and actual runtime values should move toward the
-  locked plan through the M9.2 runtime.
-- Brief pauses, unvoiced consonants, sentence gaps, source polling, analyzer
-  gates, target edits, and strength edits must not change locked execution while
-  Adaptive Updating is Off.
-- Target or strength edits may update Suggested Plan and dirty indicators, but
-  must not change runtime until Lock Suggested Transformation is pressed again.
-- Recalibrate may update calibration and suggestion, but must not change runtime
-  until relock.
-- Pitch Trim should adjust locked pitch by up to approximately `+/-4`
-  semitones.
-- Formant Trim should adjust locked formant by up to approximately `+/-1`
-  semitone.
-- Final runtime targets remain constrained by M9.2 pitch/formant execution
-  clamps.
-- Return to Suggested Plan clears trims and preserves the lock.
-- Return to Neutral disables execution, restores neutral runtime influence, and
-  preserves calibration, suggestion, lock, and trim state.
-- Re-enabling execution after Return to Neutral should restore the locked plan
-  with stored trim values.
-- Adaptive Updating defaults Off. Continuous is optional experimental M9.2-style
-  live replanning and should make live source readiness matter again.
 
-Expected live audio observations:
+Accepted finite calibration correction:
 
-- Locked pitch movement is audible in the planned direction when enabled.
-- Manual pitch trim is audible and bounded.
-- Manual formant trim is audible and bounded.
-- No new metallic artifacts, flutter, crackle, block-boundary clicks, stream
-  restart, device reopen, or unexplained latency growth should appear.
-- Global Bypass Effects remains the single bypass authority.
-- Unsupported plan capabilities remain visible and are not approximated.
+- Corrective commit
+  `abdfb61019e70b28f91a66362711b7006f2e0172` (`Reject nonfinite calibration
+  evidence`) is accepted.
+- NaN and infinity cannot enter a successful frozen calibration.
+- Required pitch evidence must be finite, positive, ordered, and within the
+  accepted M9.0 range.
+- Source age and voiced evidence must be finite and nonnegative.
+- Optional numeric descriptors may be `None` but must be finite when present.
+- Validation completes before state mutation.
+- Failed capture preserves prior calibration, suggestion, lock, trims, mode,
+  execution state, and runtime target.
+- Successful calibrations contain only finite numeric scalars or explicit
+  unavailable values.
 
-Do not mark M9.3 PASS until controlled live hardware acceptance records these
-items successfully.
+Suggestion and locking PASS results:
+
+- Suggested transformation appears after calibration: PASS.
+- Lock Suggested Transformation succeeds: PASS.
+- Locking does not automatically enable execution: PASS.
+- The operator must explicitly enable execution: PASS.
+- Locked values remain fixed: PASS.
+- Live source changes do not move the locked plan in Off mode: PASS.
+- Source collecting/ready changes do not neutralize a valid locked plan: PASS.
+- Target edits change the suggestion only: PASS.
+- Character-strength edits change the suggestion only: PASS.
+- Newer-suggestion state is visible: PASS.
+- Explicit re-lock updates the executed transformation: PASS.
+
+Audible execution PASS results:
+
+- Enabling execution makes the locked transformation audible: PASS.
+- The resulting voice sounds usable/decent: PASS.
+- Locked execution is more predictable than continuous reactive replanning:
+  PASS.
+- Current runtime values converge to their fixed targets: PASS.
+- No reactive target chasing is observed in Off mode: PASS.
+
+Manual trim PASS results:
+
+- Pitch trim changes pitch predictably: PASS.
+- Formant trim changes formant predictably: PASS.
+- Trims remain fixed until deliberately changed: PASS.
+- Locked base values remain immutable: PASS.
+- Final values reflect locked base plus trim: PASS.
+- Clamp reporting is understandable: PASS.
+- Trims do not cause stream restart: PASS.
+- Return to Suggested Plan clears trims and restores the locked base: PASS.
+- A newer unlocked suggestion is not silently applied: PASS.
+
+Adaptive Updating PASS results:
+
+- Off mode uses the locked plan: PASS.
+- Continuous mode uses live adaptive planning: PASS.
+- Switching to Continuous is explicit: PASS.
+- Switching back to Off restores the retained lock: PASS.
+- The lock remains stored while Continuous is active: PASS.
+- Mode switching does not reopen the stream: PASS.
+- No stale maximum or corrupted target survives mode switching: PASS.
+- Slow adaptation remains deferred.
+
+Return to Neutral PASS results:
+
+- Return to Neutral disables execution: PASS.
+- Pitch and formant return to neutral: PASS.
+- Plan-driven dynamics overrides clear: PASS.
+- Calibration remains available: PASS.
+- Suggestion remains available: PASS.
+- Locked plan remains available: PASS.
+- Stored trim policy behaves as documented: PASS.
+- Re-enabling execution restores the retained stable transformation: PASS.
+
+Extended stability PASS results:
+
+Luke operated the Calibrate/Lock Lab for approximately 30 minutes.
+
+- No crackle observed: PASS.
+- No flutter observed: PASS.
+- No metallic tail observed: PASS.
+- No growing delay observed: PASS.
+- No sudden unexplained target jumps observed: PASS.
+- No UI freeze observed: PASS.
+- No analyzer/controller failure observed: PASS.
+- Stable locked behavior remained usable over the extended run: PASS.
+
+Accepted primary workflow:
+
+Live source analysis -> capture frozen calibration -> generate suggested
+transformation -> explicitly lock the suggestion -> enable execution -> apply
+stable manual pitch/formant trims.
+
+Accepted authority rules:
+
+- Live analysis owns current measurements.
+- Calibration owns frozen source evidence.
+- Planner owns suggested transformation intent.
+- Explicit Lock owns stable transformation selection.
+- Manual trim owns deliberate pitch/formant offsets.
+- Executor remains subordinate to the locked or adaptive `TransformationPlan`.
+- Runtime owns smoothing and effective effect values.
+- UI does not manipulate effects directly.
+
+While Adaptive Updating is Off:
+
+- Live source changes do not alter locked execution.
+- Target edits do not alter locked execution.
+- Strength edits do not alter locked execution.
+- Recalibration does not alter locked execution.
+- Suggestion changes do not alter audio.
+- Only explicit re-lock or manual trim changes the selected transformation.
+
+Session and persistence:
+
+- Calibration, suggestion, lock, manual trims, and adaptive mode are
+  session-only.
+- No calibration, suggestion, lock, trim, or execution-cache file is created.
+- `settings.json` schema is unchanged.
+- `presets.json` schema is unchanged.
+- Production characters are unchanged.
+
+Architecture and chain:
+
+```text
+High-Pass
+-> Noise Gate
+-> Compressor
+-> Experimental Pitch/Formant
+-> Robot
+-> Lowpass
+-> Gain
+-> Limiter
+-> Mixer
+```
+
+- Exactly one combined Signalsmith pitch/formant stage is used.
+- No production Pitch Shift is present in the same chain.
+- No second formant stage is present.
+- No additional audio stream, AudioIO owner, or Router owner is added.
+- Inherited latency remains approximately 4800 frames / 100 ms at 48 kHz.
+- Normal mode, Formant Lab, Voice Analysis Lab, Target Planner Lab, and
+  Transformation Execution Lab remain unchanged.
+
+Known non-blocking debt:
+
+- Diagnostic target profiles remain provisional.
+- No finished production feminine character exists yet.
+- No finished production deep-masculine character exists yet.
+- Pitch-range mapping remains unsupported.
+- Parametric EQ remains unsupported.
+- Spectral-tilt execution remains unsupported.
+- De-essing remains unsupported.
+- Breathiness synthesis remains unsupported.
+- Harmonic enhancement remains unsupported.
+- Backend availability is visible through Plan Execution rather than duplicated
+  fully in Calibrate & Lock.
+- Long-term neural conversion remains an optional plugin concern and is
+  unrelated to M9.3.
+- No persistence of calibration/lock/trim is currently intended.
+
+These are future milestones, not M9.3 failures.

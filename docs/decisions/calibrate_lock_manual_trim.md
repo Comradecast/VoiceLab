@@ -1,6 +1,6 @@
 # Calibrate, Lock, and Manual Trim
 
-Status: Accepted for M9.3 provisional lab implementation.
+Status: Accepted. M9.3 completed live acceptance and is PASS.
 
 M9.3 uses live source analysis to produce an operator-controlled starting point,
 not as the default authority for continuous character movement. The lab captures
@@ -8,10 +8,19 @@ a frozen calibration profile, generates a suggested `TransformationPlan` through
 the existing planner, and executes only after the operator explicitly locks that
 plan.
 
+Luke completed practical live Calibrate/Lock Lab acceptance. The accepted
+primary workflow is:
+
+Live source analysis -> capture frozen calibration -> generate suggested
+transformation -> explicitly lock the suggestion -> enable execution -> apply
+stable manual pitch/formant trims.
+
 ## Decision
 
 - Add an isolated `--calibrate-lock-lab` launch mode.
 - Keep calibration, suggestion, lock, and manual trim state session-only.
+- Keep adaptive mode session-only. Do not create calibration, suggestion, lock,
+  trim, or execution-cache files, and do not change settings or preset schemas.
 - Validate the complete source snapshot before changing calibration, suggestion,
   lock, trim, adaptation, execution-enabled, or runtime target state.
 - Store only finite numeric evidence or explicit unavailable values such as
@@ -24,8 +33,8 @@ plan.
   pitch/formant stage, or persistence schema.
 - Make Adaptive Updating Off the default. In this mode the locked plan is the
   execution authority.
-- Preserve Continuous as an optional experimental mode that follows the M9.2
-  live replanning behavior.
+- Preserve Continuous as optional explicit experimental behavior that follows
+  the M9.2 live replanning behavior. Slow adaptation remains deferred.
 - Apply manual pitch and formant trim as bounded deltas over the locked plan,
   with final runtime values still clamped by the M9.2 executor.
 
@@ -41,3 +50,34 @@ plan.
 - Return to Neutral disables execution without deleting session calibration,
   suggestion, lock, or trim state.
 - M9.3 remains a lab workflow and does not replace production characters.
+
+## Accepted Authority Model
+
+- Live analysis owns current measurements.
+- Calibration owns frozen source evidence.
+- The planner owns suggested transformation intent.
+- Explicit Lock owns stable transformation selection.
+- Manual trim owns deliberate pitch/formant offsets.
+- The executor remains subordinate to the locked or adaptive
+  `TransformationPlan`.
+- Runtime owns smoothing and effective effect values.
+- UI does not manipulate effects directly.
+
+While Adaptive Updating is Off, live source changes, target edits, strength
+edits, recalibration, and suggestion changes do not alter audio. Only explicit
+re-lock or manual trim changes the selected transformation.
+
+## Live Acceptance Notes
+
+Luke operated the Calibrate/Lock Lab for approximately 30 minutes with no
+crackle, flutter, metallic tail, growing delay, sudden unexplained target
+jumps, UI freeze, analyzer failure, or controller failure. Locked stable
+behavior remained usable and more predictable than continuous reactive
+replanning.
+
+Known non-blocking debt remains for provisional diagnostic targets, unfinished
+production character work, unsupported pitch-range mapping, parametric EQ,
+spectral-tilt execution, de-essing, breathiness synthesis, harmonic
+enhancement, backend availability being visible through Plan Execution rather
+than duplicated fully in Calibrate & Lock, and optional future neural conversion
+plugin work. These are not M9.3 failures.
