@@ -1404,7 +1404,7 @@ character, preset, persistence, or production-chain integration is attempted.
 
 ## M9.0 - Passive Source Voice Analysis Lab
 
-Status: PROVISIONAL
+Status: PASS
 
 Purpose: add an explicit, target-neutral `main.py --voice-analysis-lab`
 prototype mode that passively measures the operator's raw microphone signal as
@@ -1478,9 +1478,50 @@ bounded acoustic data for future target-based character transformation.
 
 ### Status
 
-- Automated implementation and regression verification are complete for the
-  provisional lab.
-- M9.0 remains PROVISIONAL pending Luke's live source-analysis acceptance.
+- Automated implementation, regression verification, and Luke's final live
+  source-analysis acceptance are complete.
+- Final live M9.0 PASS results: normal launch unchanged, Source Analysis
+  absent from normal mode, Voice Analysis Lab launch, application launches
+  stopped, Start activates analysis, Stop/reset behavior, repeated Start/Stop,
+  close/relaunch behavior, audio transparency, no added audible latency,
+  metallic tail absent, flutter absent, no crackle or new audible block
+  boundaries, normal speech F0 behavior appears plausible, lower and higher
+  voice changes are reflected, quiet/loud speech behavior appears plausible,
+  sustained vowels collect stable data, rapid speech continues updating,
+  silence/unvoiced behavior appears correct, confidence behavior appears
+  plausible, rolling profile collects and reaches useful state, median and
+  pitch-range measurements appear plausible, spectral descriptors respond
+  plausibly, analyzed/skipped/dropped status behaves normally, no UI freezing,
+  no analyzer failure, and data collection appears fully functional in
+  practical use.
+- M9.0 creates no source-profile file and exports no profile. Analysis values
+  are intentionally session-only, the bounded source profile exists only in
+  memory, nothing is written to `settings.json` or `presets.json`, and Reset,
+  Stop/restart, and relaunch begin fresh transient analysis state according to
+  the implemented lifecycle. No file was expected from Luke during acceptance.
+- Future target-character processing will consume the live in-memory profile
+  directly. Persistent analysis export remains deferred diagnostics scope.
+- Accepted technical conclusions: raw microphone analysis occurs before DSP and
+  Mixer; analysis does not alter audio; callback publication uses a stable
+  owned copy; analysis runs outside the callback; mailbox capacity remains one
+  frame; rolling profile remains bounded to 240 scalar readings; the F0
+  estimator is accepted for practical source profiling; spectral energy ratios
+  are accepted as comparative descriptors; `spectral_tilt_db` is an
+  energy-ratio index, not a fitted dB-per-octave slope; F1/F2/F3 estimates are
+  weak descriptors only and are not approved as direct automatic control
+  inputs; and no identity or gender classification is performed.
+- The analyzer is accepted as the source-profile foundation for feminine,
+  masculine, deep-masculine, giant, and other target profiles.
+- Known non-blocking debt: real-hardware close-while-processing was not
+  separately isolated as a dedicated test beyond Luke's practical live use;
+  lock-free mailbox diagnostic counters may rarely undercount or lose a
+  pending frame during a thread interleaving; approximate resonance estimates
+  remain weak descriptors; and lower-sample-rate Nyquist truncation lacks a
+  dedicated focused test. These are not known product failures and do not block
+  M9.0 acceptance.
 - The lab is target-neutral. It measures acoustic properties only and does not
   classify the operator as male, female, masculine, feminine, young, old, or
   any other identity category.
+- The next epic is the target-based character-transformation engine. The first
+  target work must support both feminine and deep-masculine transformation
+  directions.

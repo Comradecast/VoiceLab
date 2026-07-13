@@ -1450,7 +1450,7 @@ Regression:
 
 ## M9.0 Passive Source Voice Analysis Lab
 
-M9.0 Status: PROVISIONAL.
+M9.0 Status: PASS.
 
 Launch:
 
@@ -1471,6 +1471,15 @@ Scope:
   soundboard behavior, character targets, or Signalsmith configuration.
 - The analyzer is target-neutral. It measures acoustic properties only and
   must not be treated as identity, gender, age, or quality classification.
+- M9.0 does not create or export a source-profile file.
+- Analysis values are intentionally session-only.
+- The bounded source profile exists only in memory.
+- Nothing is written to `settings.json` or `presets.json`.
+- Reset, Stop/restart, and relaunch begin fresh transient analysis state
+  according to the implemented lifecycle.
+- No source-profile file was expected during live acceptance.
+- Future target-character processing will consume the live in-memory profile
+  directly. Persistent analysis export remains deferred diagnostics scope.
 
 Implementation notes:
 
@@ -1489,6 +1498,70 @@ Implementation notes:
 - Spectral tilt is a dB high/low energy-ratio metric.
 - Resonance estimates are approximate smoothed-envelope peak estimates. Invalid
   or unreliable frames show unavailable values rather than false precision.
+- `spectral_tilt_db` is an energy-ratio index, not a fitted dB-per-octave
+  slope.
+- F1/F2/F3 estimates are weak descriptors only and are not approved as direct
+  automatic control inputs.
+- The analyzer is accepted as the source-profile foundation for feminine,
+  masculine, deep-masculine, giant, and other target profiles.
+
+Final live M9.0 accepted results:
+
+- Normal launch unchanged: PASS.
+- Source Analysis absent from normal mode: PASS.
+- Voice Analysis Lab launch: PASS.
+- Application launches stopped: PASS.
+- Start activates analysis: PASS.
+- Stop/reset behavior: PASS.
+- Repeated Start/Stop: PASS.
+- Close/relaunch behavior: PASS.
+- Audio transparency: PASS.
+- No added audible latency: PASS.
+- Metallic tail absent: PASS.
+- Flutter absent: PASS.
+- No crackle or new audible block boundaries: PASS.
+- Normal speech F0 behavior appears plausible: PASS.
+- Lower and higher voice changes are reflected: PASS.
+- Quiet/loud speech behavior appears plausible: PASS.
+- Sustained vowels collect stable data: PASS.
+- Rapid speech continues updating: PASS.
+- Silence/unvoiced behavior appears correct: PASS.
+- Confidence behavior appears plausible: PASS.
+- Rolling profile collects and reaches useful state: PASS.
+- Median and pitch-range measurements appear plausible: PASS.
+- Spectral descriptors respond plausibly: PASS.
+- Analyzed/skipped/dropped status behaves normally: PASS.
+- No UI freezing: PASS.
+- No analyzer failure: PASS.
+- Data collection appears fully functional in practical use: PASS.
+
+Accepted technical conclusions:
+
+- Raw microphone analysis occurs before DSP and Mixer.
+- Analysis does not alter audio.
+- Callback publication uses a stable owned copy.
+- Analysis runs outside the callback.
+- Mailbox capacity remains one frame.
+- Rolling profile remains bounded to 240 scalar readings.
+- The F0 estimator is accepted for practical source profiling.
+- Spectral energy ratios are accepted as comparative descriptors.
+- No identity or gender classification is performed.
+
+Known non-blocking debt:
+
+- Real-hardware close-while-processing was not separately isolated as a
+  dedicated test beyond practical live use.
+- Lock-free mailbox diagnostic counters may rarely undercount or lose a
+  pending frame during a thread interleaving.
+- Approximate resonance estimates remain weak descriptors.
+- Lower-sample-rate Nyquist truncation lacks a dedicated focused test.
+- These are not known product failures and do not block M9.0 acceptance.
+
+Next milestone direction:
+
+- The next epic is the target-based character-transformation engine.
+- The first target work must support both feminine and deep-masculine
+  directions.
 
 Live M9.0 acceptance checklist:
 

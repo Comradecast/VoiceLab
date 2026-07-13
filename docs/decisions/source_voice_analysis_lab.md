@@ -1,6 +1,6 @@
 # M9.0 Passive Source Voice Analysis Lab
 
-Status: PROVISIONAL
+Status: PASS
 
 ## Decision
 
@@ -9,6 +9,9 @@ microphone acoustics without changing audio. The lab is the measurement
 foundation for future target-based character transformation, where a source
 voice profile can later be compared with a target character profile to produce
 a transformation plan.
+
+Luke completed final live source-analysis acceptance for M9.0. The milestone
+is accepted as PASS.
 
 M9.0 is target-neutral. It measures acoustic properties only. It does not
 classify the operator as male, female, masculine, feminine, young, old, or any
@@ -59,6 +62,11 @@ The callback does not wait for analyzer work and does not perform analysis.
 The worker owns all mutable analysis state. It builds a rolling analysis
 window from accepted raw frames and publishes immutable scalar snapshots. No
 NumPy arrays are exposed to ApplicationService or UI.
+
+Live acceptance confirmed that raw microphone analysis occurs before DSP and
+Mixer, analysis does not alter audio, callback publication uses a stable owned
+copy, analysis runs outside the callback, mailbox capacity remains one frame,
+and the rolling profile remains bounded to 240 scalar readings.
 
 ## Bounded State
 
@@ -119,6 +127,12 @@ estimates for F1, F2, and F3 on suitable voiced frames. This is not a full LPC
 or laboratory formant tracker. Silence, noisy consonants, and unreliable
 frames can legitimately report unavailable resonance values.
 
+Accepted measurement conclusion: the F0 estimator is accepted for practical
+source profiling, spectral energy ratios are accepted as comparative
+descriptors, `spectral_tilt_db` is an energy-ratio index rather than a fitted
+dB-per-octave slope, and F1/F2/F3 estimates are weak descriptors only. They are
+not approved as direct automatic control inputs.
+
 ## Reliability
 
 Reliability states are based on measured conditions:
@@ -138,6 +152,14 @@ readiness while preserving devices, routes, processing state, voice selection,
 input-processing settings, bypass state, soundboard state, monitor state, and
 volumes.
 
+Analysis values are intentionally session-only. M9.0 creates no source-profile
+file, exports no profile, keeps the bounded source profile only in memory, and
+writes nothing to `settings.json` or `presets.json`. Reset, Stop/restart, and
+relaunch begin fresh transient analysis state according to the implemented
+lifecycle. No file was expected from Luke during live acceptance. Future
+target-character processing will consume the live in-memory profile directly;
+persistent analysis export remains deferred diagnostics scope.
+
 ## Future Use
 
 Future feminine, masculine, deep masculine, giant, dark narrator, childlike,
@@ -147,5 +169,50 @@ implement target profiles, adaptive pitch shifting, automatic formant shifting,
 EQ correction, de-essing, synthesis, conversion, recording, exporting, or
 automatic DSP control.
 
-Live acceptance remains pending. M9.0 must not be marked PASS until Luke
-performs live source-analysis acceptance.
+The analyzer is accepted as the source-profile foundation for feminine,
+masculine, deep-masculine, giant, and other target profiles. The next epic is
+the target-based character-transformation engine. The first target work must
+support both feminine and deep-masculine directions.
+
+## Final Acceptance
+
+Final live M9.0 PASS results:
+
+- Normal launch unchanged.
+- Source Analysis absent from normal mode.
+- Voice Analysis Lab launch.
+- Application launches stopped.
+- Start activates analysis.
+- Stop/reset behavior.
+- Repeated Start/Stop.
+- Close/relaunch behavior.
+- Audio transparency.
+- No added audible latency.
+- Metallic tail absent.
+- Flutter absent.
+- No crackle or new audible block boundaries.
+- Normal speech F0 behavior appears plausible.
+- Lower and higher voice changes are reflected.
+- Quiet/loud speech behavior appears plausible.
+- Sustained vowels collect stable data.
+- Rapid speech continues updating.
+- Silence/unvoiced behavior appears correct.
+- Confidence behavior appears plausible.
+- Rolling profile collects and reaches useful state.
+- Median and pitch-range measurements appear plausible.
+- Spectral descriptors respond plausibly.
+- Analyzed/skipped/dropped status behaves normally.
+- No UI freezing.
+- No analyzer failure.
+- Data collection appears fully functional in practical use.
+
+Known non-blocking debt:
+
+- Real-hardware close-while-processing was not separately isolated as a
+  dedicated test beyond Luke's practical live use.
+- Lock-free mailbox diagnostic counters may rarely undercount or lose a
+  pending frame during a thread interleaving.
+- Approximate resonance estimates remain weak descriptors.
+- Lower-sample-rate Nyquist truncation lacks a dedicated focused test.
+
+These are not known product failures and do not block M9.0 acceptance.
