@@ -1,4 +1,5 @@
 import dataclasses
+import math
 import os
 import unittest
 
@@ -82,6 +83,31 @@ def process_blocks(service, samples, block=1024):
     return np.concatenate(chunks)
 
 
+def calibration_state_tuple(service):
+    state = service.stable_control_snapshot()
+    target = service.transformation_execution_snapshot()
+    return (
+        state.calibration,
+        state.suggestion,
+        state.locked,
+        state.trim,
+        service.stable_adaptive_mode,
+        service.execution_enabled,
+        target.target_pitch_semitones if target is not None else None,
+        target.target_formant_semitones if target is not None else None,
+    )
+
+
+def assert_capture_fails_preserving(testcase, service, snapshot, expected_reason=None):
+    before = calibration_state_tuple(service)
+    service.source_analysis_snapshot = lambda: snapshot
+    result = service.capture_calibration()
+    testcase.assertFalse(result.success)
+    if expected_reason is not None:
+        testcase.assertIn(expected_reason, result.message)
+    testcase.assertEqual(calibration_state_tuple(service), before)
+
+
 class M93ContractAndCalibrationTests(unittest.TestCase):
     def test_launch_defaults_and_immutable_contracts(self):
         service = make_service(calibrate_lock_lab=True)
@@ -123,6 +149,110 @@ class M93ContractAndCalibrationTests(unittest.TestCase):
             service.source_analysis_snapshot = lambda snapshot=snapshot: snapshot
             self.assertFalse(service.capture_calibration().success)
             self.assertEqual(service.stable_control_snapshot().calibration, preserved)
+
+    def test_required_pitch_evidence_rejects_nonfinite_and_invalid_values_atomically(self):
+        service = make_service(calibrate_lock_lab=True)
+        calibrate_and_lock(service, source=ready_source(median_f0_hz=120.0))
+        service.execution_enabled = True
+        service.set_pitch_trim(1.0)
+        invalid_values = (math.nan, math.inf, -math.inf, True, "110", None)
+        fields = ("median_f0_hz", "lower_f0_hz", "upper_f0_hz", "pitch_span_semitones")
+        for field in fields:
+            for value in invalid_values:
+                snapshot = ready_source(**{field: value})
+                assert_capture_fails_preserving(self, service, snapshot)
+
+    def test_pitch_relationships_and_supported_range_are_rejected_without_correction(self):
+        service = make_service(calibrate_lock_lab=True)
+        calibrate_and_lock(service, source=ready_source(median_f0_hz=120.0))
+        cases = (
+            ready_source(lower_f0_hz=130.0, median_f0_hz=120.0, upper_f0_hz=160.0),
+            ready_source(lower_f0_hz=80.0, median_f0_hz=170.0, upper_f0_hz=160.0),
+            ready_source(lower_f0_hz=170.0, median_f0_hz=180.0, upper_f0_hz=160.0),
+            ready_source(pitch_span_semitones=-0.1),
+            ready_source(median_f0_hz=0.0),
+            ready_source(lower_f0_hz=0.0),
+            ready_source(upper_f0_hz=0.0),
+            ready_source(median_f0_hz=-100.0),
+            ready_source(median_f0_hz=59.0, lower_f0_hz=58.0, upper_f0_hz=90.0),
+            ready_source(median_f0_hz=501.0, lower_f0_hz=100.0, upper_f0_hz=502.0),
+        )
+        for snapshot in cases:
+            assert_capture_fails_preserving(self, service, snapshot)
+
+    def test_profile_metadata_and_optional_descriptors_reject_nonfinite_values(self):
+        service = make_service(calibrate_lock_lab=True)
+        calibrate_and_lock(service, source=ready_source(median_f0_hz=120.0))
+        metadata_cases = (
+            {**ready_source(), "status": {"active": True, "latest_snapshot_age_seconds": math.nan, "last_failure": ""}},
+            {**ready_source(), "status": {"active": True, "latest_snapshot_age_seconds": math.inf, "last_failure": ""}},
+            {**ready_source(), "status": {"active": True, "latest_snapshot_age_seconds": -0.1, "last_failure": ""}},
+            ready_source(voiced_duration_seconds=math.nan),
+            ready_source(voiced_duration_seconds=-0.1),
+            ready_source(voiced_frame_count=0),
+            ready_source(voiced_frame_count=True),
+            ready_source(voiced_frame_ratio=math.inf),
+            ready_source(reliability="collecting"),
+            ready_source(reliability=""),
+        )
+        for snapshot in metadata_cases:
+            assert_capture_fails_preserving(self, service, snapshot)
+        optional_fields = (
+            "chest_energy_ratio",
+            "low_mid_energy_ratio",
+            "presence_energy_ratio",
+            "brightness_energy_ratio",
+            "sibilance_energy_ratio",
+            "median_spectral_tilt_db",
+            "f1_hz",
+            "f2_hz",
+            "f3_hz",
+            "resonance_confidence",
+        )
+        for field in optional_fields:
+            for value in (math.nan, math.inf, -math.inf, True, "1.0"):
+                assert_capture_fails_preserving(self, service, ready_source(**{field: value}))
+
+    def test_successful_calibration_contains_only_finite_numbers_or_unavailable_values(self):
+        service = make_service(calibrate_lock_lab=True)
+        snapshot = ready_source(
+            median_spectral_tilt_db=None,
+            f1_hz=None,
+            f2_hz=None,
+            f3_hz=None,
+            resonance_confidence=0.0,
+            chest_energy_ratio=0.0,
+            low_mid_energy_ratio=0.0,
+            presence_energy_ratio=0.0,
+            brightness_energy_ratio=0.0,
+            sibilance_energy_ratio=0.0,
+        )
+        service.source_analysis_snapshot = lambda: snapshot
+        self.assertTrue(service.capture_calibration().success)
+        calibration = service.stable_control_snapshot().calibration
+        for field in dataclasses.fields(calibration):
+            value = getattr(calibration, field.name)
+            if isinstance(value, float):
+                self.assertTrue(math.isfinite(value), field.name)
+            elif value is not None:
+                self.assertNotIsInstance(value, (list, dict))
+
+    def test_calibration_capture_reads_one_complete_snapshot(self):
+        service = make_service(calibrate_lock_lab=True)
+        calls = []
+
+        def source():
+            calls.append(1)
+            if len(calls) == 1:
+                return ready_source(median_f0_hz=120.0)
+            return ready_source(median_f0_hz=85.0)
+
+        service.source_analysis_snapshot = source
+        self.assertTrue(service.capture_calibration().success)
+        state = service.stable_control_snapshot()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(state.calibration.median_f0_hz, 120.0)
+        self.assertEqual(state.suggestion.plan.pitch.source_median_f0_hz, 120.0)
 
     def test_suggestion_uses_frozen_calibration_and_target_strength_dirty_state(self):
         service = make_service(calibrate_lock_lab=True)

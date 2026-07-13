@@ -12,6 +12,13 @@ plan.
 
 - Add an isolated `--calibrate-lock-lab` launch mode.
 - Keep calibration, suggestion, lock, and manual trim state session-only.
+- Validate the complete source snapshot before changing calibration, suggestion,
+  lock, trim, adaptation, execution-enabled, or runtime target state.
+- Store only finite numeric evidence or explicit unavailable values such as
+  `None` in successful calibration snapshots. Required pitch evidence must be
+  finite, positive where applicable, ordered as lower <= median <= upper, and
+  within the accepted M9.0 F0 range. Optional descriptors are rejected when
+  present but nonfinite.
 - Use existing M9.0 source analysis, M9.1 planning, and M9.2 execution
   components. Do not add another analyzer, planner, executor, stream, router,
   pitch/formant stage, or persistence schema.
@@ -26,6 +33,8 @@ plan.
 
 - Ordinary speech variation no longer makes mature locked execution flap between
   collecting and ready while Adaptive Updating is Off.
+- Invalid calibration attempts preserve the prior calibration, suggestion, lock,
+  trims, adaptation mode, execution-enabled state, and runtime target.
 - Target, strength, and recalibration changes can refresh suggestions and dirty
   indicators without mutating active locked execution.
 - Return to Suggested Plan clears trims without clearing the lock.

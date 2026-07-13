@@ -335,4 +335,3 @@ def _clamp(value, limits):
     low, high = limits
     clamped = max(low, min(high, float(value)))
     return clamped, clamped != float(value)
-

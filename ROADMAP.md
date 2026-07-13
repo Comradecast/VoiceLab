@@ -1827,6 +1827,9 @@ or the audio effect chain.
   Lock tabs in one isolated lab mode.
 - Captures an immutable session-only calibration snapshot from a ready M9.0
   rolling source profile.
+- Rejects corrupt calibration evidence before mutation: successful calibration
+  snapshots contain only finite numeric scalar evidence or explicit unavailable
+  values, and failed captures preserve existing session state.
 - Generates a suggested `TransformationPlan` through the existing M9.1 planner
   from the frozen calibration source, current target, and current strength.
 - Lets the operator explicitly lock the suggested plan before execution.
@@ -1859,7 +1862,9 @@ or the audio effect chain.
 
 - Focused M9.3 automated tests cover immutable calibration/suggestion/lock/trim
   contracts, capture rejection for inactive/collecting/stale/failure/missing-F0
-  sources, frozen-calibration planning, dirty target/strength state, manual trim
+  sources, nonfinite/invalid/inconsistent calibration evidence, optional
+  descriptor rejection, atomic failed-capture state preservation,
+  frozen-calibration planning, dirty target/strength state, manual trim
   clamp/projection behavior, Return to Suggested Plan, locked execution
   stability against live source and target edits, Adaptive Updating Off versus
   Continuous behavior, dynamics lock/relock behavior, Return to Neutral,

@@ -2165,6 +2165,12 @@ Expected workflow behavior:
   ready.
 - Press Calibrate Source. Calibration should succeed only from an active,
   non-stale, ready rolling source profile with sufficient pitch evidence.
+- Successful calibration snapshots should contain only finite numeric evidence
+  or explicit unavailable values. NaN, infinity, boolean, nonnumeric,
+  out-of-range, or inconsistent pitch evidence must fail before any calibration
+  state changes.
+- Failed calibration attempts should preserve the prior calibration,
+  suggestion, lock, trims, execution-enabled state, and runtime target.
 - A Suggested Plan should appear from the frozen calibration, current target,
   and Character Strength.
 - Press Lock Suggested Transformation. Execution authority should become the

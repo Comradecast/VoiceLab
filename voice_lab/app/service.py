@@ -1,9 +1,11 @@
+import math
 import os
 from dataclasses import asdict, is_dataclass
+from numbers import Real
 
 from PySide6.QtCore import QObject, Signal
 
-from voice_lab.analysis import SourceVoiceAnalyzer
+from voice_lab.analysis import F0_MAX_HZ, F0_MIN_HZ, SourceVoiceAnalyzer
 from voice_lab.audio_levels import AudioLevelMonitor
 from voice_lab.calibrate_lock import (
     ADAPTIVE_CONTINUOUS,
@@ -64,6 +66,15 @@ from voice_lab.app.soundboard_assets import list_sound_files, load_sound
 
 RESERVED_CUSTOM_VOICE_NAMES = frozenset({"Custom - Unsaved", "Custom — Unsaved"})
 STALE_SOURCE_AGE_SECONDS = 1.5
+INVALID_CALIBRATION_RELIABILITIES = {
+    "",
+    "analyzer failure",
+    "analyzer unavailable",
+    "collecting",
+    "insufficient level",
+    "insufficient voiced speech",
+    "stale",
+}
 
 
 class _StableExecutionPlanProvider:
@@ -72,6 +83,35 @@ class _StableExecutionPlanProvider:
 
     def plan(self, source_snapshot, target_profile, strength):
         return self.service._stable_execution_plan(source_snapshot, target_profile, strength)
+
+
+def _required_calibration_number(value, label, *, minimum=None, maximum=None):
+    if value is None:
+        return False, f"{label} is missing."
+    ok, number_or_reason = _calibration_number(value, label)
+    if not ok:
+        return False, number_or_reason
+    number = number_or_reason
+    if minimum is not None and number < minimum:
+        return False, f"{label} is out of range."
+    if maximum is not None and number > maximum:
+        return False, f"{label} is out of range."
+    return True, number
+
+
+def _optional_calibration_number(value, label):
+    if value is None:
+        return True, None
+    return _calibration_number(value, label)
+
+
+def _calibration_number(value, label):
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return False, f"{label} is not numeric."
+    number = float(value)
+    if not math.isfinite(number):
+        return False, f"{label} is not finite."
+    return True, number
 
 
 class ApplicationService(QObject):
@@ -573,18 +613,58 @@ class ApplicationService(QObject):
         if not status.get("active"):
             return False, "Source analyzer is not active."
         age = status.get("latest_snapshot_age_seconds")
-        if age is not None and float(age) > STALE_SOURCE_AGE_SECONDS:
+        ok, age_or_reason = _required_calibration_number(
+            age,
+            "calibration source snapshot age",
+            minimum=0.0,
+        )
+        if not ok:
+            return False, age_or_reason
+        if age_or_reason > STALE_SOURCE_AGE_SECONDS:
             return False, "Source profile is stale."
         if not profile.get("ready"):
             return False, "Source profile is still collecting."
-        for key in ("median_f0_hz", "lower_f0_hz", "upper_f0_hz", "pitch_span_semitones"):
-            value = profile.get(key)
-            if value is None:
-                return False, "Source profile is missing pitch evidence."
-            try:
-                float(value)
-            except (TypeError, ValueError):
-                return False, "Source profile is missing pitch evidence."
+        reliability = str(profile.get("reliability") or "").strip().casefold()
+        if reliability in INVALID_CALIBRATION_RELIABILITIES:
+            return False, "Calibration source reliability is not ready."
+        required = (
+            ("voiced_duration_seconds", "calibration voiced duration", 0.0, None),
+            ("voiced_frame_count", "calibration voiced frame count", 1.0, None),
+            ("voiced_frame_ratio", "calibration voiced frame ratio", 0.0, None),
+            ("median_f0_hz", "calibration median F0", F0_MIN_HZ, F0_MAX_HZ),
+            ("lower_f0_hz", "calibration lower F0", F0_MIN_HZ, F0_MAX_HZ),
+            ("upper_f0_hz", "calibration upper F0", F0_MIN_HZ, F0_MAX_HZ),
+            ("pitch_span_semitones", "calibration pitch span", 0.0, None),
+        )
+        values = {}
+        for key, label, minimum, maximum in required:
+            ok, value_or_reason = _required_calibration_number(
+                profile.get(key),
+                label,
+                minimum=minimum,
+                maximum=maximum,
+            )
+            if not ok:
+                return False, value_or_reason
+            values[key] = value_or_reason
+        if values["lower_f0_hz"] > values["median_f0_hz"] or values["median_f0_hz"] > values["upper_f0_hz"]:
+            return False, "Calibration pitch range is inconsistent."
+        optional = (
+            ("chest_energy_ratio", "calibration chest descriptor"),
+            ("low_mid_energy_ratio", "calibration low-mid descriptor"),
+            ("presence_energy_ratio", "calibration presence descriptor"),
+            ("brightness_energy_ratio", "calibration brightness descriptor"),
+            ("sibilance_energy_ratio", "calibration sibilance descriptor"),
+            ("median_spectral_tilt_db", "calibration spectral tilt descriptor"),
+            ("f1_hz", "calibration F1 descriptor"),
+            ("f2_hz", "calibration F2 descriptor"),
+            ("f3_hz", "calibration F3 descriptor"),
+            ("resonance_confidence", "calibration resonance confidence"),
+        )
+        for key, label in optional:
+            ok, reason = _optional_calibration_number(profile.get(key), label)
+            if not ok:
+                return False, reason
         return True, ""
 
     def _refresh_stable_suggestion(self, force=False):
