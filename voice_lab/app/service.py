@@ -5,6 +5,19 @@ from PySide6.QtCore import QObject, Signal
 
 from voice_lab.analysis import SourceVoiceAnalyzer
 from voice_lab.audio_levels import AudioLevelMonitor
+from voice_lab.calibrate_lock import (
+    ADAPTIVE_CONTINUOUS,
+    ADAPTIVE_MODES,
+    ADAPTIVE_OFF,
+    CalibrationSourceProfile,
+    LockedTransformationSnapshot,
+    ManualTransformationTrim,
+    StableTransformationControlSnapshot,
+    SuggestedTransformationSnapshot,
+    apply_manual_trim,
+    manual_trim,
+    trim_projection,
+)
 from voice_lab.app.commands import CommandResult
 from voice_lab.app.devices import describe_devices, resolve_stored_identity
 from voice_lab.app.operator_status import build_operator_status
@@ -50,6 +63,15 @@ from voice_lab.app.soundboard_assets import list_sound_files, load_sound
 
 
 RESERVED_CUSTOM_VOICE_NAMES = frozenset({"Custom - Unsaved", "Custom — Unsaved"})
+STALE_SOURCE_AGE_SECONDS = 1.5
+
+
+class _StableExecutionPlanProvider:
+    def __init__(self, service):
+        self.service = service
+
+    def plan(self, source_snapshot, target_profile, strength):
+        return self.service._stable_execution_plan(source_snapshot, target_profile, strength)
 
 
 class ApplicationService(QObject):
@@ -71,21 +93,34 @@ class ApplicationService(QObject):
         voice_analysis_lab=False,
         target_planner_lab=False,
         transformation_execution_lab=False,
+        calibrate_lock_lab=False,
     ):
         super().__init__()
         self.telemetry = telemetry or TelemetryService()
         self.level_monitor = AudioLevelMonitor()
         self.engine = engine or AudioEngine()
         self.plugins = plugins or PluginManager()
-        self.transformation_execution_lab_enabled = bool(transformation_execution_lab)
-        self.formant_lab_enabled = bool(formant_lab or transformation_execution_lab)
-        self.target_planner_lab_enabled = bool(target_planner_lab or transformation_execution_lab)
-        self.voice_analysis_lab_enabled = bool(voice_analysis_lab or target_planner_lab or transformation_execution_lab)
+        self.calibrate_lock_lab_enabled = bool(calibrate_lock_lab)
+        self.transformation_execution_lab_enabled = bool(transformation_execution_lab or calibrate_lock_lab)
+        self.formant_lab_enabled = bool(formant_lab or transformation_execution_lab or calibrate_lock_lab)
+        self.target_planner_lab_enabled = bool(target_planner_lab or transformation_execution_lab or calibrate_lock_lab)
+        self.voice_analysis_lab_enabled = bool(
+            voice_analysis_lab or target_planner_lab or transformation_execution_lab or calibrate_lock_lab
+        )
         self.target_planner = TransformationPlanner() if self.target_planner_lab_enabled else None
         self.current_target_profile = DEFAULT_TARGET_PROFILE
         self.target_planner_strength = 1.0
         self.source_voice_analyzer = SourceVoiceAnalyzer() if self.voice_analysis_lab_enabled else None
         self.execution_enabled = False
+        self.stable_adaptive_mode = ADAPTIVE_OFF
+        self._calibration_generation = 0
+        self._suggestion_generation = 0
+        self._lock_generation = 0
+        self._trim_generation = 0
+        self._current_calibration = None
+        self._current_suggestion = None
+        self._locked_transformation = None
+        self._manual_trim = manual_trim()
         self.transformation_executor = TransformationExecutor() if self.transformation_execution_lab_enabled else None
         self.transformation_execution_runtime = (
             TransformationExecutionRuntime(self.engine.input_processing)
@@ -132,8 +167,12 @@ class ApplicationService(QObject):
             self.transformation_execution_controller = TransformationExecutionController(
                 runtime=self.transformation_execution_runtime,
                 executor=self.transformation_executor,
-                planner=self.target_planner,
-                source_snapshot_getter=self.source_analysis_snapshot,
+                planner=(
+                    _StableExecutionPlanProvider(self)
+                    if self.calibrate_lock_lab_enabled
+                    else self.target_planner
+                ),
+                source_snapshot_getter=lambda: self.source_analysis_snapshot(),
                 target_profile_getter=lambda: self.current_target_profile,
                 strength_getter=lambda: self.target_planner_strength,
                 baseline_getter=lambda: self.current_input_processing,
@@ -311,6 +350,128 @@ class ApplicationService(QObject):
             return None
         return self.transformation_execution_snapshot()
 
+    def calibrate_lock_state(self):
+        if not self.calibrate_lock_lab_enabled:
+            return None
+        return self.stable_control_snapshot()
+
+    def stable_control_snapshot(self):
+        if not self.calibrate_lock_lab_enabled:
+            return None
+        self._refresh_stable_suggestion()
+        projection_plan = self._locked_transformation.plan if self._locked_transformation is not None else None
+        _, projection = apply_manual_trim(projection_plan, self._manual_trim)
+        target_name = getattr(self.current_target_profile, "display_name", self.current_target_profile.target_id)
+        newer = self._newer_suggestion_available()
+        snapshot = StableTransformationControlSnapshot(
+            lab="Experimental - Calibrate, Lock, and Manual Trim",
+            adaptive_mode=self.stable_adaptive_mode,
+            execution_authority="live adaptive plan" if self.stable_adaptive_mode == ADAPTIVE_CONTINUOUS else "locked plan",
+            calibration=self._current_calibration,
+            suggestion=self._current_suggestion,
+            locked=self._locked_snapshot(newer_suggestion_available=newer),
+            trim=self._manual_trim,
+            execution_enabled=self.execution_enabled,
+            calibration_generation=self._calibration_generation,
+            suggestion_generation=self._suggestion_generation,
+            lock_generation=self._lock_generation,
+            current_target_id=self.current_target_profile.target_id,
+            current_target_name=target_name,
+            current_strength=self.target_planner_strength,
+            suggestion_differs_from_lock=self._suggestion_differs_from_lock(),
+            newer_suggestion_available=newer,
+            manual_trim_active=self._manual_trim.pitch_changed_from_zero or self._manual_trim.formant_changed_from_zero,
+            live_source_readiness_matters=self.stable_adaptive_mode == ADAPTIVE_CONTINUOUS,
+            locked_plan_available_for_off=self._locked_transformation is not None,
+            target_changed_after_lock=self._target_changed_after_lock(),
+            strength_changed_after_lock=self._strength_changed_after_lock(),
+            calibration_changed_after_lock=self._calibration_changed_after_lock(),
+            **projection,
+        )
+        self.telemetry.set_metadata("calibrate_lock", snapshot.asdict())
+        return snapshot
+
+    def capture_calibration(self):
+        return self._capture_calibration("capture_calibration")
+
+    def recalibrate(self):
+        return self._capture_calibration("recalibrate")
+
+    def lock_suggested_transformation(self):
+        if not self.calibrate_lock_lab_enabled:
+            result = CommandResult.fail("Calibrate/Lock Lab is not enabled.")
+            self.telemetry.record_command_result("lock_suggested_transformation", result)
+            return result
+        self._refresh_stable_suggestion()
+        suggestion = self._current_suggestion
+        if suggestion is None or not suggestion.valid or suggestion.plan is None:
+            result = CommandResult.fail("No valid suggested transformation is available.")
+            self.telemetry.record_command_result("lock_suggested_transformation", result)
+            return result
+        if suggestion.planner_status in {"planner_failure", "invalid_target"}:
+            result = CommandResult.fail("Suggested transformation is not lockable.")
+            self.telemetry.record_command_result("lock_suggested_transformation", result)
+            return result
+        self._lock_generation += 1
+        supported = tuple(name for name in suggestion.plan.required_capabilities if name in ("adaptive_pitch_center", "formant_shift", "compressor", "limiter"))
+        unsupported = tuple(name for name in suggestion.plan.required_capabilities if name not in supported)
+        self._locked_transformation = LockedTransformationSnapshot(
+            valid=True,
+            lock_id=self._lock_generation,
+            locked_at=self.target_planner.clock(),
+            source_calibration_id=suggestion.calibration_id,
+            suggestion_id=suggestion.suggestion_id,
+            target_id=suggestion.target_id,
+            target_version=suggestion.target_version,
+            character_strength=suggestion.character_strength,
+            plan=suggestion.plan,
+            supported_capabilities=supported,
+            unsupported_capabilities=unsupported,
+            warnings=suggestion.warnings,
+            newer_suggestion_available=False,
+        )
+        self._refresh_execution_target()
+        state = self.stable_control_snapshot()
+        result = CommandResult.ok("Suggested transformation locked.", stable_control=state)
+        self.telemetry.record_command_result("lock_suggested_transformation", result)
+        return result
+
+    def set_pitch_trim(self, semitones):
+        return self._set_manual_trim(pitch_trim=semitones, command_name="set_pitch_trim")
+
+    def set_formant_trim(self, semitones):
+        return self._set_manual_trim(formant_trim=semitones, command_name="set_formant_trim")
+
+    def return_to_suggested_plan(self):
+        if not self.calibrate_lock_lab_enabled:
+            result = CommandResult.fail("Calibrate/Lock Lab is not enabled.")
+            self.telemetry.record_command_result("return_to_suggested_plan", result)
+            return result
+        self._trim_generation += 1
+        self._manual_trim = manual_trim(generation=self._trim_generation)
+        self._refresh_execution_target()
+        state = self.stable_control_snapshot()
+        result = CommandResult.ok("Manual trims returned to suggested plan.", stable_control=state)
+        self.telemetry.record_command_result("return_to_suggested_plan", result)
+        return result
+
+    def set_adaptive_updating_mode(self, mode):
+        if not self.calibrate_lock_lab_enabled:
+            result = CommandResult.fail("Calibrate/Lock Lab is not enabled.")
+            self.telemetry.record_command_result("set_adaptive_updating_mode", result)
+            return result
+        normalized = str(mode or "").strip().casefold()
+        if normalized not in ADAPTIVE_MODES:
+            result = CommandResult.fail("Adaptive Updating must be Off or Continuous.")
+            self.telemetry.record_command_result("set_adaptive_updating_mode", result)
+            return result
+        self.stable_adaptive_mode = normalized
+        self._refresh_execution_target()
+        state = self.stable_control_snapshot()
+        result = CommandResult.ok("Adaptive Updating updated.", stable_control=state)
+        self.telemetry.record_command_result("set_adaptive_updating_mode", result)
+        return result
+
     def transformation_execution_snapshot(self):
         if self.transformation_execution_runtime is None:
             return None
@@ -354,6 +515,189 @@ class ApplicationService(QObject):
         except Exception as exc:
             self.transformation_execution_runtime.set_worker_status("failed", str(exc))
 
+    def _capture_calibration(self, command_name):
+        if not self.calibrate_lock_lab_enabled:
+            result = CommandResult.fail("Calibrate/Lock Lab is not enabled.")
+            self.telemetry.record_command_result(command_name, result)
+            return result
+        snapshot = self.source_analysis_snapshot()
+        ok, reason = self._validate_calibration_source(snapshot)
+        if not ok:
+            result = CommandResult.fail(reason, stable_control=self.stable_control_snapshot())
+            self.telemetry.record_command_result(command_name, result)
+            return result
+        profile = snapshot["profile"]
+        status = snapshot["status"]
+        self._calibration_generation += 1
+        warnings = []
+        if profile.get("f1_hz") is not None or profile.get("f2_hz") is not None or profile.get("f3_hz") is not None:
+            warnings.append("resonance estimates are weak descriptors")
+        self._current_calibration = CalibrationSourceProfile(
+            calibration_id=self._calibration_generation,
+            captured_at=self.target_planner.clock(),
+            source_snapshot_age_seconds=status.get("latest_snapshot_age_seconds"),
+            source_reliability=str(profile.get("reliability") or "ready"),
+            ready=bool(profile.get("ready")),
+            voiced_duration_seconds=float(profile.get("voiced_duration_seconds") or 0.0),
+            voiced_frame_count=int(profile.get("voiced_frame_count") or 0),
+            voiced_frame_ratio=float(profile.get("voiced_frame_ratio") or 0.0),
+            median_f0_hz=float(profile.get("median_f0_hz")),
+            lower_f0_hz=float(profile.get("lower_f0_hz")),
+            upper_f0_hz=float(profile.get("upper_f0_hz")),
+            pitch_span_semitones=float(profile.get("pitch_span_semitones")),
+            chest_energy_ratio=float(profile.get("chest_energy_ratio") or 0.0),
+            low_mid_energy_ratio=float(profile.get("low_mid_energy_ratio") or 0.0),
+            presence_energy_ratio=float(profile.get("presence_energy_ratio") or 0.0),
+            brightness_energy_ratio=float(profile.get("brightness_energy_ratio") or 0.0),
+            sibilance_energy_ratio=float(profile.get("sibilance_energy_ratio") or 0.0),
+            spectral_tilt_db=profile.get("median_spectral_tilt_db"),
+            f1_hz=profile.get("f1_hz"),
+            f2_hz=profile.get("f2_hz"),
+            f3_hz=profile.get("f3_hz"),
+            resonance_confidence=float(profile.get("resonance_confidence") or 0.0),
+            warnings=tuple(warnings),
+        )
+        self._refresh_stable_suggestion(force=True)
+        state = self.stable_control_snapshot()
+        result = CommandResult.ok("Source calibration captured.", stable_control=state)
+        self.telemetry.record_command_result(command_name, result)
+        return result
+
+    def _validate_calibration_source(self, snapshot):
+        if not snapshot:
+            return False, "Source analysis is unavailable."
+        status = dict(snapshot.get("status") or {})
+        profile = dict(snapshot.get("profile") or {})
+        if status.get("last_failure"):
+            return False, "Source analyzer failure prevents calibration."
+        if not status.get("active"):
+            return False, "Source analyzer is not active."
+        age = status.get("latest_snapshot_age_seconds")
+        if age is not None and float(age) > STALE_SOURCE_AGE_SECONDS:
+            return False, "Source profile is stale."
+        if not profile.get("ready"):
+            return False, "Source profile is still collecting."
+        for key in ("median_f0_hz", "lower_f0_hz", "upper_f0_hz", "pitch_span_semitones"):
+            value = profile.get(key)
+            if value is None:
+                return False, "Source profile is missing pitch evidence."
+            try:
+                float(value)
+            except (TypeError, ValueError):
+                return False, "Source profile is missing pitch evidence."
+        return True, ""
+
+    def _refresh_stable_suggestion(self, force=False):
+        if not self.calibrate_lock_lab_enabled or self._current_calibration is None:
+            return
+        if not force and self._current_suggestion is not None:
+            if (
+                self._current_suggestion.calibration_id == self._current_calibration.calibration_id
+                and self._current_suggestion.target_id == self.current_target_profile.target_id
+                and self._current_suggestion.target_version == self.current_target_profile.schema_version
+                and self._current_suggestion.character_strength == self.target_planner_strength
+            ):
+                return
+        plan = self.target_planner.plan(
+            self._current_calibration.source_snapshot(),
+            self.current_target_profile,
+            self.target_planner_strength,
+        )
+        self._suggestion_generation += 1
+        valid = bool(plan.ready or plan.status == "degraded")
+        differs = self._locked_transformation is None or plan != self._locked_transformation.plan
+        self._current_suggestion = SuggestedTransformationSnapshot(
+            valid=valid,
+            suggestion_id=self._suggestion_generation,
+            generated_at=self.target_planner.clock(),
+            calibration_id=self._current_calibration.calibration_id,
+            target_id=self.current_target_profile.target_id,
+            target_version=self.current_target_profile.schema_version,
+            character_strength=self.target_planner_strength,
+            planner_status=plan.status,
+            planner_confidence=plan.aggregate_confidence,
+            plan=plan,
+            differs_from_lock=differs,
+            warnings=tuple(plan.warnings),
+        )
+
+    def _stable_execution_plan(self, source_snapshot, target_profile, strength):
+        if self.stable_adaptive_mode == ADAPTIVE_CONTINUOUS:
+            plan = self.target_planner.plan(source_snapshot, target_profile, strength)
+            if not getattr(plan, "ready", False):
+                return plan
+            adjusted, _ = apply_manual_trim(plan, self._manual_trim)
+            return adjusted
+        if self._locked_transformation is None or not self._locked_transformation.valid:
+            return None
+        adjusted, _ = apply_manual_trim(self._locked_transformation.plan, self._manual_trim)
+        return adjusted
+
+    def _set_manual_trim(self, *, pitch_trim=None, formant_trim=None, command_name):
+        if not self.calibrate_lock_lab_enabled:
+            result = CommandResult.fail("Calibrate/Lock Lab is not enabled.")
+            self.telemetry.record_command_result(command_name, result)
+            return result
+        try:
+            pitch = self._manual_trim.requested_pitch_trim_st if pitch_trim is None else pitch_trim
+            formant = self._manual_trim.requested_formant_trim_st if formant_trim is None else formant_trim
+            self._trim_generation += 1
+            self._manual_trim = manual_trim(pitch, formant, self._trim_generation)
+        except ValueError as exc:
+            result = CommandResult.fail(str(exc), stable_control=self.stable_control_snapshot())
+            self.telemetry.record_command_result(command_name, result)
+            return result
+        self._refresh_execution_target()
+        state = self.stable_control_snapshot()
+        result = CommandResult.ok("Manual trim updated.", stable_control=state)
+        self.telemetry.record_command_result(command_name, result)
+        return result
+
+    def _locked_snapshot(self, newer_suggestion_available=False):
+        if self._locked_transformation is None:
+            return None
+        return LockedTransformationSnapshot(
+            **{
+                **self._locked_transformation.__dict__,
+                "newer_suggestion_available": bool(newer_suggestion_available),
+            }
+        )
+
+    def _suggestion_differs_from_lock(self):
+        return bool(
+            self._current_suggestion is not None
+            and (
+                self._locked_transformation is None
+                or self._current_suggestion.plan != self._locked_transformation.plan
+            )
+        )
+
+    def _newer_suggestion_available(self):
+        return bool(
+            self._locked_transformation is not None
+            and self._current_suggestion is not None
+            and self._current_suggestion.plan != self._locked_transformation.plan
+        )
+
+    def _target_changed_after_lock(self):
+        return bool(
+            self._locked_transformation is not None
+            and self.current_target_profile.target_id != self._locked_transformation.target_id
+        )
+
+    def _strength_changed_after_lock(self):
+        return bool(
+            self._locked_transformation is not None
+            and self.target_planner_strength != self._locked_transformation.character_strength
+        )
+
+    def _calibration_changed_after_lock(self):
+        return bool(
+            self._locked_transformation is not None
+            and self._current_calibration is not None
+            and self._current_calibration.calibration_id != self._locked_transformation.source_calibration_id
+        )
+
     def set_target_planner_strength(self, strength_percent):
         if self.target_planner is None:
             result = CommandResult.fail("Target Planner Lab is not enabled.")
@@ -368,6 +712,7 @@ class ApplicationService(QObject):
             self.telemetry.record_command_result("set_target_planner_strength", result)
             return result
         self.target_planner_strength = strength
+        self._refresh_stable_suggestion(force=self.calibrate_lock_lab_enabled)
         state = self.target_planner_state()
         result = CommandResult.ok("Target Planner strength updated.", target_planner=state)
         self.telemetry.record_command_result("set_target_planner_strength", result)
@@ -384,6 +729,7 @@ class ApplicationService(QObject):
             result = CommandResult.fail(str(exc))
             self.telemetry.record_command_result("update_target_profile", result)
             return result
+        self._refresh_stable_suggestion(force=self.calibrate_lock_lab_enabled)
         state = self.target_planner_state()
         result = CommandResult.ok("Target Planner profile updated.", target_planner=state)
         self.telemetry.record_command_result("update_target_profile", result)
@@ -405,6 +751,7 @@ class ApplicationService(QObject):
             self.telemetry.record_command_result("load_target_reference", result, reference=reference)
             return result
         self.current_target_profile = target
+        self._refresh_stable_suggestion(force=self.calibrate_lock_lab_enabled)
         state = self.target_planner_state()
         result = CommandResult.ok("Target reference loaded.", target_planner=state)
         self.telemetry.record_command_result("load_target_reference", result, reference=reference)
@@ -417,6 +764,7 @@ class ApplicationService(QObject):
             return result
         self.current_target_profile = DEFAULT_TARGET_PROFILE
         self.target_planner_strength = 1.0
+        self._refresh_stable_suggestion(force=self.calibrate_lock_lab_enabled)
         if self.source_voice_analyzer is not None:
             self.source_voice_analyzer.reset()
         state = self.target_planner_state()

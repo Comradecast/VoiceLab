@@ -2133,3 +2133,74 @@ Known non-blocking M9.2 debt:
 - No finished feminine or deep-masculine character exists yet.
 
 These are future milestones rather than M9.2 failures.
+
+## M9.3 Calibrate, Lock, and Manual Trim Pre-Live Acceptance
+
+Status: PROVISIONAL.
+
+M9.3 is ready for controlled live acceptance, but final hardware PASS has not
+been recorded. Launch with:
+
+```powershell
+.\.venv\Scripts\python.exe main.py --calibrate-lock-lab
+```
+
+Expected launch and isolation behavior:
+
+- Normal launch remains unchanged.
+- `--calibrate-lock-lab` launches stopped.
+- Source Analysis, Target Planner, Plan Execution, and Calibrate & Lock tabs
+  are present.
+- Calibrate & Lock is absent from normal, Formant Lab, Voice Analysis Lab,
+  Target Planner Lab, and Transformation Execution Lab launches.
+- The effect chain still has one combined experimental pitch/formant stage and
+  no second full-latency pitch/formant stage.
+- No settings, presets, target references, plans, or execution state persist
+  across relaunch.
+
+Expected workflow behavior:
+
+- Start processing with execution disabled.
+- Speak enough voiced material for the rolling Source Analysis profile to reach
+  ready.
+- Press Calibrate Source. Calibration should succeed only from an active,
+  non-stale, ready rolling source profile with sufficient pitch evidence.
+- A Suggested Plan should appear from the frozen calibration, current target,
+  and Character Strength.
+- Press Lock Suggested Transformation. Execution authority should become the
+  locked plan while Adaptive Updating is Off.
+- Enable execution. Target and actual runtime values should move toward the
+  locked plan through the M9.2 runtime.
+- Brief pauses, unvoiced consonants, sentence gaps, source polling, analyzer
+  gates, target edits, and strength edits must not change locked execution while
+  Adaptive Updating is Off.
+- Target or strength edits may update Suggested Plan and dirty indicators, but
+  must not change runtime until Lock Suggested Transformation is pressed again.
+- Recalibrate may update calibration and suggestion, but must not change runtime
+  until relock.
+- Pitch Trim should adjust locked pitch by up to approximately `+/-4`
+  semitones.
+- Formant Trim should adjust locked formant by up to approximately `+/-1`
+  semitone.
+- Final runtime targets remain constrained by M9.2 pitch/formant execution
+  clamps.
+- Return to Suggested Plan clears trims and preserves the lock.
+- Return to Neutral disables execution, restores neutral runtime influence, and
+  preserves calibration, suggestion, lock, and trim state.
+- Re-enabling execution after Return to Neutral should restore the locked plan
+  with stored trim values.
+- Adaptive Updating defaults Off. Continuous is optional experimental M9.2-style
+  live replanning and should make live source readiness matter again.
+
+Expected live audio observations:
+
+- Locked pitch movement is audible in the planned direction when enabled.
+- Manual pitch trim is audible and bounded.
+- Manual formant trim is audible and bounded.
+- No new metallic artifacts, flutter, crackle, block-boundary clicks, stream
+  restart, device reopen, or unexplained latency growth should appear.
+- Global Bypass Effects remains the single bypass authority.
+- Unsupported plan capabilities remain visible and are not approximated.
+
+Do not mark M9.3 PASS until controlled live hardware acceptance records these
+items successfully.

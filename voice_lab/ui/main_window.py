@@ -48,6 +48,7 @@ class App(QWidget):
         source_analysis_layout = None
         target_planner_layout = None
         execution_layout = None
+        calibrate_lock_layout = None
         self.restored_preferences = self.service.operator_preferences() if hasattr(self.service, "operator_preferences") else {}
         self._updating_voice_controls = False
         self._updating_input_processing = False
@@ -70,12 +71,18 @@ class App(QWidget):
             hasattr(self.service, "execution_lab_state")
             and self.service.execution_lab_state() is not None
         )
+        self.calibrate_lock_enabled = (
+            hasattr(self.service, "calibrate_lock_state")
+            and self.service.calibrate_lock_state() is not None
+        )
         if self.source_analysis_enabled:
             source_analysis_layout = self._create_tab("Source Analysis")
         if self.target_planner_enabled:
             target_planner_layout = self._create_tab("Target Planner")
         if self.execution_lab_enabled:
             execution_layout = self._create_tab("Plan Execution")
+        if self.calibrate_lock_enabled:
+            calibrate_lock_layout = self._create_tab("Calibrate & Lock")
 
         layout.addWidget(QLabel("Voice Character"))
         self.character_box = QComboBox()
@@ -193,6 +200,8 @@ class App(QWidget):
             self._build_target_planner_tab(target_planner_layout)
         if self.execution_lab_enabled and execution_layout is not None:
             self._build_execution_lab_tab(execution_layout)
+        if self.calibrate_lock_enabled and calibrate_lock_layout is not None:
+            self._build_calibrate_lock_tab(calibrate_lock_layout)
 
         self.advanced_toggle = QCheckBox("Show Advanced Controls")
         self.advanced_toggle.stateChanged.connect(lambda _state: self.set_advanced_visible())
@@ -315,11 +324,17 @@ class App(QWidget):
             self.execution_lab_timer.setInterval(250)
             self.execution_lab_timer.timeout.connect(self.refresh_execution_lab)
             self.execution_lab_timer.start()
+        if self.calibrate_lock_enabled:
+            self.calibrate_lock_timer = QTimer(self)
+            self.calibrate_lock_timer.setInterval(250)
+            self.calibrate_lock_timer.timeout.connect(self.refresh_calibrate_lock)
+            self.calibrate_lock_timer.start()
         self.refresh_operator_status()
         self.refresh_audio_levels()
         self.refresh_source_analysis()
         self.refresh_target_planner()
         self.refresh_execution_lab()
+        self.refresh_calibrate_lock()
 
     def _create_tab(self, title):
         scroll_area = QScrollArea()
@@ -1132,6 +1147,195 @@ class App(QWidget):
             f"({float(state.get('latency_ms_at_48k') or 0.0):.1f} ms at 48 kHz)"
         )
 
+    def _build_calibrate_lock_tab(self, layout):
+        title = QLabel("Stable Workflow - Calibrate, Lock, Then Tune")
+        title.setWordWrap(True)
+        layout.addWidget(title)
+        buttons = QHBoxLayout()
+        calibrate = QPushButton("Calibrate Source")
+        calibrate.clicked.connect(self.calibrate_source)
+        recalibrate = QPushButton("Recalibrate")
+        recalibrate.clicked.connect(self.recalibrate_source)
+        lock = QPushButton("Lock Suggested Transformation")
+        lock.clicked.connect(self.lock_suggested_transformation)
+        buttons.addWidget(calibrate)
+        buttons.addWidget(recalibrate)
+        buttons.addWidget(lock)
+        layout.addLayout(buttons)
+
+        self.adaptive_mode = QComboBox()
+        self.adaptive_mode.addItem("Off", "off")
+        self.adaptive_mode.addItem("Continuous", "continuous")
+        self.adaptive_mode.currentIndexChanged.connect(lambda _index: self.set_adaptive_mode())
+        layout.addWidget(QLabel("Adaptive Updating"))
+        layout.addWidget(self.adaptive_mode)
+
+        self.pitch_trim = QDoubleSpinBox()
+        self.pitch_trim.setRange(-4.0, 4.0)
+        self.pitch_trim.setSingleStep(0.1)
+        self.pitch_trim.setDecimals(2)
+        self.pitch_trim.valueChanged.connect(lambda _value: self.set_pitch_trim())
+        self.formant_trim = QDoubleSpinBox()
+        self.formant_trim.setRange(-1.0, 1.0)
+        self.formant_trim.setSingleStep(0.05)
+        self.formant_trim.setDecimals(2)
+        self.formant_trim.valueChanged.connect(lambda _value: self.set_formant_trim())
+        layout.addWidget(QLabel("Pitch Trim"))
+        layout.addWidget(self.pitch_trim)
+        layout.addWidget(QLabel("Formant Trim"))
+        layout.addWidget(self.formant_trim)
+
+        trim_buttons = QHBoxLayout()
+        suggested = QPushButton("Return to Suggested Plan")
+        suggested.clicked.connect(self.return_to_suggested_plan)
+        neutral = QPushButton("Return to Neutral")
+        neutral.clicked.connect(self.return_execution_to_neutral)
+        trim_buttons.addWidget(suggested)
+        trim_buttons.addWidget(neutral)
+        layout.addLayout(trim_buttons)
+
+        self.calibration_state = QLabel("Calibration: none")
+        self.suggestion_state = QLabel("Suggestion: unavailable")
+        self.locked_state = QLabel("Locked Transformation: none")
+        self.trim_state = QLabel("Manual Trim: zero")
+        self.adaptation_state = QLabel("Adaptation: Off")
+        for label in (
+            self.calibration_state,
+            self.suggestion_state,
+            self.locked_state,
+            self.trim_state,
+            self.adaptation_state,
+        ):
+            label.setWordWrap(True)
+            layout.addWidget(label)
+
+    def calibrate_source(self):
+        if not getattr(self, "calibrate_lock_enabled", False):
+            return
+        self.display_result(self.service.capture_calibration())
+        self.refresh_calibrate_lock()
+
+    def recalibrate_source(self):
+        if not getattr(self, "calibrate_lock_enabled", False):
+            return
+        self.display_result(self.service.recalibrate())
+        self.refresh_calibrate_lock()
+
+    def lock_suggested_transformation(self):
+        if not getattr(self, "calibrate_lock_enabled", False):
+            return
+        self.display_result(self.service.lock_suggested_transformation())
+        self.refresh_calibrate_lock()
+
+    def set_adaptive_mode(self):
+        if self._updating_execution_lab or not getattr(self, "calibrate_lock_enabled", False):
+            return
+        mode = self.adaptive_mode.currentData()
+        self.display_result(self.service.set_adaptive_updating_mode(mode))
+        self.refresh_calibrate_lock()
+
+    def set_pitch_trim(self):
+        if self._updating_execution_lab or not getattr(self, "calibrate_lock_enabled", False):
+            return
+        self.display_result(self.service.set_pitch_trim(self.pitch_trim.value()))
+        self.refresh_calibrate_lock()
+
+    def set_formant_trim(self):
+        if self._updating_execution_lab or not getattr(self, "calibrate_lock_enabled", False):
+            return
+        self.display_result(self.service.set_formant_trim(self.formant_trim.value()))
+        self.refresh_calibrate_lock()
+
+    def return_to_suggested_plan(self):
+        if not getattr(self, "calibrate_lock_enabled", False):
+            return
+        self.display_result(self.service.return_to_suggested_plan())
+        self.refresh_calibrate_lock()
+
+    def refresh_calibrate_lock(self):
+        if not getattr(self, "calibrate_lock_enabled", False):
+            return
+        try:
+            state = self.service.stable_control_snapshot()
+        except Exception:
+            return
+        if state is None or not hasattr(self, "calibration_state"):
+            return
+        trim = state.get("trim")
+        self._updating_execution_lab = True
+        try:
+            self.set_combo(self.adaptive_mode, state.get("adaptive_mode"))
+            self.pitch_trim.setValue(float(getattr(trim, "requested_pitch_trim_st", 0.0)))
+            self.formant_trim.setValue(float(getattr(trim, "requested_formant_trim_st", 0.0)))
+        finally:
+            self._updating_execution_lab = False
+        calibration = state.get("calibration")
+        suggestion = state.get("suggestion")
+        locked = state.get("locked")
+        self.calibration_state.setText(
+            "Calibration: none"
+            if calibration is None
+            else (
+                f"Calibration: #{calibration.calibration_id} | reliability {calibration.source_reliability} | "
+                f"median F0 {self._fmt_hz(calibration.median_f0_hz)} | "
+                f"span {self._fmt_st(calibration.pitch_span_semitones)} | "
+                f"tilt {self._fmt_db(calibration.spectral_tilt_db)} | "
+                f"warnings {', '.join(calibration.warnings or ('none',))}"
+            )
+        )
+        self.suggestion_state.setText(
+            "Suggestion: unavailable"
+            if suggestion is None
+            else (
+                f"Suggestion: #{suggestion.suggestion_id} | target {suggestion.target_id} | "
+                f"strength {suggestion.character_strength * 100.0:.0f}% | "
+                f"status {suggestion.planner_status} | confidence {self._fmt_ratio(suggestion.planner_confidence)} | "
+                f"pitch {self._fmt_st(suggestion.plan.pitch.applied_pitch_shift_st if suggestion.plan else None)} | "
+                f"formant {self._fmt_st(suggestion.plan.formant.applied_formant_shift_st if suggestion.plan else None)} | "
+                f"differs from lock {suggestion.differs_from_lock} | "
+                "Target or strength changes update the suggestion only. Press Lock to change stable execution."
+            )
+        )
+        self.locked_state.setText(
+            "Locked Transformation: none"
+            if locked is None
+            else (
+                f"Locked Transformation: #{locked.lock_id} | calibration {locked.source_calibration_id} | "
+                f"target {locked.target_id} | strength {locked.character_strength * 100.0:.0f}% | "
+                f"base pitch {self._fmt_st(locked.plan.pitch.applied_pitch_shift_st if locked.plan else None)} | "
+                f"base formant {self._fmt_st(locked.plan.formant.applied_formant_shift_st if locked.plan else None)} | "
+                f"supported {', '.join(locked.supported_capabilities or ('none',))} | "
+                f"unsupported {', '.join(locked.unsupported_capabilities or ('none',))} | "
+                f"new suggestion {locked.newer_suggestion_available}"
+            )
+        )
+        self.trim_state.setText(
+            f"Manual Trim: active {state.get('manual_trim_active')} | "
+            f"pitch base/requested/applied/final/current "
+            f"{self._fmt_st(state.get('locked_base_pitch_st'))}/"
+            f"{self._fmt_st(state.get('requested_pitch_trim_st'))}/"
+            f"{self._fmt_st(state.get('applied_pitch_trim_st'))}/"
+            f"{self._fmt_st(state.get('final_pitch_target_st'))}/"
+            f"{self._fmt_st(self.service.transformation_execution_snapshot().get('current_pitch_semitones'))} | "
+            f"pitch clamp {state.get('final_pitch_clamped')} | "
+            f"formant base/requested/applied/final/current "
+            f"{self._fmt_st(state.get('locked_base_formant_st'))}/"
+            f"{self._fmt_st(state.get('requested_formant_trim_st'))}/"
+            f"{self._fmt_st(state.get('applied_formant_trim_st'))}/"
+            f"{self._fmt_st(state.get('final_formant_target_st'))}/"
+            f"{self._fmt_st(self.service.transformation_execution_snapshot().get('current_formant_semitones'))} | "
+            f"formant clamp {state.get('final_formant_clamped')}"
+        )
+        self.adaptation_state.setText(
+            f"Adaptation: {state.get('adaptive_mode')} | authority {state.get('execution_authority')} | "
+            f"live readiness matters {state.get('live_source_readiness_matters')} | "
+            f"lock available {state.get('locked_plan_available_for_off')} | "
+            f"new suggestion {state.get('newer_suggestion_available')} | "
+            f"target dirty {state.get('target_changed_after_lock')} | "
+            f"strength dirty {state.get('strength_changed_after_lock')} | "
+            f"calibration dirty {state.get('calibration_changed_after_lock')}"
+        )
+
     def _fmt_hz(self, value):
         return "unavailable" if value is None else f"{float(value):.1f} Hz"
 
@@ -1551,6 +1755,8 @@ class App(QWidget):
             self.source_analysis_timer.stop()
         if hasattr(self, "execution_lab_timer"):
             self.execution_lab_timer.stop()
+        if hasattr(self, "calibrate_lock_timer"):
+            self.calibrate_lock_timer.stop()
         if self.on_close is not None:
             self.on_close()
         event.accept()

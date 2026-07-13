@@ -1809,3 +1809,61 @@ experimental diagnostic/adaptive behavior.
 - M9.2 is a controlled partial-execution lab, not a finished feminine,
   masculine, deep-masculine, giant, childlike, elderly, creature, or synthetic
   character system.
+
+## M9.3 - Calibrate, Lock, and Manual Trim
+
+Status: PROVISIONAL. Automated contract coverage is in place; final live
+hardware acceptance has not been recorded.
+
+M9.3 adds an isolated stable-control workflow on top of the accepted M9.0,
+M9.1, and M9.2 labs. It does not change normal production launch behavior,
+production character presets, target-reference formulas, persistence schemas,
+or the audio effect chain.
+
+### Scope
+
+- Launches only with `main.py --calibrate-lock-lab`.
+- Enables Source Analysis, Target Planner, Plan Execution, and Calibrate &
+  Lock tabs in one isolated lab mode.
+- Captures an immutable session-only calibration snapshot from a ready M9.0
+  rolling source profile.
+- Generates a suggested `TransformationPlan` through the existing M9.1 planner
+  from the frozen calibration source, current target, and current strength.
+- Lets the operator explicitly lock the suggested plan before execution.
+- Executes the locked plan through the existing M9.2 execution controller and
+  runtime when Adaptive Updating is Off.
+- Adds bounded manual pitch trim around `+/-4` semitones and bounded manual
+  formant trim around `+/-1` semitone. Final runtime values still respect M9.2
+  execution clamps.
+- Keeps Adaptive Updating default Off. Continuous remains an optional
+  experimental mode that preserves M9.2 live replanning behavior.
+
+### Stable Execution Semantics
+
+- A locked plan is the execution authority while Adaptive Updating is Off.
+- Live source changes, current-frame voiced/unvoiced state, target edits,
+  strength edits, UI polling, analyzer gates, and analyzer staleness do not
+  mutate locked execution while Adaptive Updating is Off.
+- Target or strength edits refresh a new suggestion and mark the locked plan as
+  stale/different without changing the locked runtime target until the operator
+  locks again.
+- Recalibrate captures a new calibration and refreshes the suggestion without
+  changing the existing lock until the operator locks again.
+- Return to Suggested Plan clears manual trims and preserves the lock.
+- Return to Neutral disables execution and neutralizes runtime influence while
+  preserving calibration, suggestion, lock, and trim state for re-enable.
+- No target file, plan file, execution cache, settings entry, preset entry, or
+  production character state is created by M9.3.
+
+### Verification Notes
+
+- Focused M9.3 automated tests cover immutable calibration/suggestion/lock/trim
+  contracts, capture rejection for inactive/collecting/stale/failure/missing-F0
+  sources, frozen-calibration planning, dirty target/strength state, manual trim
+  clamp/projection behavior, Return to Suggested Plan, locked execution
+  stability against live source and target edits, Adaptive Updating Off versus
+  Continuous behavior, dynamics lock/relock behavior, Return to Neutral,
+  guarded UI exposure, effect-chain isolation, disabled audio equivalence, and
+  bounded repeated operations without settings or preset mutation.
+- M9.3 remains a controlled lab workflow and is not a finished production
+  character system.

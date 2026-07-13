@@ -25,6 +25,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Launch the isolated controlled transformation execution lab.",
     )
+    parser.add_argument(
+        "--calibrate-lock-lab",
+        action="store_true",
+        help="Launch the isolated calibrate, lock, and manual trim lab.",
+    )
     args = parser.parse_args()
     raise SystemExit(
         run(
@@ -32,5 +37,6 @@ if __name__ == "__main__":
             voice_analysis_lab=args.voice_analysis_lab,
             target_planner_lab=args.target_planner_lab,
             transformation_execution_lab=args.transformation_execution_lab,
+            calibrate_lock_lab=args.calibrate_lock_lab,
         )
     )
