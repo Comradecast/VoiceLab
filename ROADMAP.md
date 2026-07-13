@@ -1569,8 +1569,9 @@ transformation plan for future character work.
   on `AudioEngine`, `EffectChain`, `Router`, DSP effects, settings, presets,
   devices, callbacks, queues, or history.
 - Character Strength is normalized from UI `0..100` to planner `0..1`. `0%`
-  produces neutral recommendations; `100%` produces the full bounded target.
-  Intermediate strengths are monotonic.
+  produces a fully neutral applied plan with no required future transformation
+  capability; `100%` produces the full bounded target. Intermediate strengths
+  are monotonic.
 - M9.0 source evidence used directly for planning: median F0, lower/upper F0,
   pitch span, voiced duration, profile readiness, aggregate reliability,
   chest/low-mid/presence/brightness/sibilance ratios, and spectral tilt
@@ -1599,6 +1600,9 @@ transformation plan for future character work.
   de-esser or dynamics mutation was added.
 - Dynamics recommendations use M8.0 ranges; compressor neutral is `1:1` with
   `0 dB` makeup, and limiter recommendations are target data only.
+- Capabilities describe processors required for the current applied plan, not
+  every latent target requirement. Latent target requirements are gated by
+  active character strength, while requested target intent remains inspectable.
 
 ### Completion Notes
 

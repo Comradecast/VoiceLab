@@ -89,9 +89,28 @@ source evidence degrades only that control.
 Spectral tilt uses target tilt index minus source tilt index. The M9.0 tilt
 value remains an energy-ratio index, not a fitted dB-per-octave slope.
 
+De-essing is calculated from the maximum of three deterministic components:
+
+```text
+source_component = max(0, (source_sibilance - target_sibilance) / 0.20) * strength
+brightness_component = max(0, applied_brightness_db / max_band_adjustment_db)
+target_expectation_component = 0.35 * strength when target expects de-essing
+```
+
+The result is clamped to `0..1`. At `0%` strength, source sibilance and target
+expectation produce no de-essing.
+
 Dynamics are recommendations only. Compressor neutral is `1:1` with `0 dB`
 makeup, attack/release values are target data, and limiter values are target
 data. M9.1 does not mutate M8.0 live settings.
+
+Capabilities describe processors required to execute the current applied plan,
+not every processor that might be required by the selected target at `100%`.
+Latent target requirements such as pitch-range mapping, EQ, breathiness,
+harmonic enhancement, and de-essing are gated by active character strength.
+At `0%` strength the applied plan is fully neutral and the capability tuple is
+empty, while requested target intent remains inspectable through requested
+values and target metadata.
 
 ## Source Evidence Policy
 

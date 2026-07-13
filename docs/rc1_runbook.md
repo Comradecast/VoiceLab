@@ -1702,6 +1702,9 @@ Implementation notes:
 - `TargetVoiceProfile` and `TransformationPlan` are frozen scalar contracts.
 - `TransformationPlanner` is pure and stateless.
 - Character Strength maps UI `0..100` to planner `0..1`.
+- Strength `0%` produces a fully neutral applied plan: no applied pitch,
+  pitch-range, formant, spectral, de-essing, texture, dynamics, or future
+  processor capability is required.
 - Pitch center uses `12 * log2(target_median_f0 / source_median_f0)`, strength
   scaling, and target clamping.
 - Pitch range uses `target_span / source_span`, strength interpolation, and
@@ -1714,6 +1717,10 @@ Implementation notes:
   missing source evidence degrades only the affected control.
 - Dynamics are recommendations only and use M8.0-compatible ranges. Live M8.0
   settings are not mutated.
+- Capabilities describe processors required for the current applied plan, not
+  every latent target requirement. Latent target requirements are gated by
+  active character strength, while requested target intent remains inspectable
+  through requested values and target metadata.
 - No planner code runs in the audio callback.
 
 Diagnostic references:

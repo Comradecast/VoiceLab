@@ -274,7 +274,7 @@ class TransformationPlanner:
             texture = _texture_plan(target_profile, strength)
             dynamics = _dynamics_plan(target_profile, strength)
             warnings = _warnings(profile, stale, source_reliability, pitch, formant, spectral, target_profile)
-            capabilities = _capabilities(pitch, formant, spectral, texture, dynamics, target_profile)
+            capabilities = _capabilities(pitch, formant, spectral, texture, dynamics, target_profile, strength)
             status_name, ready, degraded, unavailable = _plan_state(
                 profile, status, stale, source_reliability, pitch, spectral
             )
@@ -378,7 +378,7 @@ def _spectral_plan(profile, target, strength, source_confidence):
         target.max_spectral_tilt_adjustment_db,
         source_confidence,
     )
-    de_ess = _de_essing_amount(profile, target, adjustments["brightness_energy_ratio"])
+    de_ess = _de_essing_amount(profile, target, adjustments["brightness_energy_ratio"], strength)
     return SpectralPlan(
         chest_db=adjustments["chest_energy_ratio"],
         low_mid_db=adjustments["low_mid_energy_ratio"],
@@ -392,13 +392,16 @@ def _spectral_plan(profile, target, strength, source_confidence):
 
 
 def _texture_plan(target, strength):
+    strength_active = strength > SPECTRAL_EPSILON
     breathiness = _clamp01(target.breathiness * strength)
     harmonic = _clamp01(target.harmonic_weight * strength)
     return TexturePlan(
         breathiness=breathiness,
         harmonic_weight=harmonic,
-        breathiness_required=breathiness > 0.0 or target.requires_breathiness,
-        harmonic_enhancement_required=harmonic > 0.0 or target.requires_harmonic_enhancement,
+        breathiness_required=breathiness > SPECTRAL_EPSILON or (strength_active and target.requires_breathiness),
+        harmonic_enhancement_required=(
+            harmonic > SPECTRAL_EPSILON or (strength_active and target.requires_harmonic_enhancement)
+        ),
         confidence=0.5 if breathiness or harmonic else 1.0,
         basis="Target intent scaled by strength; no source identity inference.",
     )
@@ -455,35 +458,42 @@ def _tilt_adjustment(source_value, target_value, strength, limit, source_confide
     return BandAdjustment(requested, applied, clamped, _clamp01(source_confidence))
 
 
-def _de_essing_amount(profile, target, brightness_adjustment):
+def _de_essing_amount(profile, target, brightness_adjustment, strength):
     source_sibilance = _optional_positive(profile.get("sibilance_energy_ratio")) or 0.0
-    source_component = max(0.0, (source_sibilance - target.sibilance_energy_ratio) / 0.20)
+    source_component = max(0.0, (source_sibilance - target.sibilance_energy_ratio) / 0.20) * strength
     brightness_component = 0.0
     if brightness_adjustment.applied_db is not None:
         brightness_component = max(0.0, brightness_adjustment.applied_db / max(target.max_band_adjustment_db, 1.0))
-    target_component = 0.35 if target.expect_de_essing else 0.0
+    target_component = 0.35 * strength if target.expect_de_essing else 0.0
     return _clamp01(max(source_component, brightness_component, target_component))
 
 
-def _capabilities(pitch, formant, spectral, texture, dynamics, target):
+def _materially_nonzero(value):
+    return value is not None and abs(float(value)) > SPECTRAL_EPSILON
+
+
+def _capabilities(pitch, formant, spectral, texture, dynamics, target, strength):
+    strength_active = strength > SPECTRAL_EPSILON
     needed = []
-    if pitch.applied_pitch_shift_st != 0.0:
+    if _materially_nonzero(pitch.applied_pitch_shift_st):
         needed.append("adaptive_pitch_center")
-    if pitch.applied_pitch_range_scale != 1.0 or target.requires_pitch_range:
+    if _materially_nonzero(pitch.applied_pitch_range_scale - 1.0) or (
+        strength_active and target.requires_pitch_range
+    ):
         needed.append("pitch_range_mapping")
-    if formant.applied_formant_shift_st != 0.0:
+    if _materially_nonzero(formant.applied_formant_shift_st):
         needed.append("formant_shift")
-    if any(getattr(spectral, name).applied_db not in (None, 0.0) for name in (
+    if any(_materially_nonzero(getattr(spectral, name).applied_db) for name in (
         "chest_db", "low_mid_db", "presence_db", "brightness_db", "sibilance_db"
-    )) or target.requires_eq:
+    )) or (strength_active and target.requires_eq):
         needed.append("parametric_eq")
-    if spectral.spectral_tilt_db.applied_db not in (None, 0.0):
+    if _materially_nonzero(spectral.spectral_tilt_db.applied_db):
         needed.append("spectral_tilt_shaping")
     if texture.breathiness_required:
         needed.append("breathiness")
     if texture.harmonic_enhancement_required:
         needed.append("harmonic_enhancement")
-    if spectral.de_essing_amount > 0.0 or target.expect_de_essing:
+    if spectral.de_essing_amount > SPECTRAL_EPSILON:
         needed.append("de_esser")
     if dynamics.compressor_differs_from_neutral:
         needed.append("compressor")

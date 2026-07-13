@@ -149,6 +149,97 @@ class M91PlannerContractTests(unittest.TestCase):
 
 
 class M91PlannerMathTests(unittest.TestCase):
+    def test_zero_strength_is_fully_neutral_for_all_diagnostic_targets(self):
+        for target in (DEFAULT_TARGET_PROFILE, HIGHER_BRIGHTER_REFERENCE, LOWER_WEIGHTIER_REFERENCE):
+            with self.subTest(target=target.target_id):
+                plan = TransformationPlanner().plan(source_snapshot(), target, 0.0)
+                spectral = plan.spectral
+
+                self.assertEqual(plan.pitch.applied_pitch_shift_st, 0.0)
+                self.assertEqual(plan.pitch.applied_pitch_range_scale, 1.0)
+                self.assertEqual(plan.formant.applied_formant_shift_st, 0.0)
+                self.assertEqual(spectral.chest_db.applied_db, 0.0)
+                self.assertEqual(spectral.low_mid_db.applied_db, 0.0)
+                self.assertEqual(spectral.presence_db.applied_db, 0.0)
+                self.assertEqual(spectral.brightness_db.applied_db, 0.0)
+                self.assertEqual(spectral.sibilance_db.applied_db, 0.0)
+                self.assertEqual(spectral.spectral_tilt_db.applied_db, 0.0)
+                self.assertEqual(spectral.de_essing_amount, 0.0)
+                self.assertEqual(plan.texture.breathiness, 0.0)
+                self.assertEqual(plan.texture.harmonic_weight, 0.0)
+                self.assertFalse(plan.texture.breathiness_required)
+                self.assertFalse(plan.texture.harmonic_enhancement_required)
+                self.assertFalse(plan.dynamics.compressor.compressor_enabled)
+                self.assertEqual(plan.dynamics.compressor.compressor_ratio, 1.0)
+                self.assertEqual(plan.dynamics.compressor.compressor_makeup_gain_db, 0.0)
+                self.assertFalse(plan.dynamics.limiter.limiter_enabled)
+                self.assertEqual(plan.required_capabilities, ())
+                self.assertFalse(any("required" in warning for warning in plan.warnings))
+
+    def test_high_sibilance_and_target_expectation_are_neutral_at_zero_strength(self):
+        target = target_voice_profile(
+            target_id="diagnostic-expectation",
+            display_name="Diagnostic Expectation",
+            description="Diagnostic test target.",
+            expect_de_essing=True,
+            requires_pitch_range=True,
+            requires_eq=True,
+            requires_breathiness=True,
+            requires_harmonic_enhancement=True,
+            breathiness=0.4,
+            harmonic_weight=0.4,
+        )
+        plan = TransformationPlanner().plan(source_snapshot(sibilance_energy_ratio=0.5), target, 0.0)
+
+        self.assertEqual(plan.spectral.de_essing_amount, 0.0)
+        self.assertEqual(plan.required_capabilities, ())
+        self.assertFalse(plan.texture.breathiness_required)
+        self.assertFalse(plan.texture.harmonic_enhancement_required)
+
+    def test_active_strength_capabilities_are_ordered_unique_and_monotonic(self):
+        source = source_snapshot()
+        before_source = {key: dict(value) if isinstance(value, dict) else value for key, value in source.items()}
+        before_target = HIGHER_BRIGHTER_REFERENCE.asdict()
+        plans = [TransformationPlanner().plan(source, HIGHER_BRIGHTER_REFERENCE, strength) for strength in (0.0, 0.5, 1.0)]
+
+        self.assertEqual(plans[0].required_capabilities, ())
+        self.assertIsInstance(plans[1].required_capabilities, tuple)
+        self.assertEqual(len(plans[1].required_capabilities), len(set(plans[1].required_capabilities)))
+        self.assertEqual(
+            plans[1].required_capabilities,
+            (
+                "adaptive_pitch_center",
+                "pitch_range_mapping",
+                "formant_shift",
+                "parametric_eq",
+                "spectral_tilt_shaping",
+                "breathiness",
+                "harmonic_enhancement",
+                "de_esser",
+            ),
+        )
+        self.assertEqual(plans[1].required_capabilities, plans[2].required_capabilities)
+        self.assertLess(plans[0].pitch.applied_pitch_shift_st, plans[1].pitch.applied_pitch_shift_st)
+        self.assertLess(plans[1].pitch.applied_pitch_shift_st, plans[2].pitch.applied_pitch_shift_st)
+        self.assertLess(plans[0].formant.applied_formant_shift_st, plans[1].formant.applied_formant_shift_st)
+        self.assertLess(plans[1].formant.applied_formant_shift_st, plans[2].formant.applied_formant_shift_st)
+        self.assertEqual(source, before_source)
+        self.assertEqual(HIGHER_BRIGHTER_REFERENCE.asdict(), before_target)
+
+    def test_de_essing_is_bounded_and_monotonic_for_source_and_target_expectation(self):
+        target = HIGHER_BRIGHTER_REFERENCE
+        plans = [
+            TransformationPlanner().plan(source_snapshot(sibilance_energy_ratio=0.5), target, strength)
+            for strength in (0.0, 0.5, 1.0)
+        ]
+
+        self.assertEqual(plans[0].spectral.de_essing_amount, 0.0)
+        self.assertGreaterEqual(plans[1].spectral.de_essing_amount, 0.0)
+        self.assertGreaterEqual(plans[2].spectral.de_essing_amount, plans[1].spectral.de_essing_amount)
+        self.assertLessEqual(plans[2].spectral.de_essing_amount, 1.0)
+        self.assertNotIn("de_esser", plans[0].required_capabilities)
+        self.assertIn("de_esser", plans[1].required_capabilities)
+
     def test_pitch_center_formula_and_range_scale_for_practical_f0s(self):
         planner = TransformationPlanner(clock=lambda: 1.0)
         for f0 in (85.0, 100.0, 120.0, 180.0, 220.0):
