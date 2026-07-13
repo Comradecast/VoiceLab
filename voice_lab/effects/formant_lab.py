@@ -1,10 +1,13 @@
 from dataclasses import dataclass
 from math import isfinite
+from time import monotonic
 
 import numpy as np
 
 from voice_lab.effects.base import Effect
+from voice_lab.effects.backend_health import PitchFormantBackendHealth
 from voice_lab.effects.pitch_shift import PitchBufferStatus, SignalsmithStreamingAdapter
+from voice_lab.effects.signalsmith_backend import signalsmith_status
 
 
 FORMANT_MIN = -12.0
@@ -117,25 +120,35 @@ class SignalsmithPitchFormantAdapter(SignalsmithStreamingAdapter):
 class ExperimentalPitchFormantEffect(Effect):
     name = "Experimental Pitch/Formant"
 
-    def __init__(self, state, runtime_parameters_provider=None, latency_reporter=None):
+    def __init__(
+        self,
+        state,
+        runtime_parameters_provider=None,
+        latency_reporter=None,
+        backend_health_reporter=None,
+    ):
         self.state = state
         self._runtime_parameters_provider = runtime_parameters_provider
         self._latency_reporter = latency_reporter
+        self._backend_health_reporter = backend_health_reporter
         self._adapter = None
+        self._health_generation = 0
+        self._health = self._initial_backend_health()
         self._snapshot = FormantPrototypeSnapshot(
-            available=True,
+            available=self._health.backend_available,
             active=False,
             bypassed=False,
             pitch_semitones=0.0,
             formant_semitones=0.0,
             formant_factor=1.0,
-            backend="signalsmith",
+            backend=self._health.backend_name,
             latency_frames=0,
             estimated_added_ms=0.0,
         )
         self._runtime_failure = ""
         self._last_stable_pitch = 0.0
         self._last_stable_formant = 0.0
+        self._publish_health(self._health)
 
     def process(self, mono, frames, sample_rate):
         source = np.asarray(mono, dtype=np.float32)
@@ -145,6 +158,18 @@ class ExperimentalPitchFormantEffect(Effect):
         factor = parameters.formant_factor
         if not parameters.enabled or parameters.bypassed:
             self._snapshot = self._make_snapshot(False, parameters.bypassed, pitch, formant, factor)
+            self._transition_health(effect_enabled=bool(parameters.enabled), runtime_bypassed=False, failed=False)
+            return source.astype(np.float32, copy=False)
+        if not self._health.backend_available:
+            self._runtime_failure = self._health.failure_message
+            self._snapshot = self._make_snapshot(False, False, pitch, formant, factor)
+            self._transition_health(
+                effect_enabled=True,
+                runtime_bypassed=False,
+                failed=False,
+                failure_code=self._health.failure_code,
+                failure_message=self._health.failure_message,
+            )
             return source.astype(np.float32, copy=False)
         try:
             if self._adapter is None:
@@ -156,10 +181,30 @@ class ExperimentalPitchFormantEffect(Effect):
             self._last_stable_formant = formant
             self._runtime_failure = ""
             self._snapshot = self._make_snapshot(True, False, pitch, formant, factor)
+            self._transition_health(
+                backend_status="active",
+                backend_available=True,
+                pitch_available=True,
+                formant_available=True,
+                effect_enabled=True,
+                runtime_bypassed=False,
+                failed=False,
+                failure_code="",
+                failure_message="",
+            )
             return output
         except Exception as exc:
             self._runtime_failure = str(exc)
             self._snapshot = self._make_snapshot(False, False, pitch, formant, factor)
+            self._transition_health(
+                backend_available=False,
+                pitch_available=False,
+                formant_available=False,
+                runtime_bypassed=False,
+                failed=True,
+                failure_code="pitch_formant_runtime_failure",
+                failure_message="Pitch/formant backend failed during processing",
+            )
             raise
 
     def status(self):
@@ -194,8 +239,19 @@ class ExperimentalPitchFormantEffect(Effect):
 
     def reset(self):
         if self._adapter is not None:
-            self._adapter.reset()
+            try:
+                self._adapter.reset()
+            except Exception:
+                try:
+                    self._adapter.close()
+                except Exception:
+                    pass
+                self._adapter = None
         parameters = self.state.parameters
+        self._runtime_failure = ""
+        self._health = self._initial_backend_health()
+        self._health_generation = self._health.generation
+        self._publish_health(self._health)
         self._snapshot = self._make_snapshot(
             False,
             parameters.bypassed,
@@ -216,6 +272,21 @@ class ExperimentalPitchFormantEffect(Effect):
             self._adapter.close()
             self._adapter = None
 
+    def backend_health(self):
+        return self._health
+
+    def mark_runtime_bypassed(self, exc):
+        self._runtime_failure = str(exc)
+        self._transition_health(
+            backend_available=False,
+            pitch_available=False,
+            formant_available=False,
+            runtime_bypassed=True,
+            failed=True,
+            failure_code="pitch_formant_runtime_bypassed",
+            failure_message="Pitch/formant effect runtime-bypassed after backend failure",
+        )
+
     def _make_snapshot(self, active, bypassed, pitch, formant, factor):
         latency = self._adapter.status() if self._adapter is not None else None
         latency_frames = latency.latency_frames if latency is not None else 0
@@ -223,7 +294,7 @@ class ExperimentalPitchFormantEffect(Effect):
         if self._latency_reporter is not None:
             self._latency_reporter(latency_frames)
         return FormantPrototypeSnapshot(
-            available=True,
+            available=self._health.backend_available,
             active=bool(active),
             bypassed=bool(bypassed),
             pitch_semitones=float(pitch),
@@ -236,6 +307,55 @@ class ExperimentalPitchFormantEffect(Effect):
             last_stable_pitch=self._last_stable_pitch,
             last_stable_formant=self._last_stable_formant,
         )
+
+    def _initial_backend_health(self):
+        status = signalsmith_status()
+        if status.available:
+            return PitchFormantBackendHealth(
+                backend_name=status.backend,
+                backend_status=status.status,
+                backend_available=True,
+                pitch_available=True,
+                formant_available=True,
+                generation=1,
+                last_transition_monotonic=monotonic(),
+            )
+        return PitchFormantBackendHealth(
+            backend_name=status.backend,
+            backend_status=status.status,
+            backend_available=False,
+            pitch_available=False,
+            formant_available=False,
+            failure_code=status.status,
+            failure_message=status.reason,
+            generation=1,
+            last_transition_monotonic=monotonic(),
+        )
+
+    def _transition_health(self, **changes):
+        candidate = self._health.with_updates(**changes)
+        comparable_current = self._health.with_updates(
+            generation=0,
+            last_transition_monotonic=0.0,
+        )
+        comparable_candidate = candidate.with_updates(
+            generation=0,
+            last_transition_monotonic=0.0,
+        )
+        if comparable_candidate != comparable_current:
+            self._health_generation = max(self._health_generation, self._health.generation) + 1
+            candidate = candidate.with_updates(
+                generation=self._health_generation,
+                last_transition_monotonic=monotonic(),
+            )
+            self._publish_health(candidate)
+        self._health = candidate
+
+    def _publish_health(self, health):
+        self._health = health
+        if self._backend_health_reporter is None:
+            return
+        self._backend_health_reporter(health)
 
 
 def validate_formant_semitones(value):

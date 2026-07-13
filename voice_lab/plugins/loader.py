@@ -223,6 +223,7 @@ def _make_experimental_pitch_formant(effect_state):
         effect_state.formant_lab,
         runtime_parameters_provider=runtime.formant_parameters_for_block,
         latency_reporter=runtime.set_latency_frames,
+        backend_health_reporter=runtime.publish_backend_health,
     )
 
 

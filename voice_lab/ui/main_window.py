@@ -1082,6 +1082,9 @@ class App(QWidget):
         current_l = state.get("current_limiter", {})
         self.execution_supported.setText(
             f"Supported Execution: requested {', '.join(state.get('requested_supported_capabilities') or ('none',))} | "
+            f"executable {', '.join(state.get('currently_executable_capabilities') or ('none',))} | "
+            f"active {', '.join(state.get('actively_executing_capabilities') or ('none',))} | "
+            f"backend unavailable {', '.join(state.get('backend_unavailable_capabilities') or ('none',))} | "
             f"pitch target/current {self._fmt_st(state.get('target_pitch_semitones'))}/"
             f"{self._fmt_st(state.get('current_pitch_semitones'))} | "
             f"formant target/current {self._fmt_st(state.get('target_formant_semitones'))}/"
@@ -1101,12 +1104,23 @@ class App(QWidget):
             if visible
             else "Unsupported Capabilities: none requested"
         )
+        backend = state.get("backend_health")
+        backend_name = getattr(backend, "backend_name", "unknown")
+        backend_status = getattr(backend, "backend_status", "unknown")
+        fallback = "fallback" if getattr(backend, "fallback_active", False) else "native"
+        pitch_available = getattr(backend, "pitch_available", False)
+        formant_available = getattr(backend, "formant_available", False)
+        runtime_bypassed = getattr(backend, "runtime_bypassed", False)
+        backend_failure = getattr(backend, "failure_message", "") or getattr(backend, "failure_code", "")
         self.execution_runtime.setText(
             f"Runtime Status: {state.get('status')} | settled {state.get('smoothing_settled')} | "
-            f"backend Signalsmith experimental pitch/formant | worker {state.get('controller_worker_status')} | "
+            f"backend {backend_name} {backend_status} {fallback} | "
+            f"pitch available {pitch_available} | formant available {formant_available} | "
+            f"runtime bypassed {runtime_bypassed} | "
+            f"worker {state.get('controller_worker_status')} | "
             f"plan age {self._fmt_seconds(state.get('plan_age_seconds'))} | "
             f"accepted {state.get('last_accepted_generation')} | rejected {state.get('last_rejected_generation')} | "
-            f"failure {state.get('last_failure') or 'none'}"
+            f"failure {state.get('last_failure') or backend_failure or 'none'}"
         )
         self.execution_baseline.setText(
             f"Baseline Context: current selected voice remains production/session baseline | "

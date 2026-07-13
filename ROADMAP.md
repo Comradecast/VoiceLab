@@ -1705,6 +1705,16 @@ partial-execution mode that consumes the accepted immutable
   Lowpass, Gain, Limiter, then Mixer.
 - The executor supports only `adaptive_pitch_center`, `formant_shift`,
   `compressor`, and `limiter`.
+- Execution reporting distinguishes planned, M9.2-supported,
+  backend-executable, actively executing, backend-unavailable, unsupported, and
+  unknown capabilities.
+- Pitch/formant execution claims are reconciled against the current combined
+  backend health. Native backend unavailability or EffectChain runtime bypass
+  neutralizes pitch/formant targets and removes them from active execution
+  capability reporting.
+- Valid Compressor and Limiter overlays may continue during pitch/formant
+  backend degradation; the status reports degraded or unavailable execution
+  instead of ordinary unsupported-plan partial execution.
 - Unsupported capabilities remain visible and are not approximated:
   `pitch_range_mapping`, `parametric_eq`, `spectral_tilt_shaping`,
   `breathiness`, `harmonic_enhancement`, `de_esser`, and unknown future
@@ -1727,6 +1737,11 @@ partial-execution mode that consumes the accepted immutable
 - Global Bypass Effects remains the single audio bypass authority. Execution
   status reports `bypassed` while preserving the retained target for safe
   smoothing when bypass is removed.
+- Application-facing execution snapshots are frozen scalar contracts with
+  frozen nested compressor, limiter, and pitch/formant backend health
+  snapshots.
+- Recovery from a runtime-bypassed combined pitch/formant backend is Stop, then
+  Start. Start begins with execution disabled and backend health re-evaluated.
 - Latency is inherited from the accepted combined Signalsmith pitch/formant
   stage. M9.2 does not add a second pitch/formant stage and does not claim
   normal-production latency.
@@ -1736,8 +1751,10 @@ partial-execution mode that consumes the accepted immutable
 - Focused M9.2 automated tests cover immutable execution contracts, capability
   mapping, unknown unsupported capabilities, disabled and zero-strength
   neutrality, dynamics overlays, smoothing, mode isolation, guarded UI exposure,
-  command rejection outside execution mode, and a 1,000-iteration bounded
-  controller probe.
+  backend-health reconciliation, native-unavailable reporting, runtime backend
+  failure reporting, global bypass distinction, recovery reset, command
+  rejection outside execution mode, and a 1,000-iteration bounded controller
+  probe.
 - M9.2 is a controlled partial-execution lab, not a finished feminine,
   masculine, deep-masculine, giant, childlike, elderly, creature, or synthetic
   character system.

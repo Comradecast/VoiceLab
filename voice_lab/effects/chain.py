@@ -73,6 +73,12 @@ class EffectChain:
             except Exception as exc:
                 self._runtime_bypassed.add(effect_name)
                 self.last_errors[effect_name] = exc
+                marker = getattr(effect, "mark_runtime_bypassed", None)
+                if marker is not None:
+                    try:
+                        marker(exc)
+                    except Exception:
+                        pass
                 self._report_runtime_failure(effect_name, exc)
         return mono
 
@@ -95,6 +101,8 @@ class EffectChain:
             close()
 
     def reset(self):
+        self._runtime_bypassed.clear()
+        self.last_errors.clear()
         for effect in self.effects:
             reset = getattr(effect, "reset", None)
             if reset is None:

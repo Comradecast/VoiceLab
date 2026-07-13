@@ -30,8 +30,6 @@ from voice_lab.controllers.soundboard import SoundboardController
 from voice_lab.engine.audio_engine import AudioEngine
 from voice_lab.execution import (
     EXECUTION_CONTROLLER_CADENCE_HZ,
-    KNOWN_UNSUPPORTED_CAPABILITIES,
-    SUPPORTED_CAPABILITIES,
     TransformationExecutionController,
     TransformationExecutionRuntime,
     TransformationExecutor,
@@ -97,10 +95,15 @@ class ApplicationService(QObject):
         if self.transformation_execution_runtime is not None:
             self.engine.set_transformation_execution_runtime(self.transformation_execution_runtime)
         self.transformation_execution_controller = None
+        runtime_failure_handler = (
+            self.transformation_execution_runtime.record_effect_runtime_failure
+            if self.transformation_execution_runtime is not None
+            else self._record_effect_runtime_failure
+        )
         self.engine.set_effect_chain(
             self.plugins.load_default_effect_chain(
                 self.engine,
-                runtime_failure_handler=self._record_effect_runtime_failure,
+                runtime_failure_handler=runtime_failure_handler,
                 formant_lab=self.formant_lab_enabled,
             )
         )
@@ -312,16 +315,9 @@ class ApplicationService(QObject):
         if self.transformation_execution_runtime is None:
             return None
         self._refresh_execution_target()
-        snapshot = self.transformation_execution_runtime.snapshot().asdict()
-        state = {
-            "lab": "Experimental - Controlled Partial Execution",
-            "controller_cadence_hz": EXECUTION_CONTROLLER_CADENCE_HZ,
-            "supported_capabilities": SUPPORTED_CAPABILITIES,
-            "unsupported_capabilities": KNOWN_UNSUPPORTED_CAPABILITIES,
-            **snapshot,
-        }
-        self.telemetry.set_metadata("transformation_execution", state)
-        return state
+        snapshot = self.transformation_execution_runtime.snapshot()
+        self.telemetry.set_metadata("transformation_execution", snapshot.to_telemetry_dict())
+        return snapshot
 
     def set_plan_execution_enabled(self, enabled):
         if not self.transformation_execution_lab_enabled:
@@ -444,7 +440,7 @@ class ApplicationService(QObject):
         if self.transformation_execution_runtime is not None:
             self.telemetry.set_metadata(
                 "transformation_execution",
-                self.transformation_execution_runtime.snapshot().asdict(),
+                self.transformation_execution_runtime.snapshot().to_telemetry_dict(),
             )
 
     def _record_effect_runtime_failure(self, effect_name, exc):

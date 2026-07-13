@@ -40,6 +40,12 @@ Partial execution is allowed when supported and unsupported requirements appear
 together. Unsupported processors do not make the whole plan fail solely because
 they are unsupported.
 
+Execution reporting distinguishes planned capabilities, M9.2-supported
+capabilities, current backend-executable capabilities, actively executing
+capabilities, backend-unavailable capabilities, and unknown capabilities.
+Pitch/formant support is reported only when the current combined backend can
+execute it.
+
 ## Runtime Design
 
 The execution lab reuses the accepted Formant Lab chain:
@@ -57,6 +63,21 @@ values. The callback reads one complete pitch/formant parameter pair per block
 through the existing experimental Signalsmith effect and reads session-only
 Compressor/Limiter overlay values through the existing effects. Planner and
 executor mapping never run in the audio callback.
+
+The combined pitch/formant effect publishes one immutable scalar backend-health
+snapshot. The runtime retains only the latest health snapshot. The audio
+callback does not call Qt, ApplicationService, settings, file I/O, or controller
+work when publishing health.
+
+If the native backend is unavailable, pitch and formant become backend
+unavailable and their executable targets are neutralized. If a runtime backend
+failure causes EffectChain to bypass the combined effect, pitch and formant stop
+appearing as active execution capabilities, `last_failure` is populated, and
+finite audio continues through the existing EffectChain safety behavior.
+Compressor and Limiter overlays may continue when valid, so backend loss in the
+combined pitch/formant stage degrades only those capabilities. Recovery from a
+runtime-bypassed combined effect is Stop, then Start; Start begins execution
+disabled and re-evaluates backend health.
 
 ## Dynamics And Neutrality
 
@@ -96,3 +117,8 @@ approximately 100 ms at 48 kHz.
 No target-profile file, plan file, execution cache, settings schema change,
 preset schema change, production voice, recording path, or export path is added.
 The lab is session-only and launches disabled.
+
+Application-facing execution snapshots are frozen dataclasses with frozen
+nested compressor, limiter, and pitch/formant backend snapshots. UI code must
+not receive effect objects, stream objects, workers, NumPy arrays, mutable
+dictionaries, or mutable lists from the execution snapshot.

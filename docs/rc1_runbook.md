@@ -2007,7 +2007,13 @@ Reset and failure handling:
 - Stale source neutralizes safely.
 - Stop clears execution.
 - Start again begins disabled.
-- Native backend unavailable state is understandable where testable.
+- Native backend unavailable state is visible in Plan Execution backend health.
+- Backend-unavailable pitch/formant capabilities are listed separately from
+  unsupported plan processors.
+- Runtime-bypassed pitch/formant effects do not remain reported as active.
+- Pitch-only fallback, if introduced later, must not claim formant execution.
+- Recovery from a runtime-bypassed combined pitch/formant backend is Stop, then
+  Start; Start begins execution disabled and re-evaluates backend health.
 - No stale plan remains active.
 
 Global Bypass:
@@ -2025,6 +2031,8 @@ Session state:
 - No execution cache created.
 - `settings.json` unchanged.
 - `presets.json` unchanged.
+- Execution snapshots exposed to the application remain frozen scalar contracts
+  with frozen compressor, limiter, and backend-health snapshots.
 - Relaunch restores execution disabled.
 - Planner defaults restored according to M9.1 behavior.
 
