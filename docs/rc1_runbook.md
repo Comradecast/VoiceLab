@@ -1915,68 +1915,73 @@ Next epic direction:
 
 ## M9.2 Controlled Transformation Execution Lab Live Acceptance
 
-Status: PROVISIONAL until Luke completes this checklist.
+Status: PASS.
+
+Luke completed practical live Transformation Execution Lab acceptance. M9.2 is
+accepted as execution infrastructure. Continuous reactive replanning is not
+accepted as the final normal character-control experience and remains an
+experimental diagnostic/adaptive behavior.
 
 Mode isolation:
 
-- Normal launch unchanged.
-- Formant Lab unchanged.
-- Voice Analysis Lab unchanged.
-- Target Planner Lab unchanged and planning-only.
-- `main.py --transformation-execution-lab` launches.
-- Source Analysis tab present.
-- Target Planner tab present.
-- Plan Execution tab present.
-- Launches stopped.
-- Plan execution launches disabled.
+- Normal launch unchanged: PASS.
+- Formant Lab unchanged: PASS.
+- Voice Analysis Lab unchanged: PASS.
+- Target Planner Lab unchanged and planning-only: PASS.
+- `main.py --transformation-execution-lab` launches: PASS.
+- Source Analysis tab present: PASS.
+- Target Planner tab present: PASS.
+- Plan Execution tab present: PASS.
+- Launches stopped: PASS.
+- Plan execution launches disabled: PASS.
 
 Baseline:
 
-- Start with execution disabled.
-- Audio matches neutral Formant Lab behavior.
-- Inherited Formant Lab latency is understandable.
-- No unexpected extra delay.
-- Source analysis collects correctly.
-- Target planner produces plans.
-- Execution does not activate automatically.
+- Start with execution disabled: PASS.
+- Audio matches neutral Formant Lab behavior: PASS.
+- Inherited Formant Lab latency is understandable: PASS.
+- No unexpected extra delay: PASS.
+- Source analysis collects correctly: PASS.
+- Target planner produces plans: PASS.
+- Execution does not activate automatically: PASS.
 
 Zero-strength neutrality:
 
 - For Neutral, Higher / Brighter, and Lower / Weightier, enable execution at
   `0%`.
-- No audible pitch change.
-- No audible formant change.
-- No planner-induced dynamics change.
-- Effective pitch remains zero.
-- Effective formant remains zero.
-- No supported capability executes.
-- Baseline M8.0 processing remains.
+- No audible pitch change: PASS.
+- No audible formant change: PASS.
+- No planner-induced dynamics change: PASS.
+- Effective pitch remains zero: PASS.
+- Effective formant remains zero: PASS.
+- No supported capability executes: PASS.
+- Baseline M8.0 processing remains: PASS.
 
 Higher / Brighter partial execution:
 
-- At `50%` and `100%`, positive pitch movement is audible.
-- Positive formant movement is audible.
-- Changes are smooth.
+- At `50%` and `100%`, positive pitch movement is audible: PASS.
+- Positive formant movement is audible: PASS.
+- Changes are smooth: PASS.
 - No crackle, flutter, or severe metallic tail beyond accepted Formant Lab
-  behavior.
-- Pitch/formant values follow the plan.
+  behavior: PASS.
+- Pitch/formant values follow the plan: PASS.
 - Requested pitch, applied target pitch, and pitch saturation state are visible
-  separately.
+  separately: PASS.
 - Unsupported EQ, tilt, breathiness, harmonic, and de-esser requirements are
-  listed and not approximated.
+  listed and not approximated: PASS.
 - Result is recognized as incomplete, not a finished feminine character.
 
 Lower / Weightier partial execution:
 
-- At `50%` and `100%`, negative pitch movement is audible.
-- Negative formant movement is audible.
-- Compressor override appears where requested.
-- Limiter override appears where requested.
-- Baseline settings restore when disabled.
-- Changes are smooth.
-- No crackle, flutter, or severe pumping.
+- At `50%` and `100%`, negative pitch movement is audible: PASS.
+- Negative formant movement is audible: PASS.
+- Compressor override appears where requested: PASS.
+- Limiter override appears where requested: PASS.
+- Baseline settings restore when disabled: PASS.
+- Changes are smooth: PASS.
+- No crackle, flutter, or severe pumping: PASS.
 - Unsupported EQ, tilt, harmonic, and de-esser requirements are listed and not
-  approximated.
+  approximated: PASS.
 - Result is recognized as incomplete, not a finished deep-masculine character.
 
 Target and strength changes:
@@ -1984,72 +1989,147 @@ Target and strength changes:
 - While execution is enabled, change strength gradually.
 - Switch diagnostic targets.
 - Edit target values.
-- No stream restart.
-- No device reopen.
-- No hard discontinuity.
-- Parameters converge promptly.
-- No persistent zippering.
-- No growing delay.
+- No stream restart: PASS.
+- No device reopen: PASS.
+- No hard discontinuity: PASS.
+- Parameters converge promptly: PASS.
+- No persistent zippering: PASS.
+- No growing delay: PASS.
 
 Disable and neutral return:
 
-- Disable execution.
-- Pitch returns to zero smoothly.
-- Formant returns to zero smoothly.
-- Compressor override clears.
-- Limiter override clears.
-- M8.0 baseline remains.
-- Source profile remains.
-- Target values remain.
-- Stream continues.
+- Disable execution: PASS.
+- Pitch returns to zero smoothly: PASS.
+- Formant returns to zero smoothly: PASS.
+- Compressor override clears: PASS.
+- Limiter override clears: PASS.
+- M8.0 baseline remains: PASS.
+- Source profile remains: PASS.
+- Target values remain: PASS.
+- Stream continues: PASS.
 
 Reset and failure handling:
 
-- Return to Neutral works.
-- Reset Target Profile works.
-- Reset Planner Lab works.
-- Reset Source Analysis blocks execution until profile rebuild.
-- Stale source neutralizes safely.
-- Stop clears execution.
-- Start again begins disabled.
-- Native backend unavailable state is visible in Plan Execution backend health.
+- Return to Neutral works: PASS.
+- Reset Target Profile works: PASS.
+- Reset Planner Lab works: PASS.
+- Reset Source Analysis blocks execution until profile rebuild: PASS.
+- Stale source neutralizes safely: PASS.
+- Stop clears execution: PASS.
+- Start again begins disabled: PASS.
+- Native backend unavailable state is visible in Plan Execution backend health:
+  PASS.
 - Backend-unavailable pitch/formant capabilities are listed separately from
-  unsupported plan processors.
-- Runtime-bypassed pitch/formant effects do not remain reported as active.
-- Pitch-only fallback, if introduced later, must not claim formant execution.
+  unsupported plan processors: PASS.
+- Runtime-bypassed pitch/formant effects do not remain reported as active:
+  PASS.
+- Pitch-only fallback, if introduced later, must not claim formant execution:
+  PASS.
 - Recovery from a runtime-bypassed combined pitch/formant backend is Stop, then
-  Start; Start begins execution disabled and re-evaluates backend health.
-- No stale plan remains active.
+  Start; Start begins execution disabled and re-evaluates backend health: PASS.
+- No stale plan remains active: PASS.
 
 Global Bypass:
 
-- Bypass Effects behaves as before.
-- Execution status shows bypassed.
-- No second bypass authority.
-- Removing bypass resumes smoothly.
-- No stale parameter jump.
+- Bypass Effects behaves as before: PASS.
+- Execution status shows bypassed: PASS.
+- No second bypass authority: PASS.
+- Removing bypass resumes smoothly: PASS.
+- No stale parameter jump: PASS.
 
 Session state:
 
-- No target file created.
-- No plan file created.
-- No execution cache created.
-- `settings.json` unchanged.
-- `presets.json` unchanged.
+- No target file created: PASS.
+- No plan file created: PASS.
+- No execution cache created: PASS.
+- `settings.json` unchanged: PASS.
+- `presets.json` unchanged: PASS.
 - Execution snapshots exposed to the application remain frozen scalar contracts
-  with frozen compressor, limiter, and backend-health snapshots.
-- Relaunch restores execution disabled.
-- Planner defaults restored according to M9.1 behavior.
+  with frozen compressor, limiter, and backend-health snapshots: PASS.
+- Relaunch restores execution disabled: PASS.
+- Planner defaults restored according to M9.1 behavior: PASS.
 
 Audio and lifecycle:
 
-- No new full latency stage.
-- No unexplained latency growth.
-- Repeated Start/Stop.
-- Close while processing.
-- Relaunch Execution Lab.
-- Relaunch normal mode.
-- No UI freeze.
-- No controller failure.
-- No analyzer failure.
-- No worker leak.
+- No new full latency stage: PASS.
+- No unexplained latency growth: PASS.
+- Repeated Start/Stop: PASS.
+- Close while processing: PASS.
+- Relaunch Execution Lab: PASS.
+- Relaunch normal mode: PASS.
+- No UI freeze: PASS.
+- No controller failure: PASS.
+- No analyzer failure: PASS.
+- No worker leak: PASS.
+
+Accepted M9.2 technical conclusions:
+
+- `TransformationExecutor` is accepted as subordinate to
+  `TransformationPlan`.
+- The planner remains the sole transformation-intent authority.
+- M9.2 executes only supported capabilities.
+- Unsupported capabilities remain visible and are not approximated.
+- Adaptive pitch-center execution is accepted.
+- Restrained formant execution is accepted.
+- Session-only compressor and limiter overlays are accepted.
+- Runtime smoothing is accepted for controlled experimental execution.
+- Backend-health propagation is accepted.
+- Immutable execution snapshots are accepted.
+- Readiness hysteresis is accepted.
+- One combined Signalsmith pitch/formant stage is accepted.
+- Inherited latency remains approximately 4800 frames / 100 ms at 48 kHz.
+- M9.2 does not replace production characters.
+- M9.2 does not establish continuous reactive replanning as the final user
+  experience.
+
+Product-control conclusion:
+
+Continuous source-driven replanning can feel as though the selected character
+is moving underneath the operator. Continuous replanning therefore remains an
+experimental adaptive mode and must not become the default production character
+behavior. Ordinary character use should eventually hold selected values until
+the operator changes or recalibrates them. Live source analysis remains useful
+for producing a suggested starting plan, but source analysis should not
+continuously override deliberate operator control by default.
+
+Next milestone direction: Calibrate, Lock, and Manual Trim.
+
+Required conceptual flow:
+
+Source analysis -> capture a calibration profile -> generate a suggested
+`TransformationPlan` -> lock the plan -> execute stable fixed values -> allow
+manual trims.
+
+Expected controls include Calibrate Source, Lock Suggested Transformation,
+Recalibrate, Pitch Trim, Formant Trim, Character Strength, Return to Suggested
+Plan, Return to Neutral, and Adaptive Updating default Off.
+
+The next milestone must preserve M9.0 source analysis, M9.1 planning, and M9.2
+execution; retain continuous adaptation only as an optional experimental mode;
+make locked stable execution the primary lab workflow; avoid production
+character replacement; and avoid target or plan persistence unless explicitly
+scoped later.
+
+Optional neural conversion boundary:
+
+Neural voice conversion remains a future optional plugin capability. It is not
+a required VoiceLab core feature, and it must be loadable, disableable,
+replaceable, and absent without breaking VoiceLab. Current development remains
+focused on stable DSP character control. No neural dependencies or
+implementation are part of M9.2 or the immediate next milestone.
+
+Known non-blocking M9.2 debt:
+
+- Continuous adaptation is not the preferred default UX.
+- No plan-lock workflow exists yet.
+- No manual pitch/formant trim exists yet.
+- Pitch-range mapping remains unsupported.
+- Parametric EQ remains unsupported.
+- Spectral-tilt shaping remains unsupported.
+- De-essing remains unsupported.
+- Breathiness synthesis remains unsupported.
+- Harmonic enhancement remains unsupported.
+- Diagnostic target values remain provisional.
+- No finished feminine or deep-masculine character exists yet.
+
+These are future milestones rather than M9.2 failures.

@@ -1688,12 +1688,16 @@ transformation plan for future character work.
 
 ## M9.2 - Controlled Transformation Execution Lab
 
-Status: PROVISIONAL. Live transformation-execution acceptance by Luke is still
-pending.
+Status: PASS. Luke completed practical live Transformation Execution Lab
+acceptance.
 
 Purpose: add `main.py --transformation-execution-lab`, an isolated controlled
 partial-execution mode that consumes the accepted immutable
 `TransformationPlan` without becoming a second planner authority.
+
+M9.2 is accepted as execution infrastructure. Continuous reactive replanning is
+not accepted as the final normal character-control experience; it remains an
+experimental diagnostic/adaptive behavior.
 
 ### Implementation Notes
 
@@ -1760,6 +1764,48 @@ partial-execution mode that consumes the accepted immutable
   failure reporting, global bypass distinction, recovery reset, command
   rejection outside execution mode, and a 1,000-iteration bounded controller
   probe.
+- Luke's final practical live acceptance recorded PASS for mode/lifecycle
+  isolation, audible pitch execution in the planned direction, the formant
+  execution path, visible target/current runtime values, absence of metallic
+  artifacts/flutter/crackle/new audible block boundaries, finite stable active
+  transformation, one combined Signalsmith pitch/formant stage, no second full
+  latency stage, neutral disabled and 0% behavior, Return to Neutral, M8.0
+  baseline preservation, unsupported capability visibility, fail-closed
+  unsafe states, global bypass authority, backend truthfulness, immutable
+  snapshots, readiness hysteresis, target/clamp reporting, and session-only
+  behavior with unchanged settings, presets, and production characters.
+- Accepted technical conclusions: `TransformationExecutor` is subordinate to
+  `TransformationPlan`; the planner remains the sole transformation-intent
+  authority; adaptive pitch-center execution, restrained formant execution,
+  session-only compressor/limiter overlays, runtime smoothing,
+  backend-health propagation, immutable execution snapshots, readiness
+  hysteresis, and the one combined Signalsmith pitch/formant stage are
+  accepted. Inherited latency remains approximately 4800 frames / 100 ms at
+  48 kHz.
+- M9.2 does not replace production characters and does not establish continuous
+  reactive replanning as the final user experience.
+- Product-control conclusion: continuous source-driven replanning can feel as
+  though the selected character is moving underneath the operator. Continuous
+  adaptation remains experimental and must not become default production
+  character behavior. Live source analysis should produce a suggested starting
+  plan, not continuously override deliberate operator control by default.
+- Next milestone direction: Calibrate, Lock, and Manual Trim. Flow: Source
+  analysis -> capture a calibration profile -> generate a suggested
+  `TransformationPlan` -> lock the plan -> execute stable fixed values -> allow
+  manual trims. Expected controls include Calibrate Source, Lock Suggested
+  Transformation, Recalibrate, Pitch Trim, Formant Trim, Character Strength,
+  Return to Suggested Plan, Return to Neutral, and Adaptive Updating default
+  Off.
+- Neural voice conversion remains a future optional plugin capability, not a
+  required VoiceLab core feature. It must be loadable, disableable,
+  replaceable, and absent without breaking VoiceLab. Current development
+  remains focused on stable DSP character control.
+- Known non-blocking debt: continuous adaptation is not the preferred default
+  UX; plan-lock and manual pitch/formant trim do not exist yet; pitch-range
+  mapping, parametric EQ, spectral-tilt shaping, de-essing, breathiness
+  synthesis, and harmonic enhancement remain unsupported; diagnostic target
+  values remain provisional; no finished feminine or deep-masculine character
+  exists yet. These are future milestones rather than M9.2 failures.
 - M9.2 is a controlled partial-execution lab, not a finished feminine,
   masculine, deep-masculine, giant, childlike, elderly, creature, or synthetic
   character system.

@@ -1,10 +1,15 @@
 # Controlled Transformation Execution Lab
 
-Status: M9.2 PROVISIONAL. Live acceptance is pending.
+Status: M9.2 PASS. Luke completed practical live Transformation Execution Lab
+acceptance.
 
 M9.2 adds `main.py --transformation-execution-lab`, an isolated execution lab
 that consumes the accepted M9.1 `TransformationPlan` and executes only the DSP
 capabilities that already exist safely in VoiceLab.
+
+M9.2 is accepted as execution infrastructure. Continuous reactive replanning is
+not accepted as the final normal character-control experience; it remains an
+experimental diagnostic/adaptive behavior.
 
 ## Authority Boundary
 
@@ -125,3 +130,109 @@ Application-facing execution snapshots are frozen dataclasses with frozen
 nested compressor, limiter, and pitch/formant backend snapshots. UI code must
 not receive effect objects, stream objects, workers, NumPy arrays, mutable
 dictionaries, or mutable lists from the execution snapshot.
+
+## Live Acceptance
+
+Luke's final live acceptance recorded PASS for mode/lifecycle isolation,
+audible pitch execution in the planned direction, the formant execution path,
+visible target/current runtime values, finite stable active transformation, and
+absence of metallic artifacts, flutter, crackle, or new audible block
+boundaries. One combined Signalsmith pitch/formant stage remains in use and no
+second full latency stage was introduced.
+
+Neutrality and safety passed: disabled execution and 0% strength remain
+neutral, Return to Neutral works, disabling execution restores neutral planner
+influence, M8.0 baseline processing remains available, unsupported processors
+remain visible and are not approximated, stale/unsafe states fail closed, and
+global bypass remains the single bypass authority.
+
+Backend truthfulness passed after the backend-health fix: native Signalsmith
+health is shown, pitch/formant availability is reported truthfully,
+runtime-bypassed effects are not reported as active, backend-unavailable and
+runtime backend failure states are explicit, execution snapshots distinguish
+planned/supported/executable/active/unsupported/backend-unavailable
+capabilities, and application snapshots are immutable.
+
+Readiness stability passed after the rolling-profile hysteresis fix: the
+current voiced/unvoiced reading remains separate from rolling readiness, reset
+still clears readiness, and stale/failure/inactive gates remain separate.
+
+Target and clamp reporting passed: requested pitch, applied target pitch,
+current smoothed pitch, and saturation/clamping are visible. Higher / Brighter
+saturation at high strength is mathematically understood, runtime current value
+follows the applied target rather than the unclamped request, and lowering
+strength reduces the execution target.
+
+Session and persistence passed: no target-profile file, plan file, or execution
+cache is created; `settings.json` and `presets.json` remain unchanged;
+execution state is session-only; and normal production characters remain
+unchanged.
+
+## Accepted Technical Conclusions
+
+- `TransformationExecutor` is accepted as subordinate to `TransformationPlan`.
+- The planner remains the sole transformation-intent authority.
+- M9.2 executes only supported capabilities.
+- Unsupported capabilities remain visible and are not approximated.
+- Adaptive pitch-center execution is accepted.
+- Restrained formant execution is accepted.
+- Session-only compressor and limiter overlays are accepted.
+- Runtime smoothing is accepted for controlled experimental execution.
+- Backend-health propagation is accepted.
+- Immutable execution snapshots are accepted.
+- Readiness hysteresis is accepted.
+- One combined Signalsmith pitch/formant stage is accepted.
+- Inherited latency remains approximately 4800 frames / 100 ms at 48 kHz.
+- M9.2 does not replace production characters.
+- M9.2 does not establish continuous reactive replanning as the final user
+  experience.
+
+## Product-Control Conclusion
+
+Continuous source-driven replanning can feel as though the selected character
+is moving underneath the operator. Therefore continuous replanning remains an
+experimental adaptive mode and must not become the default production character
+behavior.
+
+The next milestone will introduce calibration, plan locking, and stable manual
+trim. Ordinary character use should eventually hold selected values until the
+operator changes or recalibrates them. Live source analysis remains useful for
+producing a suggested starting plan, but source analysis should not
+continuously override deliberate operator control by default.
+
+## Next Milestone Direction
+
+The next milestone is Calibrate, Lock, and Manual Trim.
+
+Conceptual flow:
+
+Source analysis -> capture a calibration profile -> generate a suggested
+`TransformationPlan` -> lock the plan -> execute stable fixed values -> allow
+manual trims.
+
+Expected controls include Calibrate Source, Lock Suggested Transformation,
+Recalibrate, Pitch Trim, Formant Trim, Character Strength, Return to Suggested
+Plan, Return to Neutral, and Adaptive Updating default Off.
+
+The next milestone must preserve M9.0 source analysis, M9.1 planning, and M9.2
+execution; retain continuous adaptation only as an optional experimental mode;
+make locked stable execution the primary lab workflow; avoid production
+character replacement; and avoid target or plan persistence unless explicitly
+scoped later.
+
+## Optional Neural Conversion Boundary
+
+Neural voice conversion remains a future optional plugin capability. It is not
+a required VoiceLab core feature, and it must be loadable, disableable,
+replaceable, and absent without breaking VoiceLab. Current development remains
+focused on stable DSP character control. No neural dependencies or
+implementation are part of M9.2 or the immediate next milestone.
+
+## Known Non-Blocking Debt
+
+Continuous adaptation is not the preferred default UX. No plan-lock workflow or
+manual pitch/formant trim exists yet. Pitch-range mapping, parametric EQ,
+spectral-tilt shaping, de-essing, breathiness synthesis, and harmonic
+enhancement remain unsupported. Diagnostic target values remain provisional,
+and no finished feminine or deep-masculine character exists yet. These are
+future milestones rather than M9.2 failures.
