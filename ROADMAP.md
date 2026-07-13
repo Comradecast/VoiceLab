@@ -1459,8 +1459,10 @@ bounded acoustic data for future target-based character transformation.
   F0, 10th and 90th percentile F0, Hz span, semitone span, voiced duration,
   voiced-frame ratio, and readiness.
 - Profile readiness requires at least 2.0 seconds of reliable voiced readings.
-  Silence and unvoiced frames are excluded from F0 statistics and do not
-  immediately erase the last profile; Reset Source Analysis clears the profile.
+  Once ready, the rolling profile remains ready while at least 1.0 second of
+  retained high-confidence voiced evidence remains. Silence and unvoiced frames
+  are excluded from F0 statistics and do not immediately erase the last
+  profile; Reset Source Analysis clears the profile.
 - Spectral analysis uses a Hann window and real FFT outside the callback.
   Ratios are normalized to total 80 Hz through 10 kHz speech-region energy and
   truncate bands at Nyquist.
@@ -1708,6 +1710,9 @@ partial-execution mode that consumes the accepted immutable
 - Execution reporting distinguishes planned, M9.2-supported,
   backend-executable, actively executing, backend-unavailable, unsupported, and
   unknown capabilities.
+- Execution snapshots expose requested pitch separately from the applied target
+  and mark pitch saturation when the M9.1 diagnostic target math reaches the
+  target's maximum pitch shift.
 - Pitch/formant execution claims are reconciled against the current combined
   backend health. Native backend unavailability or EffectChain runtime bypass
   neutralizes pitch/formant targets and removes them from active execution

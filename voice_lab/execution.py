@@ -61,6 +61,8 @@ class TransformationExecutionTarget:
     actively_executing_capabilities: tuple[str, ...] = ()
     backend_unavailable_capabilities: tuple[str, ...] = ()
     unknown_capabilities: tuple[str, ...] = ()
+    requested_pitch_semitones: float = 0.0
+    pitch_saturation_active: bool = False
     target_pitch_semitones: float = 0.0
     target_formant_semitones: float = 0.0
     compressor_override_active: bool = False
@@ -145,7 +147,9 @@ class TransformationExecutionSnapshot:
     bypassed: bool
     transitioning: bool
     current_pitch_semitones: float
+    requested_pitch_semitones: float
     target_pitch_semitones: float
+    pitch_saturation_active: bool
     current_formant_semitones: float
     target_formant_semitones: float
     current_compressor: CompressorExecutionSnapshot
@@ -352,7 +356,9 @@ class TransformationExecutionRuntime:
             bypassed=self._bypassed,
             transitioning=not settled,
             current_pitch_semitones=self._current_pitch,
+            requested_pitch_semitones=target.requested_pitch_semitones,
             target_pitch_semitones=target.target_pitch_semitones,
+            pitch_saturation_active=target.pitch_saturation_active,
             current_formant_semitones=self._current_formant,
             target_formant_semitones=target.target_formant_semitones,
             current_compressor=CompressorExecutionSnapshot.from_settings(self._current_compressor),
@@ -478,6 +484,11 @@ class TransformationExecutor:
 
         try:
             pitch = _validated_pitch(plan.pitch.applied_pitch_shift_st, supported)
+            requested_pitch = _finite_number(
+                getattr(plan.pitch, "requested_pitch_shift_st", pitch),
+                "requested pitch shift",
+            )
+            pitch_saturation = bool(getattr(plan.pitch, "pitch_shift_clamped", False))
             formant = _validated_formant(plan.formant.applied_formant_shift_st, supported)
             compressor_active, compressor = _compressor_target(plan, supported, baseline_compressor)
             limiter_active, limiter = _limiter_target(plan, supported, baseline_limiter)
@@ -538,6 +549,8 @@ class TransformationExecutor:
             compressor_target=compressor,
             limiter_override_active=limiter_active,
             limiter_target=limiter,
+            requested_pitch_semitones=requested_pitch,
+            pitch_saturation_active=pitch_saturation,
             currently_executable_capabilities=_capability_order(executable_capabilities),
             actively_executing_capabilities=_capability_order(active_capabilities),
             backend_unavailable_capabilities=_capability_order(unavailable_capabilities),
@@ -807,6 +820,10 @@ def _target_changed(previous, current):
     if previous.backend_unavailable_capabilities != current.backend_unavailable_capabilities:
         return True
     if previous.warnings != current.warnings:
+        return True
+    if previous.pitch_saturation_active != current.pitch_saturation_active:
+        return True
+    if abs(previous.requested_pitch_semitones - current.requested_pitch_semitones) > EXECUTION_DEADBAND_ST:
         return True
     if abs(previous.target_pitch_semitones - current.target_pitch_semitones) > EXECUTION_DEADBAND_ST:
         return True

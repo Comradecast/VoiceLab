@@ -1618,6 +1618,9 @@ Rolling profile:
 - Lower/upper pitch range is plausible.
 - Voiced duration increases.
 - Silence does not immediately erase profile.
+- After the profile reaches ready, brief speech gaps and unvoiced consonants do
+  not repeatedly return the rolling profile to collecting while retained voiced
+  evidence remains sufficient.
 - Stale state appears appropriately.
 - Reset Source Analysis clears profile.
 - Profile rebuilds after reset.
@@ -1957,6 +1960,8 @@ Higher / Brighter partial execution:
 - No crackle, flutter, or severe metallic tail beyond accepted Formant Lab
   behavior.
 - Pitch/formant values follow the plan.
+- Requested pitch, applied target pitch, and pitch saturation state are visible
+  separately.
 - Unsupported EQ, tilt, breathiness, harmonic, and de-esser requirements are
   listed and not approximated.
 - Result is recognized as incomplete, not a finished feminine character.

@@ -45,6 +45,9 @@ capabilities, current backend-executable capabilities, actively executing
 capabilities, backend-unavailable capabilities, and unknown capabilities.
 Pitch/formant support is reported only when the current combined backend can
 execute it.
+The execution snapshot also reports requested pitch shift separately from the
+applied pitch target and marks pitch saturation when the M9.1 diagnostic target
+math hits the target's maximum pitch shift.
 
 ## Runtime Design
 

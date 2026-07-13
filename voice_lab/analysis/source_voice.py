@@ -13,6 +13,7 @@ ANALYSIS_CADENCE_HZ = 20.0
 PROFILE_WINDOW_SECONDS = 12.0
 MAX_PROFILE_READINGS = int(ANALYSIS_CADENCE_HZ * PROFILE_WINDOW_SECONDS)
 MIN_PROFILE_VOICED_SECONDS = 2.0
+MIN_READY_RETAINED_VOICED_SECONDS = 1.0
 STALE_SNAPSHOT_SECONDS = 1.5
 F0_MIN_HZ = 60.0
 F0_MAX_HZ = 500.0
@@ -192,6 +193,7 @@ class SourceVoiceAnalyzer:
         self._last_failure = ""
         self._source_sample_rate = DEFAULT_SAMPLE_RATE
         self._window_size = int(DEFAULT_SAMPLE_RATE * DEFAULT_WINDOW_SECONDS)
+        self._profile_ready_latched = False
 
     def start(self):
         self.stop()
@@ -221,6 +223,7 @@ class SourceVoiceAnalyzer:
         self._analyzed = 0
         self._invalid = 0
         self._last_failure = ""
+        self._profile_ready_latched = False
         self._refresh_snapshot(active=self.active)
 
     @property
@@ -292,7 +295,8 @@ class SourceVoiceAnalyzer:
                 current = VoiceAnalysisReading(reliability="analyzer unavailable")
         if reliability is not None:
             current = VoiceAnalysisReading(**{**current.asdict(), "reliability": reliability})
-        profile = _build_profile(tuple(self._readings))
+        profile = _build_profile(tuple(self._readings), ready_latched=self._profile_ready_latched)
+        self._profile_ready_latched = bool(active and profile.ready)
         worker_running = self._thread is not None and self._thread.is_alive() and active
         status = VoiceAnalysisStatus(
             active=bool(active),
@@ -364,7 +368,7 @@ def analyze_source_voice(samples, sample_rate=DEFAULT_SAMPLE_RATE, captured_at=N
     )
 
 
-def _build_profile(readings):
+def _build_profile(readings, ready_latched=False):
     voiced = [
         r
         for r in readings
@@ -385,7 +389,9 @@ def _build_profile(readings):
     upper = float(np.percentile(f0_values, 90))
     span_hz = max(0.0, upper - lower)
     span_st = 12.0 * math.log2(upper / lower) if lower > 0.0 and upper > 0.0 else None
-    ready = voiced_duration >= MIN_PROFILE_VOICED_SECONDS
+    ready = voiced_duration >= MIN_PROFILE_VOICED_SECONDS or (
+        ready_latched and voiced_duration >= MIN_READY_RETAINED_VOICED_SECONDS
+    )
     spectral_voiced = [r for r in voiced if r.spectral_valid]
     resonance_voiced = [r for r in voiced if r.resonance_valid]
     reliability = "ready" if ready else "collecting"

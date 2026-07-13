@@ -224,6 +224,30 @@ class M90F0AndProfileTests(unittest.TestCase):
         analyzer.reset()
         self.assertEqual(analyzer.snapshot().profile.voiced_frame_count, 0)
 
+    def test_mature_profile_remains_ready_through_ordinary_unvoiced_gaps(self):
+        analyzer = SourceVoiceAnalyzer()
+        voiced = analyze_source_voice(sine(140.0, seconds=0.12), SAMPLE_RATE)
+        unvoiced = analyze_source_voice(band_limited_noise(5000.0, 9000.0, seconds=0.12), SAMPLE_RATE)
+
+        for _ in range(45):
+            analyzer._readings.append(voiced)
+        analyzer._refresh_snapshot(active=True)
+        self.assertTrue(analyzer.snapshot().profile.ready)
+
+        for _ in range(210):
+            analyzer._readings.append(unvoiced)
+        analyzer._refresh_snapshot(active=True)
+        profile = analyzer.snapshot().profile
+        self.assertTrue(profile.ready)
+        self.assertEqual(profile.reliability, "ready")
+        self.assertGreaterEqual(profile.voiced_duration_seconds, 1.0)
+        self.assertLess(profile.voiced_duration_seconds, 2.0)
+
+        for _ in range(11):
+            analyzer._readings.append(unvoiced)
+        analyzer._refresh_snapshot(active=True)
+        self.assertFalse(analyzer.snapshot().profile.ready)
+
 
 class M90SpectralAndResonanceTests(unittest.TestCase):
     def test_spectral_band_ratios_follow_energy_placement_and_amplitude_scale(self):

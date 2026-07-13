@@ -170,6 +170,14 @@ class M92ExecutionContractTests(unittest.TestCase):
         self.assertTrue(set(target.requested_unsupported_capabilities).issubset(set(KNOWN_UNSUPPORTED_CAPABILITIES)))
         self.assertNotIn("parametric_eq", target.requested_supported_capabilities)
 
+    def test_execution_snapshot_reports_requested_pitch_and_saturation_separately(self):
+        service = activate_execution_service(HIGHER_BRIGHTER_REFERENCE, 1.0)
+        service.transformation_execution_controller.source_snapshot_getter = lambda: source_snapshot(median_f0_hz=100.0)
+        snapshot = service.transformation_execution_snapshot()
+        self.assertGreater(snapshot.requested_pitch_semitones, snapshot.target_pitch_semitones)
+        self.assertEqual(snapshot.target_pitch_semitones, 8.0)
+        self.assertTrue(snapshot.pitch_saturation_active)
+
     def test_unknown_future_capability_is_reported_not_executed(self):
         plan = dataclasses.replace(
             ready_plan(HIGHER_BRIGHTER_REFERENCE, 1.0),

@@ -74,6 +74,8 @@ and the rolling profile remains bounded to 240 scalar readings.
 - Profile window: 12 seconds.
 - Maximum retained readings: 240.
 - Minimum voiced duration for profile readiness: 2.0 seconds.
+- Once the rolling profile first reaches ready, it remains ready while at least
+  1.0 second of retained high-confidence voiced evidence remains.
 - Stale snapshot timeout: 1.5 seconds.
 - Profile percentiles: 10th and 90th F0 percentiles.
 - Profile inclusion threshold: voiced frames with F0 confidence at least 0.50.
@@ -147,7 +149,10 @@ Reliability states are based on measured conditions:
 
 Profile readiness requires sufficient reliable voiced speech. Silence and
 unvoiced frames are excluded from pitch statistics and do not immediately erase
-the last valid profile. Reset Source Analysis clears profile history and
+the last valid profile. After readiness is reached, ordinary speech gaps,
+sibilants, and unvoiced consonants do not return the rolling profile to
+collecting unless retained high-confidence voiced evidence falls below the
+ready-retention threshold. Reset Source Analysis clears profile history and
 readiness while preserving devices, routes, processing state, voice selection,
 input-processing settings, bypass state, soundboard state, monitor state, and
 volumes.
