@@ -2,8 +2,8 @@
 
 ## Status
 
-Provisional after implementation and automated verification. Live hardware
-acceptance remains pending.
+Accepted. Final M9.1 live Target Planner Lab acceptance passed after the
+zero-strength planner-neutrality correction.
 
 ## Context
 
@@ -190,9 +190,73 @@ isolation from F1/F2/F3, spectral and tilt formulas, de-essing/texture/dynamics
 recommendations, capability output, mode isolation, UI exposure, callback/source
 guards, settings/presets compatibility, and audio transparency.
 
+Final live acceptance confirmed Target Planner Lab launch and isolation, Source
+Analysis and Target Planner tabs, stopped launch behavior, unchanged normal,
+Formant Lab, and Voice Analysis Lab modes, unchanged normal and prototype
+effect chains, source collection and ready-plan behavior, Stop/reset behavior,
+source-profile rebuild updating plans, no planner or analyzer failure, and
+planner isolation from DSP and the audio callback.
+
+Live zero-strength acceptance confirmed that Diagnostic Neutral, Higher /
+Brighter, and Lower / Weightier all produce a fully neutral applied plan at
+`0%`: zero pitch/formant/spectral/tilt/de-essing/texture movement, neutral
+compressor and limiter recommendations, an empty capability tuple, and no
+processor-required warnings. Strength interpolation, active capability
+requirements, requested/applied separation, clamp/degradation behavior, stale
+source behavior, F1/F2/F3 weak-descriptor status, plan confidence, and warning
+readability all passed.
+
+Live audio transparency acceptance confirmed no audible pitch, formant, EQ,
+latency, metallic tail, flutter, crackle, new block boundary, meter behavior,
+soundboard behavior, monitor behavior, Bypass Effects behavior, or UI-freezing
+regression.
+
+## Accepted Conclusions
+
+- `TargetVoiceProfile` is the immutable acoustic target contract.
+- `TransformationPlan` is the immutable diagnostic plan contract.
+- Source profile plus target profile plus character strength is the accepted
+  planning architecture.
+- Pitch-center planning is accepted.
+- Pitch-range planning is accepted as a future processor requirement.
+- Restrained target-intent formant planning is accepted.
+- Spectral band and tilt-index planning are accepted as diagnostic EQ
+  requirements.
+- De-essing planning is accepted as a future processor requirement.
+- Breathiness and harmonic-weight planning are accepted as target-intent
+  capability requirements.
+- Dynamics recommendations are accepted as plans only and do not modify M8.0.
+- Capabilities describe the current applied plan.
+- `0%` character strength produces a fully neutral applied plan.
+- Requested and applied values remain separately inspectable.
+- Planner output remains diagnostic and does not alter audio.
+- Planner state remains session-only.
+- No source, target, or plan persistence is required at this stage.
+- The planner performs no identity, gender, age, or speaker classification.
+- Higher / Brighter and Lower / Weightier remain diagnostic references, not
+  finished product characters.
+
+## Known Non-Blocking Debt
+
+- Diagnostic target values remain provisional.
+- The planner does not yet execute DSP.
+- Pitch-range mapping, parametric EQ execution, de-essing, breathiness
+  synthesis, and harmonic enhancement processors do not yet exist.
+- Approximate F1/F2/F3 remain weak descriptors.
+- Target profiles are not yet persisted.
+- No finished feminine or deep-masculine character exists yet.
+- These are expected future milestones, not M9.1 failures.
+
 ## Consequences
 
 M9.1 creates the planning contract needed before production adaptive characters
 can be implemented. It deliberately stops before any DSP application layer.
 Future milestones can decide how a plan maps into actual pitch, formant, EQ,
 texture, dynamics, and safety processors.
+
+The next work begins applying the accepted plan to a controlled experimental
+audio path. It must preserve the planner as the single source of transformation
+intent, support both higher/brighter and lower/weightier directions, avoid a
+one-direction-only architecture, begin as a bounded experimental execution lab,
+avoid immediately replacing production characters, and preserve normal
+VoiceLab behavior.

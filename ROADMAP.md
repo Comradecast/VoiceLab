@@ -1528,7 +1528,7 @@ bounded acoustic data for future target-based character transformation.
 
 ## M9.1 - Adaptive Target Engine Core
 
-Status: PROVISIONAL
+Status: PASS
 
 Purpose: add the target-neutral planning core that relates the accepted M9.0
 source profile to an explicit target voice profile and produces an immutable
@@ -1619,5 +1619,67 @@ transformation plan for future character work.
   capability reporting, lab-mode isolation, normal/formant chain isolation,
   settings/presets compatibility, UI exposure, callback/source guards, and
   audio transparency.
-- M9.1 is PROVISIONAL after implementation and automated verification. Live
-  hardware acceptance remains pending and must not be represented as PASS.
+- Final M9.1 live Target Planner Lab acceptance passed after the zero-strength
+  planner-neutrality correction. Confirmed PASS results: Target Planner Lab
+  launch, Source Analysis tab present, Target Planner tab present, launches
+  stopped, normal launch unchanged, Formant Lab unchanged, Voice Analysis Lab
+  unchanged, normal and prototype effect chains unchanged, planner outside DSP
+  and callback, source collection, collecting state, ready source producing a
+  ready plan, Stop/reset behavior, source-profile rebuild updating plans, no
+  planner failure, and no analyzer failure.
+- Zero-strength neutrality passed for Diagnostic Neutral, Higher / Brighter,
+  and Lower / Weightier: applied pitch shift zero, pitch-range scale `1.0`,
+  formant shift zero, all spectral and tilt adjustments zero, de-essing zero,
+  breathiness zero, harmonic weight zero, compressor and limiter neutral,
+  capability tuple empty, and no processor-required warnings.
+- Strength interpolation passed: 50% values appeared between neutral and full
+  target, 100% produced the full bounded plan, interpolation appeared
+  monotonic, capability requirements appeared only for active transformation,
+  and changing strength did not alter source measurements or target contracts.
+- Higher / Brighter and Lower / Weightier diagnostic directions passed. Pitch,
+  formant, spectral, tilt, texture, de-essing, compressor/limiter where
+  applicable, clamp warnings, and no identity or gender classification behaved
+  as expected. These remain diagnostic references, not finished feminine or
+  deep-masculine product characters.
+- Clamps and degradation passed: requested and applied values are both visible,
+  pitch clamps appeared correct, formant planning stayed within accepted
+  natural limits, spectral clamp behavior appeared correct, stale source
+  handling appeared correct, missing evidence degraded only the affected
+  control, F1/F2/F3 remained weak descriptors that do not directly control
+  formant planning, and confidence/warnings were understandable.
+- Reset and session-state acceptance passed: Reset Target Profile, Reset
+  Planner Lab, source analysis unaffected by target reset, devices/routes/
+  selected voice/M8.0 settings/soundboard/monitor/volumes unchanged,
+  planner values session-only, relaunch restored planner defaults, no target
+  profile or plan file was created, and `settings.json` and `presets.json`
+  were unchanged.
+- Audio transparency passed: no audible pitch, formant, EQ, latency, metallic
+  tail, flutter, crackle, new block boundaries, meter behavior change,
+  soundboard behavior change, monitor behavior change, Bypass Effects behavior
+  change, or UI freezing was observed.
+- Accepted M9.1 technical conclusions: `TargetVoiceProfile` is the immutable
+  acoustic target contract, `TransformationPlan` is the immutable diagnostic
+  plan contract, source profile plus target profile plus character strength is
+  the accepted planning architecture, pitch-center planning is accepted,
+  pitch-range planning is accepted as a future processor requirement,
+  restrained target-intent formant planning is accepted, spectral band and
+  tilt-index planning are accepted as diagnostic EQ requirements, de-essing,
+  breathiness, harmonic-weight, and dynamics recommendations are accepted as
+  plans/future capability requirements, capabilities describe the current
+  applied plan, 0% strength is fully neutral, requested and applied values
+  remain separately inspectable, planner output remains diagnostic and does
+  not alter audio, planner state remains session-only, no source/target/plan
+  persistence is required yet, and the planner performs no identity, gender,
+  age, or speaker classification.
+- Known non-blocking debt: diagnostic target values remain provisional; the
+  planner does not yet execute DSP; pitch-range mapping, parametric EQ,
+  de-esser, breathiness synthesis, and harmonic enhancement processors do not
+  yet exist; approximate F1/F2/F3 remain weak descriptors; target profiles are
+  not yet persisted; and no finished feminine or deep-masculine character
+  exists. These are expected future milestones, not M9.1 failures.
+- The next work begins applying the accepted plan to a controlled experimental
+  audio path. It must preserve the planner as the single source of
+  transformation intent, support both higher/brighter and lower/weightier
+  directions, avoid one-direction-only architecture, begin as a bounded
+  experimental execution lab, avoid immediately replacing production
+  characters, and preserve normal VoiceLab behavior.
