@@ -1909,3 +1909,134 @@ Next epic direction:
   directions, avoid hardcoding a one-direction-only architecture, begin with a
   bounded experimental execution lab, avoid immediately replacing production
   characters, and preserve normal VoiceLab behavior.
+
+## M9.2 Controlled Transformation Execution Lab Live Acceptance
+
+Status: PROVISIONAL until Luke completes this checklist.
+
+Mode isolation:
+
+- Normal launch unchanged.
+- Formant Lab unchanged.
+- Voice Analysis Lab unchanged.
+- Target Planner Lab unchanged and planning-only.
+- `main.py --transformation-execution-lab` launches.
+- Source Analysis tab present.
+- Target Planner tab present.
+- Plan Execution tab present.
+- Launches stopped.
+- Plan execution launches disabled.
+
+Baseline:
+
+- Start with execution disabled.
+- Audio matches neutral Formant Lab behavior.
+- Inherited Formant Lab latency is understandable.
+- No unexpected extra delay.
+- Source analysis collects correctly.
+- Target planner produces plans.
+- Execution does not activate automatically.
+
+Zero-strength neutrality:
+
+- For Neutral, Higher / Brighter, and Lower / Weightier, enable execution at
+  `0%`.
+- No audible pitch change.
+- No audible formant change.
+- No planner-induced dynamics change.
+- Effective pitch remains zero.
+- Effective formant remains zero.
+- No supported capability executes.
+- Baseline M8.0 processing remains.
+
+Higher / Brighter partial execution:
+
+- At `50%` and `100%`, positive pitch movement is audible.
+- Positive formant movement is audible.
+- Changes are smooth.
+- No crackle, flutter, or severe metallic tail beyond accepted Formant Lab
+  behavior.
+- Pitch/formant values follow the plan.
+- Unsupported EQ, tilt, breathiness, harmonic, and de-esser requirements are
+  listed and not approximated.
+- Result is recognized as incomplete, not a finished feminine character.
+
+Lower / Weightier partial execution:
+
+- At `50%` and `100%`, negative pitch movement is audible.
+- Negative formant movement is audible.
+- Compressor override appears where requested.
+- Limiter override appears where requested.
+- Baseline settings restore when disabled.
+- Changes are smooth.
+- No crackle, flutter, or severe pumping.
+- Unsupported EQ, tilt, harmonic, and de-esser requirements are listed and not
+  approximated.
+- Result is recognized as incomplete, not a finished deep-masculine character.
+
+Target and strength changes:
+
+- While execution is enabled, change strength gradually.
+- Switch diagnostic targets.
+- Edit target values.
+- No stream restart.
+- No device reopen.
+- No hard discontinuity.
+- Parameters converge promptly.
+- No persistent zippering.
+- No growing delay.
+
+Disable and neutral return:
+
+- Disable execution.
+- Pitch returns to zero smoothly.
+- Formant returns to zero smoothly.
+- Compressor override clears.
+- Limiter override clears.
+- M8.0 baseline remains.
+- Source profile remains.
+- Target values remain.
+- Stream continues.
+
+Reset and failure handling:
+
+- Return to Neutral works.
+- Reset Target Profile works.
+- Reset Planner Lab works.
+- Reset Source Analysis blocks execution until profile rebuild.
+- Stale source neutralizes safely.
+- Stop clears execution.
+- Start again begins disabled.
+- Native backend unavailable state is understandable where testable.
+- No stale plan remains active.
+
+Global Bypass:
+
+- Bypass Effects behaves as before.
+- Execution status shows bypassed.
+- No second bypass authority.
+- Removing bypass resumes smoothly.
+- No stale parameter jump.
+
+Session state:
+
+- No target file created.
+- No plan file created.
+- No execution cache created.
+- `settings.json` unchanged.
+- `presets.json` unchanged.
+- Relaunch restores execution disabled.
+- Planner defaults restored according to M9.1 behavior.
+
+Audio and lifecycle:
+
+- No new full latency stage.
+- No unexplained latency growth.
+- Repeated Start/Stop.
+- Close while processing.
+- Relaunch Execution Lab.
+- Relaunch normal mode.
+- No UI freeze.
+- No controller failure.
+- No analyzer failure.
+- No worker leak.

@@ -47,11 +47,13 @@ class App(QWidget):
         diagnostics_layout = self._create_tab("Diagnostics")
         source_analysis_layout = None
         target_planner_layout = None
+        execution_layout = None
         self.restored_preferences = self.service.operator_preferences() if hasattr(self.service, "operator_preferences") else {}
         self._updating_voice_controls = False
         self._updating_input_processing = False
         self._updating_formant_lab = False
         self._updating_target_planner = False
+        self._updating_execution_lab = False
         self._last_voice_selection = None
         self.formant_lab_enabled = (
             hasattr(self.service, "formant_lab_state") and self.service.formant_lab_state() is not None
@@ -64,10 +66,16 @@ class App(QWidget):
             hasattr(self.service, "target_planner_state")
             and self.service.target_planner_state() is not None
         )
+        self.execution_lab_enabled = (
+            hasattr(self.service, "execution_lab_state")
+            and self.service.execution_lab_state() is not None
+        )
         if self.source_analysis_enabled:
             source_analysis_layout = self._create_tab("Source Analysis")
         if self.target_planner_enabled:
             target_planner_layout = self._create_tab("Target Planner")
+        if self.execution_lab_enabled:
+            execution_layout = self._create_tab("Plan Execution")
 
         layout.addWidget(QLabel("Voice Character"))
         self.character_box = QComboBox()
@@ -183,6 +191,8 @@ class App(QWidget):
             self._build_source_analysis_tab(source_analysis_layout)
         if self.target_planner_enabled and target_planner_layout is not None:
             self._build_target_planner_tab(target_planner_layout)
+        if self.execution_lab_enabled and execution_layout is not None:
+            self._build_execution_lab_tab(execution_layout)
 
         self.advanced_toggle = QCheckBox("Show Advanced Controls")
         self.advanced_toggle.stateChanged.connect(lambda _state: self.set_advanced_visible())
@@ -300,10 +310,16 @@ class App(QWidget):
             self.source_analysis_timer.setInterval(250)
             self.source_analysis_timer.timeout.connect(self.refresh_source_analysis)
             self.source_analysis_timer.start()
+        if self.execution_lab_enabled:
+            self.execution_lab_timer = QTimer(self)
+            self.execution_lab_timer.setInterval(250)
+            self.execution_lab_timer.timeout.connect(self.refresh_execution_lab)
+            self.execution_lab_timer.start()
         self.refresh_operator_status()
         self.refresh_audio_levels()
         self.refresh_source_analysis()
         self.refresh_target_planner()
+        self.refresh_execution_lab()
 
     def _create_tab(self, title):
         scroll_area = QScrollArea()
@@ -988,6 +1004,117 @@ class App(QWidget):
             "Warnings: "
             f"{', '.join(plan.get('warnings') or ('none',))}"
         )
+        self.refresh_execution_lab()
+
+    def _build_execution_lab_tab(self, layout):
+        self.execution_enable = QCheckBox("Enable Plan Execution")
+        self.execution_enable.stateChanged.connect(lambda _state: self.set_plan_execution_enabled())
+        layout.addWidget(self.execution_enable)
+        neutral = QPushButton("Return to Neutral")
+        neutral.clicked.connect(self.return_execution_to_neutral)
+        layout.addWidget(neutral)
+
+        self.execution_control = QLabel("Execution Control: disabled")
+        self.execution_plan_state = QLabel("Plan State: unavailable")
+        self.execution_supported = QLabel("Supported Execution: unavailable")
+        self.execution_unsupported = QLabel("Unsupported Capabilities: unavailable")
+        self.execution_runtime = QLabel("Runtime Status: unavailable")
+        self.execution_baseline = QLabel("Baseline Context: unavailable")
+        for label in (
+            self.execution_control,
+            self.execution_plan_state,
+            self.execution_supported,
+            self.execution_unsupported,
+            self.execution_runtime,
+            self.execution_baseline,
+        ):
+            label.setWordWrap(True)
+            layout.addWidget(label)
+
+    def set_plan_execution_enabled(self):
+        if self._updating_execution_lab or not getattr(self, "execution_lab_enabled", False):
+            return
+        result = self.service.set_plan_execution_enabled(self.execution_enable.isChecked())
+        self.display_result(result)
+        self.refresh_execution_lab()
+
+    def return_execution_to_neutral(self):
+        if not getattr(self, "execution_lab_enabled", False):
+            return
+        result = self.service.return_transformation_to_neutral()
+        self.display_result(result)
+        self.refresh_execution_lab()
+
+    def refresh_execution_lab(self):
+        if not getattr(self, "execution_lab_enabled", False):
+            return
+        try:
+            state = self.service.transformation_execution_snapshot()
+        except Exception:
+            return
+        if state is None or not hasattr(self, "execution_control"):
+            return
+        self._updating_execution_lab = True
+        try:
+            self.execution_enable.setChecked(bool(state.get("enabled", False)))
+        finally:
+            self._updating_execution_lab = False
+
+        self.execution_control.setText(
+            f"Execution Control: {'enabled' if state.get('enabled') else 'disabled'} | "
+            f"global bypass {'on' if state.get('bypassed') else 'off'} | no automatic enable on Start"
+        )
+        self.execution_plan_state.setText(
+            f"Plan State: target {state.get('target_id') or 'none'} | strength "
+            f"{float(state.get('character_strength') or 0.0) * 100.0:.0f}% | "
+            f"planner {state.get('plan_status')} | confidence {self._fmt_ratio(state.get('plan_confidence'))} | "
+            f"source age {self._fmt_seconds(state.get('source_age_seconds'))} | "
+            f"plan generation {state.get('source_plan_generation', 'latest')} | "
+            f"execution generation {state.get('execution_generation')} | "
+            f"{'partial' if state.get('partial_execution') else 'full/neutral'} | "
+            f"blocked {state.get('blocked_reason') or 'none'}"
+        )
+        baseline_c = state.get("baseline_compressor", {})
+        plan_c = state.get("plan_compressor", {})
+        current_c = state.get("current_compressor", {})
+        baseline_l = state.get("baseline_limiter", {})
+        plan_l = state.get("plan_limiter", {})
+        current_l = state.get("current_limiter", {})
+        self.execution_supported.setText(
+            f"Supported Execution: requested {', '.join(state.get('requested_supported_capabilities') or ('none',))} | "
+            f"pitch target/current {self._fmt_st(state.get('target_pitch_semitones'))}/"
+            f"{self._fmt_st(state.get('current_pitch_semitones'))} | "
+            f"formant target/current {self._fmt_st(state.get('target_formant_semitones'))}/"
+            f"{self._fmt_st(state.get('current_formant_semitones'))} | "
+            f"compressor override {state.get('compressor_override_active')} "
+            f"baseline {baseline_c} plan {plan_c} current {current_c} | "
+            f"limiter override {state.get('limiter_override_active')} "
+            f"baseline {baseline_l} plan {plan_l} current {current_l}"
+        )
+        unsupported = tuple(state.get("requested_unsupported_capabilities") or ())
+        known = tuple(state.get("unsupported_capabilities") or ())
+        unknown = tuple(name for name in unsupported if name not in known)
+        visible = tuple(name for name in known if name in unsupported) + unknown
+        self.execution_unsupported.setText(
+            "Unsupported Capabilities: "
+            + ", ".join(f"{name}: requested, unsupported, not approximated" for name in visible)
+            if visible
+            else "Unsupported Capabilities: none requested"
+        )
+        self.execution_runtime.setText(
+            f"Runtime Status: {state.get('status')} | settled {state.get('smoothing_settled')} | "
+            f"backend Signalsmith experimental pitch/formant | worker {state.get('controller_worker_status')} | "
+            f"plan age {self._fmt_seconds(state.get('plan_age_seconds'))} | "
+            f"accepted {state.get('last_accepted_generation')} | rejected {state.get('last_rejected_generation')} | "
+            f"failure {state.get('last_failure') or 'none'}"
+        )
+        self.execution_baseline.setText(
+            f"Baseline Context: current selected voice remains production/session baseline | "
+            f"Bypass Effects {'on' if state.get('bypassed') else 'off'} | "
+            f"M8.0 compressor {baseline_c} | M8.0 limiter {baseline_l} | "
+            f"inherited Formant Lab latency {state.get('latency_frames', 0)} frames "
+            f"({float(state.get('latency_ms_at_48k') or 0.0):.1f} ms at 48 kHz)"
+        )
 
     def _fmt_hz(self, value):
         return "unavailable" if value is None else f"{float(value):.1f} Hz"
@@ -1406,6 +1533,8 @@ class App(QWidget):
             self.meter_timer.stop()
         if hasattr(self, "source_analysis_timer"):
             self.source_analysis_timer.stop()
+        if hasattr(self, "execution_lab_timer"):
+            self.execution_lab_timer.stop()
         if self.on_close is not None:
             self.on_close()
         event.accept()

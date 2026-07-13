@@ -157,8 +157,9 @@ class NoiseGateEffect(Effect):
 class CompressorEffect(Effect):
     name = "Compressor"
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, runtime_config_provider=None):
         self._config = config or CompressorSettings()
+        self._runtime_config_provider = runtime_config_provider
         self._gain = 1.0
         self._activity = ProcessorActivity(enabled=self._config.enabled)
 
@@ -170,15 +171,23 @@ class CompressorEffect(Effect):
             state="Ready" if config.enabled else "OFF",
         )
 
+    def runtime_config(self):
+        if self._runtime_config_provider is not None:
+            config = self._runtime_config_provider()
+            if config is not None:
+                return config
+        return self._config
+
     def process(self, mono, frames, sample_rate):
         source = sanitize_audio(mono)
-        if not self._config.enabled:
+        config = self.runtime_config()
+        if not config.enabled:
             self._activity = ProcessorActivity(enabled=False, state="OFF")
             return source.astype(np.float32, copy=True)
-        threshold = db_to_amplitude(self._config.threshold_dbfs)
-        makeup = db_to_amplitude(self._config.makeup_gain_db)
-        attack_coeff = _time_coeff(self._config.attack_ms, sample_rate)
-        release_coeff = _time_coeff(self._config.release_ms, sample_rate)
+        threshold = db_to_amplitude(config.threshold_dbfs)
+        makeup = db_to_amplitude(config.makeup_gain_db)
+        attack_coeff = _time_coeff(config.attack_ms, sample_rate)
+        release_coeff = _time_coeff(config.release_ms, sample_rate)
         output = np.empty_like(source, dtype=np.float32)
 
         for index, sample in enumerate(source):
@@ -187,8 +196,8 @@ class CompressorEffect(Effect):
                 target_gain = 1.0
             else:
                 level_db = 20.0 * np.log10(level)
-                compressed_db = self._config.threshold_dbfs + (
-                    (level_db - self._config.threshold_dbfs) / self._config.ratio
+                compressed_db = config.threshold_dbfs + (
+                    (level_db - config.threshold_dbfs) / config.ratio
                 )
                 target_gain = db_to_amplitude(compressed_db - level_db)
             coeff = attack_coeff if target_gain < self._gain else release_coeff
@@ -218,8 +227,9 @@ class CompressorEffect(Effect):
 class VoiceLimiterEffect(Effect):
     name = "Limiter"
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, runtime_config_provider=None):
         self._config = config or LimiterSettings()
+        self._runtime_config_provider = runtime_config_provider
         self._gain = 1.0
         self._activity = ProcessorActivity(enabled=self._config.enabled)
 
@@ -231,13 +241,21 @@ class VoiceLimiterEffect(Effect):
             state="Ready" if config.enabled else "OFF",
         )
 
+    def runtime_config(self):
+        if self._runtime_config_provider is not None:
+            config = self._runtime_config_provider()
+            if config is not None:
+                return config
+        return self._config
+
     def process(self, mono, frames, sample_rate):
         source = sanitize_audio(mono)
-        if not self._config.enabled:
+        config = self.runtime_config()
+        if not config.enabled:
             self._activity = ProcessorActivity(enabled=False, state="OFF")
             return source.astype(np.float32, copy=True)
-        ceiling = db_to_amplitude(self._config.ceiling_dbfs)
-        release_coeff = _time_coeff(self._config.release_ms, sample_rate)
+        ceiling = db_to_amplitude(config.ceiling_dbfs)
+        release_coeff = _time_coeff(config.release_ms, sample_rate)
         output = np.empty_like(source, dtype=np.float32)
         ceiling_hit = False
 

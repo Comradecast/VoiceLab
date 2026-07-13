@@ -111,7 +111,10 @@ def builtin_plugin_metadata(formant_lab=False):
                 display_name="Compressor",
                 category="dynamics",
                 factory_id="voicelab.factory.compressor",
-                factory=lambda effect_state: CompressorEffect(effect_state.input_processing.compressor),
+                factory=lambda effect_state: CompressorEffect(
+                    effect_state.input_processing.compressor,
+                    _execution_compressor_provider(effect_state),
+                ),
                 parameter_metadata={
                     "enabled": {"default": False},
                     "threshold_dbfs": {"unit": "dBFS", "minimum": -40, "maximum": 0, "default": -18},
@@ -148,7 +151,10 @@ def builtin_plugin_metadata(formant_lab=False):
                 display_name="Limiter",
                 category="dynamics",
                 factory_id="voicelab.factory.limiter",
-                factory=lambda effect_state: VoiceLimiterEffect(effect_state.input_processing.limiter),
+                factory=lambda effect_state: VoiceLimiterEffect(
+                    effect_state.input_processing.limiter,
+                    _execution_limiter_provider(effect_state),
+                ),
                 parameter_metadata={
                     "enabled": {"default": False},
                     "ceiling_dbfs": {"unit": "dBFS", "minimum": -12, "maximum": -0.5, "default": -1},
@@ -210,7 +216,28 @@ def _pitch_descriptor(formant_lab=False):
 def _make_experimental_pitch_formant(effect_state):
     from voice_lab.effects.formant_lab import ExperimentalPitchFormantEffect
 
-    return ExperimentalPitchFormantEffect(effect_state.formant_lab)
+    runtime = getattr(effect_state, "transformation_execution_runtime", None)
+    if runtime is None:
+        return ExperimentalPitchFormantEffect(effect_state.formant_lab)
+    return ExperimentalPitchFormantEffect(
+        effect_state.formant_lab,
+        runtime_parameters_provider=runtime.formant_parameters_for_block,
+        latency_reporter=runtime.set_latency_frames,
+    )
+
+
+def _execution_compressor_provider(effect_state):
+    runtime = getattr(effect_state, "transformation_execution_runtime", None)
+    if runtime is None:
+        return None
+    return runtime.compressor_settings_for_block
+
+
+def _execution_limiter_provider(effect_state):
+    runtime = getattr(effect_state, "transformation_execution_runtime", None)
+    if runtime is None:
+        return None
+    return runtime.limiter_settings_for_block
 
 
 def load_effects_from_metadata(metadata, effect_state):

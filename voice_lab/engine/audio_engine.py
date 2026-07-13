@@ -20,6 +20,7 @@ class AudioEngine:
         self.pitch = 0.0
         self.input_processing = DEFAULT_INPUT_PROCESSING_SETTINGS
         self.formant_lab = FormantLabState()
+        self.transformation_execution_runtime = None
         self.effect_chain = effect_chain or EffectChain()
         self.effects_bypassed = False
 
@@ -48,6 +49,9 @@ class AudioEngine:
     def set_formant_lab(self, parameters):
         self.formant_lab.replace(parameters)
 
+    def set_transformation_execution_runtime(self, runtime):
+        self.transformation_execution_runtime = runtime
+
     def reset_formant_lab(self):
         self.formant_lab.reset()
 
@@ -62,6 +66,8 @@ class AudioEngine:
 
     def set_input_processing(self, settings):
         self.input_processing = settings
+        if self.transformation_execution_runtime is not None:
+            self.transformation_execution_runtime.set_baseline(settings)
         for effect in self.effect_chain.effects:
             updater = getattr(effect, "update_config", None)
             if updater is None:

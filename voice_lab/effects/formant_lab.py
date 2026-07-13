@@ -117,8 +117,10 @@ class SignalsmithPitchFormantAdapter(SignalsmithStreamingAdapter):
 class ExperimentalPitchFormantEffect(Effect):
     name = "Experimental Pitch/Formant"
 
-    def __init__(self, state):
+    def __init__(self, state, runtime_parameters_provider=None, latency_reporter=None):
         self.state = state
+        self._runtime_parameters_provider = runtime_parameters_provider
+        self._latency_reporter = latency_reporter
         self._adapter = None
         self._snapshot = FormantPrototypeSnapshot(
             available=True,
@@ -137,7 +139,7 @@ class ExperimentalPitchFormantEffect(Effect):
 
     def process(self, mono, frames, sample_rate):
         source = np.asarray(mono, dtype=np.float32)
-        parameters = self.state.parameters
+        parameters = self._parameters_for_block(frames, sample_rate)
         pitch = parameters.pitch_semitones
         formant = parameters.formant_semitones
         factor = parameters.formant_factor
@@ -202,6 +204,13 @@ class ExperimentalPitchFormantEffect(Effect):
             parameters.formant_factor,
         )
 
+    def _parameters_for_block(self, frames, sample_rate):
+        if self._runtime_parameters_provider is not None:
+            parameters = self._runtime_parameters_provider(frames, sample_rate)
+            if parameters is not None:
+                return parameters
+        return self.state.parameters
+
     def close(self):
         if self._adapter is not None:
             self._adapter.close()
@@ -211,6 +220,8 @@ class ExperimentalPitchFormantEffect(Effect):
         latency = self._adapter.status() if self._adapter is not None else None
         latency_frames = latency.latency_frames if latency is not None else 0
         estimated_ms = latency.estimated_added_ms if latency is not None else 0.0
+        if self._latency_reporter is not None:
+            self._latency_reporter(latency_frames)
         return FormantPrototypeSnapshot(
             available=True,
             active=bool(active),

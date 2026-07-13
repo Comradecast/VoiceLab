@@ -28,6 +28,14 @@ from voice_lab.config.voice_characters import (
 from voice_lab.controllers.hotkeys import HotkeyManager
 from voice_lab.controllers.soundboard import SoundboardController
 from voice_lab.engine.audio_engine import AudioEngine
+from voice_lab.execution import (
+    EXECUTION_CONTROLLER_CADENCE_HZ,
+    KNOWN_UNSUPPORTED_CAPABILITIES,
+    SUPPORTED_CAPABILITIES,
+    TransformationExecutionController,
+    TransformationExecutionRuntime,
+    TransformationExecutor,
+)
 from voice_lab.io import AudioIO, Router
 from voice_lab.io.device_errors import DeviceFailure, DeviceFailureError
 from voice_lab.mixer import Mixer
@@ -64,19 +72,31 @@ class ApplicationService(QObject):
         formant_lab=False,
         voice_analysis_lab=False,
         target_planner_lab=False,
+        transformation_execution_lab=False,
     ):
         super().__init__()
         self.telemetry = telemetry or TelemetryService()
         self.level_monitor = AudioLevelMonitor()
         self.engine = engine or AudioEngine()
         self.plugins = plugins or PluginManager()
-        self.formant_lab_enabled = bool(formant_lab)
-        self.target_planner_lab_enabled = bool(target_planner_lab)
-        self.voice_analysis_lab_enabled = bool(voice_analysis_lab or target_planner_lab)
+        self.transformation_execution_lab_enabled = bool(transformation_execution_lab)
+        self.formant_lab_enabled = bool(formant_lab or transformation_execution_lab)
+        self.target_planner_lab_enabled = bool(target_planner_lab or transformation_execution_lab)
+        self.voice_analysis_lab_enabled = bool(voice_analysis_lab or target_planner_lab or transformation_execution_lab)
         self.target_planner = TransformationPlanner() if self.target_planner_lab_enabled else None
         self.current_target_profile = DEFAULT_TARGET_PROFILE
         self.target_planner_strength = 1.0
         self.source_voice_analyzer = SourceVoiceAnalyzer() if self.voice_analysis_lab_enabled else None
+        self.execution_enabled = False
+        self.transformation_executor = TransformationExecutor() if self.transformation_execution_lab_enabled else None
+        self.transformation_execution_runtime = (
+            TransformationExecutionRuntime(self.engine.input_processing)
+            if self.transformation_execution_lab_enabled
+            else None
+        )
+        if self.transformation_execution_runtime is not None:
+            self.engine.set_transformation_execution_runtime(self.transformation_execution_runtime)
+        self.transformation_execution_controller = None
         self.engine.set_effect_chain(
             self.plugins.load_default_effect_chain(
                 self.engine,
@@ -104,6 +124,20 @@ class ApplicationService(QObject):
         settings = self._operator_settings()
         self.current_input_processing = settings.input_processing
         self.engine.set_input_processing(self.current_input_processing)
+        if self.transformation_execution_runtime is not None:
+            self.transformation_execution_runtime.set_baseline(self.current_input_processing)
+            self.transformation_execution_controller = TransformationExecutionController(
+                runtime=self.transformation_execution_runtime,
+                executor=self.transformation_executor,
+                planner=self.target_planner,
+                source_snapshot_getter=self.source_analysis_snapshot,
+                target_profile_getter=lambda: self.current_target_profile,
+                strength_getter=lambda: self.target_planner_strength,
+                baseline_getter=lambda: self.current_input_processing,
+                enabled_getter=lambda: self.execution_enabled,
+                bypass_getter=lambda: self.effects_bypassed,
+                cadence_hz=EXECUTION_CONTROLLER_CADENCE_HZ,
+            )
         self.current_monitor_enabled = settings.monitor_enabled
         self.current_monitor_volume = settings.monitor_volume
         self.current_soundboard_volume = settings.soundboard_volume
@@ -269,6 +303,61 @@ class ApplicationService(QObject):
         self.telemetry.set_metadata("target_planner", state)
         return state
 
+    def execution_lab_state(self):
+        if not self.transformation_execution_lab_enabled:
+            return None
+        return self.transformation_execution_snapshot()
+
+    def transformation_execution_snapshot(self):
+        if self.transformation_execution_runtime is None:
+            return None
+        self._refresh_execution_target()
+        snapshot = self.transformation_execution_runtime.snapshot().asdict()
+        state = {
+            "lab": "Experimental - Controlled Partial Execution",
+            "controller_cadence_hz": EXECUTION_CONTROLLER_CADENCE_HZ,
+            "supported_capabilities": SUPPORTED_CAPABILITIES,
+            "unsupported_capabilities": KNOWN_UNSUPPORTED_CAPABILITIES,
+            **snapshot,
+        }
+        self.telemetry.set_metadata("transformation_execution", state)
+        return state
+
+    def set_plan_execution_enabled(self, enabled):
+        if not self.transformation_execution_lab_enabled:
+            result = CommandResult.fail("Transformation Execution Lab is not enabled.")
+            self.telemetry.record_command_result("set_plan_execution_enabled", result)
+            return result
+        self.execution_enabled = bool(enabled)
+        state = self.transformation_execution_snapshot()
+        result = CommandResult.ok(
+            "Plan execution enabled." if self.execution_enabled else "Plan execution disabled.",
+            transformation_execution=state,
+        )
+        self.telemetry.record_command_result("set_plan_execution_enabled", result)
+        return result
+
+    def return_transformation_to_neutral(self):
+        if not self.transformation_execution_lab_enabled:
+            result = CommandResult.fail("Transformation Execution Lab is not enabled.")
+            self.telemetry.record_command_result("return_transformation_to_neutral", result)
+            return result
+        self.execution_enabled = False
+        if self.transformation_execution_runtime is not None:
+            self.transformation_execution_runtime.reset()
+        state = self.transformation_execution_snapshot()
+        result = CommandResult.ok("Plan execution returned to neutral.", transformation_execution=state)
+        self.telemetry.record_command_result("return_transformation_to_neutral", result)
+        return result
+
+    def _refresh_execution_target(self):
+        if self.transformation_execution_controller is None:
+            return
+        try:
+            self.transformation_execution_controller.recalculate_once()
+        except Exception as exc:
+            self.transformation_execution_runtime.set_worker_status("failed", str(exc))
+
     def set_target_planner_strength(self, strength_percent):
         if self.target_planner is None:
             result = CommandResult.fail("Target Planner Lab is not enabled.")
@@ -352,6 +441,11 @@ class ApplicationService(QObject):
                 asdict(status) if is_dataclass(status) else status,
             )
             break
+        if self.transformation_execution_runtime is not None:
+            self.telemetry.set_metadata(
+                "transformation_execution",
+                self.transformation_execution_runtime.snapshot().asdict(),
+            )
 
     def _record_effect_runtime_failure(self, effect_name, exc):
         self._refresh_effect_chain_status()
@@ -427,7 +521,7 @@ class ApplicationService(QObject):
         return self.current_input_processing.asdict()
 
     def formant_lab_state(self):
-        if not self.formant_lab_enabled:
+        if not self.formant_lab_enabled or self.transformation_execution_lab_enabled:
             return None
         status = self.engine.formant_lab_status()
         if status is None:
@@ -457,7 +551,7 @@ class ApplicationService(QObject):
         return state
 
     def update_formant_lab(self, *, enabled=None, pitch_semitones=None, formant_semitones=None, bypassed=None):
-        if not self.formant_lab_enabled:
+        if not self.formant_lab_enabled or self.transformation_execution_lab_enabled:
             result = CommandResult.fail("Formant Lab is not enabled.")
             self.telemetry.record_command_result("update_formant_lab", result)
             return result
@@ -487,7 +581,7 @@ class ApplicationService(QObject):
         return result
 
     def reset_formant_lab(self):
-        if not self.formant_lab_enabled:
+        if not self.formant_lab_enabled or self.transformation_execution_lab_enabled:
             result = CommandResult.fail("Formant Lab is not enabled.")
             self.telemetry.record_command_result("reset_formant_lab", result)
             return result
@@ -679,6 +773,8 @@ class ApplicationService(QObject):
             return result
         self.effects_bypassed = enabled
         self.engine.set_effects_bypassed(enabled)
+        if self.transformation_execution_runtime is not None:
+            self.transformation_execution_runtime.set_bypassed(enabled)
         event_type = "voice.bypass_enabled" if enabled else "voice.bypass_disabled"
         message = "Voice effects bypassed." if enabled else "Voice effects resumed."
         self._publish_voice_metadata()
@@ -1081,6 +1177,9 @@ class ApplicationService(QObject):
         }
         self.telemetry.set_audio_running(True)
         self.telemetry.set_route_status("running")
+        self.execution_enabled = False
+        if self.transformation_execution_controller is not None:
+            self.transformation_execution_controller.start()
         self.telemetry.set_metadata("active_route", self._active_route)
         self.telemetry.set_metadata("active_start_failure", None)
         self.telemetry.record_event(
@@ -1099,6 +1198,9 @@ class ApplicationService(QObject):
         self._processing_state = "stopping"
         try:
             self.router.stop()
+            self.execution_enabled = False
+            if self.transformation_execution_controller is not None:
+                self.transformation_execution_controller.stop()
             self.engine.stop()
             if self.source_voice_analyzer is not None:
                 self.source_voice_analyzer.stop()
@@ -1147,6 +1249,8 @@ class ApplicationService(QObject):
         self.telemetry.record_event("settings.saved", "info", "Settings saved.")
 
     def unload_plugins(self):
+        if self.transformation_execution_controller is not None:
+            self.transformation_execution_controller.stop()
         if self.source_voice_analyzer is not None:
             self.source_voice_analyzer.close()
         self.engine.stop()

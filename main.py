@@ -20,11 +20,17 @@ if __name__ == "__main__":
         action="store_true",
         help="Launch the isolated experimental adaptive target planner lab.",
     )
+    parser.add_argument(
+        "--transformation-execution-lab",
+        action="store_true",
+        help="Launch the isolated controlled transformation execution lab.",
+    )
     args = parser.parse_args()
     raise SystemExit(
         run(
             formant_lab=args.formant_lab,
             voice_analysis_lab=args.voice_analysis_lab,
             target_planner_lab=args.target_planner_lab,
+            transformation_execution_lab=args.transformation_execution_lab,
         )
     )

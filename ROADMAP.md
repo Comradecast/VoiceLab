@@ -1683,3 +1683,61 @@ transformation plan for future character work.
   directions, avoid one-direction-only architecture, begin as a bounded
   experimental execution lab, avoid immediately replacing production
   characters, and preserve normal VoiceLab behavior.
+
+## M9.2 - Controlled Transformation Execution Lab
+
+Status: PROVISIONAL. Live transformation-execution acceptance by Luke is still
+pending.
+
+Purpose: add `main.py --transformation-execution-lab`, an isolated controlled
+partial-execution mode that consumes the accepted immutable
+`TransformationPlan` without becoming a second planner authority.
+
+### Implementation Notes
+
+- Normal launch, Formant Lab, Voice Analysis Lab, and Target Planner Lab remain
+  isolated and unchanged.
+- Transformation Execution Lab includes Source Analysis, Target Planner, and
+  Plan Execution tabs. It launches stopped and plan execution launches
+  disabled.
+- The execution path reuses the accepted Formant Lab chain:
+  High-Pass, Noise Gate, Compressor, Experimental Pitch/Formant, Robot,
+  Lowpass, Gain, Limiter, then Mixer.
+- The executor supports only `adaptive_pitch_center`, `formant_shift`,
+  `compressor`, and `limiter`.
+- Unsupported capabilities remain visible and are not approximated:
+  `pitch_range_mapping`, `parametric_eq`, `spectral_tilt_shaping`,
+  `breathiness`, `harmonic_enhancement`, `de_esser`, and unknown future
+  capability identifiers.
+- Runtime dynamics are session-only overlays on Compressor and Limiter.
+  Disabling execution, stale/invalid plans, Stop, and Return to Neutral restore
+  the M8.0 baseline settings without writing `settings.json` or
+  `presets.json`.
+- Pitch/formant execution uses exactly
+  `TransformationPlan.pitch.applied_pitch_shift_st` and
+  `TransformationPlan.formant.applied_formant_shift_st`. The executor does not
+  read source F0, target F0, F1/F2/F3, EQ values, or target-profile dynamics
+  directly.
+- A bounded low-rate controller runs at 10 Hz when processing is running. It
+  retains only the latest plan and latest execution target. UI polling can
+  refresh snapshots, but execution does not depend on the UI being open.
+- The audio callback does not call the planner or executor. Effects read the
+  latest immutable runtime target once per block and perform bounded scalar
+  smoothing for pitch/formant.
+- Global Bypass Effects remains the single audio bypass authority. Execution
+  status reports `bypassed` while preserving the retained target for safe
+  smoothing when bypass is removed.
+- Latency is inherited from the accepted combined Signalsmith pitch/formant
+  stage. M9.2 does not add a second pitch/formant stage and does not claim
+  normal-production latency.
+
+### Verification Notes
+
+- Focused M9.2 automated tests cover immutable execution contracts, capability
+  mapping, unknown unsupported capabilities, disabled and zero-strength
+  neutrality, dynamics overlays, smoothing, mode isolation, guarded UI exposure,
+  command rejection outside execution mode, and a 1,000-iteration bounded
+  controller probe.
+- M9.2 is a controlled partial-execution lab, not a finished feminine,
+  masculine, deep-masculine, giant, childlike, elderly, creature, or synthetic
+  character system.
