@@ -3,6 +3,7 @@ from dataclasses import asdict, is_dataclass
 
 from PySide6.QtCore import QObject, Signal
 
+from voice_lab.analysis import SourceVoiceAnalyzer
 from voice_lab.audio_levels import AudioLevelMonitor
 from voice_lab.app.commands import CommandResult
 from voice_lab.app.devices import describe_devices, resolve_stored_identity
@@ -54,6 +55,7 @@ class ApplicationService(QObject):
         hotkeys=None,
         soundboard=None,
         formant_lab=False,
+        voice_analysis_lab=False,
     ):
         super().__init__()
         self.telemetry = telemetry or TelemetryService()
@@ -61,6 +63,8 @@ class ApplicationService(QObject):
         self.engine = engine or AudioEngine()
         self.plugins = plugins or PluginManager()
         self.formant_lab_enabled = bool(formant_lab)
+        self.voice_analysis_lab_enabled = bool(voice_analysis_lab)
+        self.source_voice_analyzer = SourceVoiceAnalyzer() if self.voice_analysis_lab_enabled else None
         self.engine.set_effect_chain(
             self.plugins.load_default_effect_chain(
                 self.engine,
@@ -74,6 +78,8 @@ class ApplicationService(QObject):
         self.router = router or Router(self.audio_io)
         if hasattr(self.router, "set_level_monitor"):
             self.router.set_level_monitor(self.level_monitor)
+        if self.source_voice_analyzer is not None and hasattr(self.router, "set_analysis_tap"):
+            self.router.set_analysis_tap(self.source_voice_analyzer.tap)
         self.config = config or ConfigurationService()
         self.hotkeys = hotkeys or HotkeyManager()
         self.soundboard = soundboard or SoundboardController()
@@ -213,6 +219,24 @@ class ApplicationService(QObject):
         snapshot = self.level_monitor.snapshot(self._processing_state)
         self.telemetry.set_metadata("audio_levels", snapshot.asdict())
         return snapshot
+
+    def source_analysis_snapshot(self):
+        if self.source_voice_analyzer is None:
+            return None
+        snapshot = self.source_voice_analyzer.snapshot()
+        self.telemetry.set_metadata("source_voice_analysis", snapshot.asdict())
+        return snapshot.asdict()
+
+    def reset_source_analysis(self):
+        if self.source_voice_analyzer is None:
+            result = CommandResult.fail("Source Analysis Lab is not enabled.")
+            self.telemetry.record_command_result("reset_source_analysis", result)
+            return result
+        self.source_voice_analyzer.reset()
+        snapshot = self.source_analysis_snapshot()
+        result = CommandResult.ok("Source analysis reset.", source_analysis=snapshot)
+        self.telemetry.record_command_result("reset_source_analysis", result)
+        return result
 
     def _refresh_effect_chain_status(self):
         self.telemetry.set_effect_chain_status(self.engine.effect_chain.status())
@@ -917,6 +941,8 @@ class ApplicationService(QObject):
     def start_audio(self, input_id, output_id, monitor_id=None):
         self._processing_state = "starting"
         self.level_monitor.reset("starting")
+        if self.source_voice_analyzer is not None:
+            self.source_voice_analyzer.start()
         selection_failure = self._validate_start_selection(input_id, output_id, monitor_id)
         if selection_failure is not None:
             return self._handle_start_failure(selection_failure, input_id, output_id, monitor_id)
@@ -973,6 +999,8 @@ class ApplicationService(QObject):
         try:
             self.router.stop()
             self.engine.stop()
+            if self.source_voice_analyzer is not None:
+                self.source_voice_analyzer.stop()
         except Exception as exc:
             result = CommandResult.fail(f"Stop failed: {exc}")
             self._processing_state = "failed" if previous_state != "running" else "running"
@@ -1018,6 +1046,8 @@ class ApplicationService(QObject):
         self.telemetry.record_event("settings.saved", "info", "Settings saved.")
 
     def unload_plugins(self):
+        if self.source_voice_analyzer is not None:
+            self.source_voice_analyzer.close()
         self.engine.stop()
 
     def _restore_voice_state(self):
@@ -1244,6 +1274,8 @@ class ApplicationService(QObject):
         return None
 
     def _handle_start_failure(self, failure, input_id, output_id, monitor_id):
+        if self.source_voice_analyzer is not None:
+            self.source_voice_analyzer.stop()
         normalized = self._normalize_device_failure(failure, input_id, output_id, monitor_id)
         result = CommandResult.fail(
             normalized["operator_message"],

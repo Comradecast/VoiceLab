@@ -1447,3 +1447,146 @@ Regression:
 - Metallic tail absent.
 - Flutter absent.
 - Latency acceptable.
+
+## M9.0 Passive Source Voice Analysis Lab
+
+M9.0 Status: PROVISIONAL.
+
+Launch:
+
+```powershell
+.\.venv\Scripts\python.exe main.py --voice-analysis-lab
+```
+
+Scope:
+
+- M9.0 is an experimental passive-analysis lab.
+- Normal launch remains unchanged and Source Analysis is absent in normal mode.
+- The analyzer observes raw microphone input at the same conceptual point as
+  the Microphone Input meter: after capture, before AudioEngine, Mixer,
+  soundboard, monitor routing, and virtual-output routing.
+- Analysis values are session-only and are not written to `settings.json` or
+  `presets.json`.
+- The analyzer does not alter audio, DSP settings, routes, devices, meters,
+  soundboard behavior, character targets, or Signalsmith configuration.
+- The analyzer is target-neutral. It measures acoustic properties only and
+  must not be treated as identity, gender, age, or quality classification.
+
+Implementation notes:
+
+- Callback work is bounded publication to a one-slot `SourceAnalysisTap`.
+- Expensive F0, FFT, spectral, resonance, and profile calculations run on the
+  `SourceVoiceAnalyzer` worker outside the callback.
+- Backlog is prevented by newest-wins replacement; dropped replacements and
+  cadence-skipped frames are visible in Runtime Status.
+- Profile retention is fixed at 240 readings: 20 Hz for 12 seconds.
+- Profile readiness requires at least 2 seconds of reliable voiced speech.
+- F0 supported practical range is 60 Hz through 500 Hz.
+- Spectral ratios use total 80 Hz through 10 kHz speech-region energy and
+  truncate bands at Nyquist.
+- Bands: chest 80-300 Hz, low-mid 300-900 Hz, presence 2-5 kHz, brightness
+  5-8 kHz, sibilance 5-10 kHz.
+- Spectral tilt is a dB high/low energy-ratio metric.
+- Resonance estimates are approximate smoothed-envelope peak estimates. Invalid
+  or unreliable frames show unavailable values rather than false precision.
+
+Live M9.0 acceptance checklist:
+
+Isolation and lifecycle:
+
+- Normal launch unchanged.
+- Source Analysis absent in normal mode.
+- Analysis-lab launch works.
+- Source Analysis tab visible.
+- Application launches stopped.
+- Start activates analysis.
+- Stop clears active status.
+- Repeated Start/Stop.
+- Close while processing.
+- Relaunch analysis lab.
+- Relaunch normal mode.
+
+Audio transparency:
+
+- Analysis enabled produces no audible difference.
+- No added latency.
+- No metallic tail.
+- No flutter.
+- No crackle.
+- No new block boundaries.
+- Soundboard remains unchanged.
+- Monitor enabled/disabled unchanged.
+- Bypass Effects unchanged.
+
+F0 behavior:
+
+- Normal voice.
+- Deliberately lower voice.
+- Deliberately higher voice.
+- Quiet voice.
+- Loud voice.
+- Sustained vowel.
+- Rapid speech.
+- Whispered or unvoiced speech.
+- Lower voice reports lower F0.
+- Higher voice reports higher F0.
+- Quiet/loud level does not radically alter F0.
+- Sustained vowel is stable.
+- Rapid speech updates.
+- Whisper is not falsely treated as stable voiced pitch.
+- Silence becomes unvoiced.
+- Confidence behaves plausibly.
+
+Rolling profile:
+
+- Profile begins collecting.
+- Ready state appears after sufficient voiced speech.
+- Median F0 is stable.
+- Lower/upper pitch range is plausible.
+- Voiced duration increases.
+- Silence does not immediately erase profile.
+- Stale state appears appropriately.
+- Reset Source Analysis clears profile.
+- Profile rebuilds after reset.
+
+Spectral characteristics:
+
+- Ordinary voice.
+- Chest-heavy low voice.
+- Brighter voice.
+- Sustained `ah`.
+- Sustained `ee`.
+- Strong `s`.
+- Strong `sh`.
+- Chest ratio responds to chest-heavy speech.
+- Brightness responds to brighter speech.
+- Sibilance responds to `s` and `sh`.
+- Resonance estimates change plausibly between vowels where available.
+- Invalid estimates are shown as unavailable rather than false precision.
+
+Runtime status:
+
+- Analyzed count increases.
+- Dropped count remains bounded and understandable.
+- Dropped frames do not create growing delay.
+- Snapshot age remains current.
+- No analyzer failure.
+- No UI freezing.
+
+Final audio regression:
+
+- Microphone.
+- Virtual mic.
+- Monitor.
+- Monitor-disabled operation.
+- Dry voice.
+- Input processing.
+- Effects.
+- Pitch.
+- Presets.
+- Soundboard.
+- Start/Stop.
+- Close/relaunch.
+- Metallic tail absent.
+- Flutter absent.
+- Latency acceptable.

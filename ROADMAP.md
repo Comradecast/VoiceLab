@@ -1401,3 +1401,86 @@ character, preset, persistence, or production-chain integration is attempted.
   integration of raw formant values into existing characters remains deferred,
   and the next epic must target complete character transformation rather than
   exposing more isolated offsets.
+
+## M9.0 - Passive Source Voice Analysis Lab
+
+Status: PROVISIONAL
+
+Purpose: add an explicit, target-neutral `main.py --voice-analysis-lab`
+prototype mode that passively measures the operator's raw microphone signal as
+bounded acoustic data for future target-based character transformation.
+
+### Scope
+
+- Normal launch remains unchanged and does not display Source Analysis.
+- Normal production chain remains unchanged:
+  High-Pass, Noise Gate, Compressor, Pitch Shift, Robot, Lowpass, Gain,
+  Limiter, then Mixer.
+- Formant Lab chain remains unchanged and still replaces only Pitch Shift with
+  Experimental Pitch/Formant in `--formant-lab` mode.
+- The analyzer is not a DSP plugin and does not alter audio samples, DSP
+  parameters, devices, routes, meters, soundboard behavior, settings schema,
+  presets schema, characters, or Signalsmith configuration.
+- The analyzer observes the raw `Capture.capture_block` microphone frame in
+  `Router.main_callback`, before AudioEngine processing, Mixer, soundboard,
+  monitor routing, and virtual-output routing.
+- Router performs only bounded publication to a passive analysis tap. Pitch,
+  spectral, resonance, and profile calculations run outside the callback.
+- UI communicates only through `ApplicationService`; it does not import NumPy,
+  SciPy, analyzer internals, AudioEngine, Router, or DSP modules.
+
+### Architecture
+
+- Raw Capture -> passive `SourceAnalysisTap` -> non-callback
+  `SourceVoiceAnalyzer` worker -> immutable `VoiceAnalysisSnapshot` ->
+  `ApplicationService` -> UI polling.
+- `SourceAnalysisTap` is a cadence-capped one-slot mailbox. Newer accepted raw
+  frames replace stale pending analysis input, dropped replacements are
+  counted, and cadence-skipped frames are counted separately.
+- Callback work added in analysis mode is one raw-frame publication call plus a
+  copy only when the cadence gate accepts the frame. No callback FFT, F0,
+  profile, Qt access, file I/O, settings write, device query, analyzer wait,
+  blocking queue put, unbounded queue, unbounded history, or repetitive logging
+  was added.
+- The worker owns all mutable analysis state and retains a fixed rolling
+  profile window of at most 240 readings: 20 Hz for 12 seconds.
+- Application-facing snapshots are frozen scalar dataclasses:
+  `VoiceAnalysisReading`, `VoiceSourceProfile`, `VoiceAnalysisStatus`, and
+  `VoiceAnalysisSnapshot`. No arrays are exposed to ApplicationService or UI.
+
+### Measurements
+
+- F0 uses deterministic normalized autocorrelation over a Hann-windowed
+  rolling analysis window with local-peak selection, supported practical range
+  60 Hz through 500 Hz, confidence threshold 0.42 for current voicing, and
+  0.50 for profile inclusion. Pure dominant tones above the supported range
+  are rejected instead of being reported as stable subharmonics.
+- Rolling pitch profile uses reliable voiced frames only. It reports median
+  F0, 10th and 90th percentile F0, Hz span, semitone span, voiced duration,
+  voiced-frame ratio, and readiness.
+- Profile readiness requires at least 2.0 seconds of reliable voiced readings.
+  Silence and unvoiced frames are excluded from F0 statistics and do not
+  immediately erase the last profile; Reset Source Analysis clears the profile.
+- Spectral analysis uses a Hann window and real FFT outside the callback.
+  Ratios are normalized to total 80 Hz through 10 kHz speech-region energy and
+  truncate bands at Nyquist.
+- Band definitions: chest/low 80-300 Hz, low-mid 300-900 Hz, presence
+  2-5 kHz, brightness 5-8 kHz, sibilance 5-10 kHz.
+- Spectral tilt is a dB energy-ratio metric:
+  `10 * log10((2-8 kHz energy) / (80-900 Hz energy))`.
+- Resonance/formant output is approximate and validity-gated. M9.0 uses
+  smoothed spectral-envelope peak estimates for F1, F2, and F3 on suitable
+  voiced frames; noisy consonants, silence, and unreliable frames report
+  unavailable estimates rather than invented precision.
+- Reliability states distinguish collecting, ready, insufficient level,
+  insufficient voiced speech, stale, analyzer unavailable, and analyzer
+  failure.
+
+### Status
+
+- Automated implementation and regression verification are complete for the
+  provisional lab.
+- M9.0 remains PROVISIONAL pending Luke's live source-analysis acceptance.
+- The lab is target-neutral. It measures acoustic properties only and does not
+  classify the operator as male, female, masculine, feminine, young, old, or
+  any other identity category.

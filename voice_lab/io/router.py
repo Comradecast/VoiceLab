@@ -10,9 +10,13 @@ class Router:
         self.capture = capture or Capture()
         self.monitor_queue = queue.Queue(maxsize=1)
         self.level_monitor = None
+        self.analysis_tap = None
 
     def set_level_monitor(self, level_monitor):
         self.level_monitor = level_monitor
+
+    def set_analysis_tap(self, analysis_tap):
+        self.analysis_tap = analysis_tap
 
     def validate_route(self, input_id, virtual_mic_id, monitor_id=None):
         devices = self.audio_io.query_devices()
@@ -29,6 +33,8 @@ class Router:
 
             def main_callback(indata, outdata, frames, time_info, status):
                 input_frame = self.capture.capture_block(indata, frames)
+                if self.analysis_tap is not None:
+                    self.analysis_tap.publish(input_frame)
                 voice_frame = engine.process_voice(input_frame)
                 buses = mixer.mix(voice_frame)
 

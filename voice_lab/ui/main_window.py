@@ -44,6 +44,7 @@ class App(QWidget):
         routing_layout = self._create_tab("Routing")
         soundboard_tab_layout = self._create_tab("Soundboard")
         diagnostics_layout = self._create_tab("Diagnostics")
+        source_analysis_layout = None
         self.restored_preferences = self.service.operator_preferences() if hasattr(self.service, "operator_preferences") else {}
         self._updating_voice_controls = False
         self._updating_input_processing = False
@@ -52,6 +53,12 @@ class App(QWidget):
         self.formant_lab_enabled = (
             hasattr(self.service, "formant_lab_state") and self.service.formant_lab_state() is not None
         )
+        self.source_analysis_enabled = (
+            hasattr(self.service, "source_analysis_snapshot")
+            and self.service.source_analysis_snapshot() is not None
+        )
+        if self.source_analysis_enabled:
+            source_analysis_layout = self._create_tab("Source Analysis")
 
         layout.addWidget(QLabel("Voice Character"))
         self.character_box = QComboBox()
@@ -163,6 +170,8 @@ class App(QWidget):
 
         if self.formant_lab_enabled:
             self._build_formant_lab_controls(layout)
+        if self.source_analysis_enabled and source_analysis_layout is not None:
+            self._build_source_analysis_tab(source_analysis_layout)
 
         self.advanced_toggle = QCheckBox("Show Advanced Controls")
         self.advanced_toggle.stateChanged.connect(lambda _state: self.set_advanced_visible())
@@ -275,8 +284,14 @@ class App(QWidget):
         self.meter_timer.setInterval(50)
         self.meter_timer.timeout.connect(self.refresh_audio_levels)
         self.meter_timer.start()
+        if self.source_analysis_enabled:
+            self.source_analysis_timer = QTimer(self)
+            self.source_analysis_timer.setInterval(250)
+            self.source_analysis_timer.timeout.connect(self.refresh_source_analysis)
+            self.source_analysis_timer.start()
         self.refresh_operator_status()
         self.refresh_audio_levels()
+        self.refresh_source_analysis()
 
     def _create_tab(self, title):
         scroll_area = QScrollArea()
@@ -725,6 +740,112 @@ class App(QWidget):
             f"latency {int(state.get('latency_frames', 0))} frames"
         )
 
+    def _build_source_analysis_tab(self, layout):
+        heading = QLabel("Experimental - Passive Analysis Only")
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+        guidance = QLabel(
+            "For a stable profile, speak naturally for several seconds and include normal sentences, "
+            "quiet and loud phrases, sustained vowels, and sibilant sounds such as s and sh."
+        )
+        guidance.setWordWrap(True)
+        layout.addWidget(guidance)
+
+        layout.addWidget(QLabel("Live Reading"))
+        self.source_analysis_live = QLabel("No active reading")
+        self.source_analysis_live.setWordWrap(True)
+        layout.addWidget(self.source_analysis_live)
+
+        layout.addWidget(QLabel("Rolling Source Profile"))
+        self.source_analysis_profile = QLabel("Profile collecting")
+        self.source_analysis_profile.setWordWrap(True)
+        layout.addWidget(self.source_analysis_profile)
+
+        layout.addWidget(QLabel("Runtime Status"))
+        self.source_analysis_status = QLabel("Analyzer stopped")
+        self.source_analysis_status.setWordWrap(True)
+        layout.addWidget(self.source_analysis_status)
+
+        self.source_analysis_reset = QPushButton("Reset Source Analysis")
+        self.source_analysis_reset.clicked.connect(self.reset_source_analysis)
+        layout.addWidget(self.source_analysis_reset)
+
+    def reset_source_analysis(self):
+        if not self.source_analysis_enabled:
+            return
+        result = self.service.reset_source_analysis()
+        self.display_result(result)
+        self.refresh_source_analysis()
+
+    def refresh_source_analysis(self):
+        if not getattr(self, "source_analysis_enabled", False):
+            return
+        try:
+            snapshot = self.service.source_analysis_snapshot()
+        except Exception:
+            return
+        if snapshot is None:
+            return
+        current = snapshot.get("current", {})
+        profile = snapshot.get("profile", {})
+        status = snapshot.get("status", {})
+        voiced = "voiced" if current.get("voiced") else "unvoiced"
+        self.source_analysis_live.setText(
+            f"State: {voiced} | F0: {self._fmt_hz(current.get('f0_hz'))} | "
+            f"confidence {self._fmt_ratio(current.get('f0_confidence'))} | "
+            f"RMS {self._fmt_db(current.get('rms_dbfs'))} | peak {self._fmt_db(current.get('peak_dbfs'))} | "
+            f"tilt {self._fmt_db(current.get('spectral_tilt_db'))} | "
+            f"chest {self._fmt_ratio(current.get('chest_energy_ratio'))} | "
+            f"low-mid {self._fmt_ratio(current.get('low_mid_energy_ratio'))} | "
+            f"presence {self._fmt_ratio(current.get('presence_energy_ratio'))} | "
+            f"brightness {self._fmt_ratio(current.get('brightness_energy_ratio'))} | "
+            f"sibilance {self._fmt_ratio(current.get('sibilance_energy_ratio'))} | "
+            f"resonance F1/F2/F3 {self._fmt_hz(current.get('f1_hz'))}/"
+            f"{self._fmt_hz(current.get('f2_hz'))}/{self._fmt_hz(current.get('f3_hz'))}"
+        )
+        self.source_analysis_profile.setText(
+            f"State: {profile.get('reliability', 'collecting')} | "
+            f"voiced {float(profile.get('voiced_duration_seconds') or 0.0):.1f}s | "
+            f"median F0 {self._fmt_hz(profile.get('median_f0_hz'))} | "
+            f"range {self._fmt_hz(profile.get('lower_f0_hz'))}-"
+            f"{self._fmt_hz(profile.get('upper_f0_hz'))} | "
+            f"span {self._fmt_hz(profile.get('pitch_span_hz'))} / "
+            f"{self._fmt_st(profile.get('pitch_span_semitones'))} | "
+            f"tilt {self._fmt_db(profile.get('median_spectral_tilt_db'))} | "
+            f"chest {self._fmt_ratio(profile.get('chest_energy_ratio'))} | "
+            f"low-mid {self._fmt_ratio(profile.get('low_mid_energy_ratio'))} | "
+            f"presence {self._fmt_ratio(profile.get('presence_energy_ratio'))} | "
+            f"brightness {self._fmt_ratio(profile.get('brightness_energy_ratio'))} | "
+            f"sibilance {self._fmt_ratio(profile.get('sibilance_energy_ratio'))} | "
+            f"resonance F1/F2/F3 {self._fmt_hz(profile.get('f1_hz'))}/"
+            f"{self._fmt_hz(profile.get('f2_hz'))}/{self._fmt_hz(profile.get('f3_hz'))}"
+        )
+        self.source_analysis_status.setText(
+            f"Analyzer: {'active' if status.get('active') else 'stopped'} | "
+            f"cadence {float(status.get('analysis_cadence_hz') or 0.0):.1f} Hz | "
+            f"age {self._fmt_seconds(status.get('latest_snapshot_age_seconds'))} | "
+            f"analyzed {int(status.get('analyzed_frame_count') or 0)} | "
+            f"dropped {int(status.get('dropped_frame_count') or 0)} | "
+            f"skipped {int(status.get('skipped_frame_count') or 0)} | "
+            f"invalid {int(status.get('invalid_frame_count') or 0)} | "
+            f"failure {status.get('last_failure') or 'none'}"
+        )
+
+    def _fmt_hz(self, value):
+        return "unavailable" if value is None else f"{float(value):.1f} Hz"
+
+    def _fmt_db(self, value):
+        return "unavailable" if value is None else f"{float(value):.1f} dB"
+
+    def _fmt_ratio(self, value):
+        return "unavailable" if value is None else f"{float(value):.2f}"
+
+    def _fmt_st(self, value):
+        return "unavailable" if value is None else f"{float(value):.1f} st"
+
+    def _fmt_seconds(self, value):
+        return "unavailable" if value is None else f"{float(value):.2f}s"
+
     def refresh_input_processing_activity(self):
         if not hasattr(self.service, "input_processing_activity") or not hasattr(self, "input_processing_controls"):
             return
@@ -1125,6 +1246,8 @@ class App(QWidget):
             self.status_timer.stop()
         if hasattr(self, "meter_timer"):
             self.meter_timer.stop()
+        if hasattr(self, "source_analysis_timer"):
+            self.source_analysis_timer.stop()
         if self.on_close is not None:
             self.on_close()
         event.accept()
