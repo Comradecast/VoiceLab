@@ -1525,3 +1525,95 @@ bounded acoustic data for future target-based character transformation.
 - The next epic is the target-based character-transformation engine. The first
   target work must support both feminine and deep-masculine transformation
   directions.
+
+## M9.1 - Adaptive Target Engine Core
+
+Status: PROVISIONAL
+
+Purpose: add the target-neutral planning core that relates the accepted M9.0
+source profile to an explicit target voice profile and produces an immutable
+transformation plan for future character work.
+
+### Scope
+
+- Add an explicit `main.py --target-planner-lab` launch mode.
+- Preserve normal launch, `--formant-lab`, and `--voice-analysis-lab`
+  behavior.
+- Target Planner Lab launches stopped, enables the accepted passive source
+  analyzer, shows Source Analysis plus Target Planner UI, and keeps all target
+  values session-only.
+- Normal production chain remains unchanged:
+  High-Pass, Noise Gate, Compressor, Pitch Shift, Robot, Lowpass, Gain,
+  Limiter.
+- Formant Lab chain remains unchanged and still replaces only Pitch Shift with
+  Experimental Pitch/Formant.
+- The planner is not a DSP plugin. It does not alter audio samples, DSP
+  settings, routes, devices, meters, soundboard behavior, characters,
+  `settings.json`, `presets.json`, built-in voice targets, or Signalsmith
+  configuration.
+- No planner work runs in the audio callback, and no planner queue, stream
+  restart, device reopen, persistence write, or callback lock was added.
+
+### Architecture
+
+- Core relationship:
+  `Source Voice Profile + Target Voice Profile + Character Strength =
+  Immutable Transformation Plan`.
+- `TargetVoiceProfile` is a frozen scalar contract with identity/version,
+  pitch goals, bounded formant hint, spectral goals/limits, texture goals,
+  M8.0-compatible dynamics recommendations, and safety/capability metadata.
+- `TransformationPlan` is a frozen scalar contract with plan identity, state,
+  pitch, formant, spectral, texture, dynamics, required capabilities, and
+  warnings.
+- `TransformationPlanner.plan(...)` is pure and stateless. It has no dependency
+  on `AudioEngine`, `EffectChain`, `Router`, DSP effects, settings, presets,
+  devices, callbacks, queues, or history.
+- Character Strength is normalized from UI `0..100` to planner `0..1`. `0%`
+  produces neutral recommendations; `100%` produces the full bounded target.
+  Intermediate strengths are monotonic.
+- M9.0 source evidence used directly for planning: median F0, lower/upper F0,
+  pitch span, voiced duration, profile readiness, aggregate reliability,
+  chest/low-mid/presence/brightness/sibilance ratios, and spectral tilt
+  energy-ratio index.
+- Approximate F1/F2/F3 resonance estimates remain weak descriptors only and do
+  not directly determine automatic formant shift.
+- The planner is target-neutral. It does not classify source or target identity,
+  gender, age, or quality, and does not implement production feminine,
+  masculine, deep-masculine, giant, or other character identities.
+
+### Planning Rules
+
+- Pitch center request is `12 * log2(target_median_f0 / source_median_f0)`,
+  scaled by strength, then clamped to the target pitch limit.
+- Pitch-range scale is derived from `target_span / source_span`, interpolated
+  from neutral by strength, and clamped to target range limits.
+- Formant recommendation is target-intent based:
+  `target.nominal_formant_shift_st * strength`, clamped to the target maximum
+  and restrained to a natural planning limit of `+/-2` semitones.
+- Spectral band recommendations use
+  `10 * log10(target_ratio / source_ratio)`, scaled by strength and clamped;
+  missing or zero source evidence degrades only that control.
+- Spectral tilt uses target tilt index minus source tilt index, scaled by
+  strength and clamped.
+- De-essing, texture, and dynamics are deterministic recommendations only. No
+  de-esser or dynamics mutation was added.
+- Dynamics recommendations use M8.0 ranges; compressor neutral is `1:1` with
+  `0 dB` makeup, and limiter recommendations are target data only.
+
+### Completion Notes
+
+- Added diagnostic target profiles for manual inspection: Diagnostic Neutral,
+  Higher / Brighter Reference, and Lower / Weightier Reference. These are
+  planning references, not production characters.
+- Target Planner UI states `Experimental - Planning Only - Audio Is Not
+  Modified`, exposes source summary, target controls, character strength,
+  calculated plan, capability/warning output, reference-load actions, and
+  reset. It intentionally has no Apply, Preview, Save, or Export action.
+- Automated verification covers immutable contracts, validation, plan states,
+  pitch formulas, pitch-range behavior, formant intent isolation from F1/F2/F3,
+  spectral and tilt formulas, de-ess/texture/dynamics recommendations,
+  capability reporting, lab-mode isolation, normal/formant chain isolation,
+  settings/presets compatibility, UI exposure, callback/source guards, and
+  audio transparency.
+- M9.1 is PROVISIONAL after implementation and automated verification. Live
+  hardware acceptance remains pending and must not be represented as PASS.

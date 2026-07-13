@@ -31,6 +31,13 @@ from voice_lab.engine.audio_engine import AudioEngine
 from voice_lab.io import AudioIO, Router
 from voice_lab.io.device_errors import DeviceFailure, DeviceFailureError
 from voice_lab.mixer import Mixer
+from voice_lab.planner import (
+    DEFAULT_TARGET_PROFILE,
+    HIGHER_BRIGHTER_REFERENCE,
+    LOWER_WEIGHTIER_REFERENCE,
+    TransformationPlanner,
+    replace_target,
+)
 from voice_lab.plugins import PluginManager
 from voice_lab.telemetry import TelemetryService
 from voice_lab.app.soundboard_assets import list_sound_files, load_sound
@@ -56,6 +63,7 @@ class ApplicationService(QObject):
         soundboard=None,
         formant_lab=False,
         voice_analysis_lab=False,
+        target_planner_lab=False,
     ):
         super().__init__()
         self.telemetry = telemetry or TelemetryService()
@@ -63,7 +71,11 @@ class ApplicationService(QObject):
         self.engine = engine or AudioEngine()
         self.plugins = plugins or PluginManager()
         self.formant_lab_enabled = bool(formant_lab)
-        self.voice_analysis_lab_enabled = bool(voice_analysis_lab)
+        self.target_planner_lab_enabled = bool(target_planner_lab)
+        self.voice_analysis_lab_enabled = bool(voice_analysis_lab or target_planner_lab)
+        self.target_planner = TransformationPlanner() if self.target_planner_lab_enabled else None
+        self.current_target_profile = DEFAULT_TARGET_PROFILE
+        self.target_planner_strength = 1.0
         self.source_voice_analyzer = SourceVoiceAnalyzer() if self.voice_analysis_lab_enabled else None
         self.engine.set_effect_chain(
             self.plugins.load_default_effect_chain(
@@ -236,6 +248,95 @@ class ApplicationService(QObject):
         snapshot = self.source_analysis_snapshot()
         result = CommandResult.ok("Source analysis reset.", source_analysis=snapshot)
         self.telemetry.record_command_result("reset_source_analysis", result)
+        return result
+
+    def target_planner_state(self):
+        if self.target_planner is None:
+            return None
+        snapshot = self.source_analysis_snapshot()
+        plan = self.target_planner.plan(snapshot, self.current_target_profile, self.target_planner_strength)
+        state = {
+            "lab": "Experimental - Planning Only - Audio Is Not Modified",
+            "strength_percent": self.target_planner_strength * 100.0,
+            "target_profile": self.current_target_profile.asdict(),
+            "plan": plan.asdict(),
+            "references": {
+                "neutral": DEFAULT_TARGET_PROFILE.asdict(),
+                "higher_brighter": HIGHER_BRIGHTER_REFERENCE.asdict(),
+                "lower_weightier": LOWER_WEIGHTIER_REFERENCE.asdict(),
+            },
+        }
+        self.telemetry.set_metadata("target_planner", state)
+        return state
+
+    def set_target_planner_strength(self, strength_percent):
+        if self.target_planner is None:
+            result = CommandResult.fail("Target Planner Lab is not enabled.")
+            self.telemetry.record_command_result("set_target_planner_strength", result)
+            return result
+        try:
+            strength = float(strength_percent) / 100.0
+            if strength < 0.0 or strength > 1.0:
+                raise ValueError("Target Planner strength must be between 0 and 100.")
+        except (TypeError, ValueError) as exc:
+            result = CommandResult.fail(str(exc))
+            self.telemetry.record_command_result("set_target_planner_strength", result)
+            return result
+        self.target_planner_strength = strength
+        state = self.target_planner_state()
+        result = CommandResult.ok("Target Planner strength updated.", target_planner=state)
+        self.telemetry.record_command_result("set_target_planner_strength", result)
+        return result
+
+    def update_target_profile(self, **changes):
+        if self.target_planner is None:
+            result = CommandResult.fail("Target Planner Lab is not enabled.")
+            self.telemetry.record_command_result("update_target_profile", result)
+            return result
+        try:
+            self.current_target_profile = replace_target(self.current_target_profile, **changes)
+        except (TypeError, ValueError) as exc:
+            result = CommandResult.fail(str(exc))
+            self.telemetry.record_command_result("update_target_profile", result)
+            return result
+        state = self.target_planner_state()
+        result = CommandResult.ok("Target Planner profile updated.", target_planner=state)
+        self.telemetry.record_command_result("update_target_profile", result)
+        return result
+
+    def load_target_reference(self, reference):
+        if self.target_planner is None:
+            result = CommandResult.fail("Target Planner Lab is not enabled.")
+            self.telemetry.record_command_result("load_target_reference", result, reference=reference)
+            return result
+        references = {
+            "neutral": DEFAULT_TARGET_PROFILE,
+            "higher_brighter": HIGHER_BRIGHTER_REFERENCE,
+            "lower_weightier": LOWER_WEIGHTIER_REFERENCE,
+        }
+        target = references.get(reference)
+        if target is None:
+            result = CommandResult.fail("Unknown target reference.")
+            self.telemetry.record_command_result("load_target_reference", result, reference=reference)
+            return result
+        self.current_target_profile = target
+        state = self.target_planner_state()
+        result = CommandResult.ok("Target reference loaded.", target_planner=state)
+        self.telemetry.record_command_result("load_target_reference", result, reference=reference)
+        return result
+
+    def reset_target_planner(self):
+        if self.target_planner is None:
+            result = CommandResult.fail("Target Planner Lab is not enabled.")
+            self.telemetry.record_command_result("reset_target_planner", result)
+            return result
+        self.current_target_profile = DEFAULT_TARGET_PROFILE
+        self.target_planner_strength = 1.0
+        if self.source_voice_analyzer is not None:
+            self.source_voice_analyzer.reset()
+        state = self.target_planner_state()
+        result = CommandResult.ok("Target Planner reset.", target_planner=state)
+        self.telemetry.record_command_result("reset_target_planner", result)
         return result
 
     def _refresh_effect_chain_status(self):

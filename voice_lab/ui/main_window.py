@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -45,10 +46,12 @@ class App(QWidget):
         soundboard_tab_layout = self._create_tab("Soundboard")
         diagnostics_layout = self._create_tab("Diagnostics")
         source_analysis_layout = None
+        target_planner_layout = None
         self.restored_preferences = self.service.operator_preferences() if hasattr(self.service, "operator_preferences") else {}
         self._updating_voice_controls = False
         self._updating_input_processing = False
         self._updating_formant_lab = False
+        self._updating_target_planner = False
         self._last_voice_selection = None
         self.formant_lab_enabled = (
             hasattr(self.service, "formant_lab_state") and self.service.formant_lab_state() is not None
@@ -57,8 +60,14 @@ class App(QWidget):
             hasattr(self.service, "source_analysis_snapshot")
             and self.service.source_analysis_snapshot() is not None
         )
+        self.target_planner_enabled = (
+            hasattr(self.service, "target_planner_state")
+            and self.service.target_planner_state() is not None
+        )
         if self.source_analysis_enabled:
             source_analysis_layout = self._create_tab("Source Analysis")
+        if self.target_planner_enabled:
+            target_planner_layout = self._create_tab("Target Planner")
 
         layout.addWidget(QLabel("Voice Character"))
         self.character_box = QComboBox()
@@ -172,6 +181,8 @@ class App(QWidget):
             self._build_formant_lab_controls(layout)
         if self.source_analysis_enabled and source_analysis_layout is not None:
             self._build_source_analysis_tab(source_analysis_layout)
+        if self.target_planner_enabled and target_planner_layout is not None:
+            self._build_target_planner_tab(target_planner_layout)
 
         self.advanced_toggle = QCheckBox("Show Advanced Controls")
         self.advanced_toggle.stateChanged.connect(lambda _state: self.set_advanced_visible())
@@ -292,6 +303,7 @@ class App(QWidget):
         self.refresh_operator_status()
         self.refresh_audio_levels()
         self.refresh_source_analysis()
+        self.refresh_target_planner()
 
     def _create_tab(self, title):
         scroll_area = QScrollArea()
@@ -829,6 +841,152 @@ class App(QWidget):
             f"skipped {int(status.get('skipped_frame_count') or 0)} | "
             f"invalid {int(status.get('invalid_frame_count') or 0)} | "
             f"failure {status.get('last_failure') or 'none'}"
+        )
+        self.refresh_target_planner()
+
+    def _build_target_planner_tab(self, layout):
+        heading = QLabel("Experimental - Planning Only - Audio Is Not Modified")
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+
+        refs = QHBoxLayout()
+        neutral = QPushButton("Neutral")
+        higher = QPushButton("Higher / Brighter")
+        lower = QPushButton("Lower / Weightier")
+        neutral.clicked.connect(lambda: self.load_target_reference("neutral"))
+        higher.clicked.connect(lambda: self.load_target_reference("higher_brighter"))
+        lower.clicked.connect(lambda: self.load_target_reference("lower_weightier"))
+        refs.addWidget(neutral)
+        refs.addWidget(higher)
+        refs.addWidget(lower)
+        layout.addLayout(refs)
+
+        self.target_strength_label = QLabel("Character Strength: 100%")
+        self.target_strength = QSlider(Qt.Horizontal)
+        self.target_strength.setRange(0, 100)
+        self.target_strength.setValue(100)
+        self.target_strength.valueChanged.connect(self.set_target_planner_strength)
+        layout.addWidget(self.target_strength_label)
+        layout.addWidget(self.target_strength)
+
+        self.target_planner_controls = {}
+        for key, label, low, high, step, suffix in (
+            ("target_median_f0_hz", "Target median F0", 60.0, 500.0, 1.0, " Hz"),
+            ("target_pitch_span_st", "Target pitch span", 0.0, 24.0, 0.1, " st"),
+            ("max_pitch_shift_st", "Max pitch shift", 0.0, 24.0, 0.5, " st"),
+            ("nominal_formant_shift_st", "Nominal formant hint", -2.0, 2.0, 0.1, " st"),
+            ("max_abs_formant_shift_st", "Max formant shift", 0.0, 2.0, 0.1, " st"),
+            ("chest_energy_ratio", "Chest ratio", 0.0, 1.0, 0.01, ""),
+            ("low_mid_energy_ratio", "Low-mid ratio", 0.0, 1.0, 0.01, ""),
+            ("presence_energy_ratio", "Presence ratio", 0.0, 1.0, 0.01, ""),
+            ("brightness_energy_ratio", "Brightness ratio", 0.0, 1.0, 0.01, ""),
+            ("sibilance_energy_ratio", "Sibilance ratio", 0.0, 1.0, 0.01, ""),
+            ("spectral_tilt_db", "Spectral tilt", -30.0, 10.0, 0.5, " dB"),
+            ("breathiness", "Breathiness", 0.0, 1.0, 0.01, ""),
+            ("harmonic_weight", "Harmonic weight", 0.0, 1.0, 0.01, ""),
+        ):
+            row = QHBoxLayout()
+            row.addWidget(QLabel(label))
+            spin = QDoubleSpinBox()
+            spin.setRange(low, high)
+            spin.setSingleStep(step)
+            spin.setDecimals(2)
+            spin.setSuffix(suffix)
+            spin.valueChanged.connect(lambda _value, field=key: self.update_target_profile_field(field))
+            row.addWidget(spin)
+            layout.addLayout(row)
+            self.target_planner_controls[key] = spin
+
+        self.target_source_summary = QLabel("Source Profile: unavailable")
+        self.target_source_summary.setWordWrap(True)
+        layout.addWidget(self.target_source_summary)
+        self.target_plan_summary = QLabel("Calculated Plan: unavailable")
+        self.target_plan_summary.setWordWrap(True)
+        layout.addWidget(self.target_plan_summary)
+        self.target_plan_details = QLabel("")
+        self.target_plan_details.setWordWrap(True)
+        layout.addWidget(self.target_plan_details)
+        reset = QPushButton("Reset Planner")
+        reset.clicked.connect(self.reset_target_planner)
+        layout.addWidget(reset)
+        self.refresh_target_planner()
+
+    def set_target_planner_strength(self, value):
+        if self._updating_target_planner or not getattr(self, "target_planner_enabled", False):
+            return
+        self.target_strength_label.setText(f"Character Strength: {int(value)}%")
+        result = self.service.set_target_planner_strength(value)
+        if not result.success:
+            self.display_result(result)
+        self.refresh_target_planner()
+
+    def update_target_profile_field(self, field):
+        if self._updating_target_planner or not getattr(self, "target_planner_enabled", False):
+            return
+        spin = self.target_planner_controls[field]
+        result = self.service.update_target_profile(**{field: spin.value()})
+        if not result.success:
+            self.display_result(result)
+        self.refresh_target_planner()
+
+    def load_target_reference(self, reference):
+        if not getattr(self, "target_planner_enabled", False):
+            return
+        result = self.service.load_target_reference(reference)
+        self.display_result(result)
+        self.refresh_target_planner()
+
+    def reset_target_planner(self):
+        if not getattr(self, "target_planner_enabled", False):
+            return
+        result = self.service.reset_target_planner()
+        self.display_result(result)
+        self.refresh_target_planner()
+
+    def refresh_target_planner(self):
+        if not getattr(self, "target_planner_enabled", False):
+            return
+        try:
+            state = self.service.target_planner_state()
+        except Exception:
+            return
+        if state is None:
+            return
+        profile = state.get("target_profile", {})
+        plan = state.get("plan", {})
+        self._updating_target_planner = True
+        try:
+            self.target_strength.setValue(int(round(float(state.get("strength_percent") or 0.0))))
+            self.target_strength_label.setText(f"Character Strength: {self.target_strength.value()}%")
+            for key, spin in self.target_planner_controls.items():
+                if key in profile:
+                    spin.setValue(float(profile[key]))
+        finally:
+            self._updating_target_planner = False
+
+        self.target_source_summary.setText(
+            f"Source Profile: {plan.get('source_reliability', 'unavailable')} | "
+            f"confidence {self._fmt_ratio(plan.get('aggregate_confidence'))} | "
+            f"age {self._fmt_seconds(plan.get('source_profile_age_seconds'))}"
+        )
+        pitch = plan.get("pitch", {})
+        formant = plan.get("formant", {})
+        spectral = plan.get("spectral", {})
+        brightness = spectral.get("brightness_db", {})
+        tilt = spectral.get("spectral_tilt_db", {})
+        self.target_plan_summary.setText(
+            f"Calculated Plan: {plan.get('status', 'unavailable')} | "
+            f"pitch {self._fmt_st(pitch.get('applied_pitch_shift_st'))} | "
+            f"range x{float(pitch.get('applied_pitch_range_scale') or 1.0):.2f} | "
+            f"formant {self._fmt_st(formant.get('applied_formant_shift_st'))} | "
+            f"brightness {self._fmt_db(brightness.get('applied_db'))} | "
+            f"tilt {self._fmt_db(tilt.get('applied_db'))}"
+        )
+        self.target_plan_details.setText(
+            "Capabilities: "
+            f"{', '.join(plan.get('required_capabilities') or ('none',))} | "
+            "Warnings: "
+            f"{', '.join(plan.get('warnings') or ('none',))}"
         )
 
     def _fmt_hz(self, value):

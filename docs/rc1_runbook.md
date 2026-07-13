@@ -1663,3 +1663,83 @@ Final audio regression:
 - Metallic tail absent.
 - Flutter absent.
 - Latency acceptable.
+
+## M9.1 Adaptive Target Engine Core
+
+M9.1 Status: PROVISIONAL.
+
+Launch:
+
+```powershell
+.\.venv\Scripts\python.exe main.py --target-planner-lab
+```
+
+Scope:
+
+- M9.1 is an experimental planning-only lab.
+- Target Planner Lab launches stopped.
+- Target Planner Lab enables the accepted M9.0 passive source analyzer and
+  displays both Source Analysis and Target Planner tabs.
+- Normal launch, `--voice-analysis-lab`, and `--formant-lab` remain isolated.
+- Normal audio chain remains High-Pass, Noise Gate, Compressor, Pitch Shift,
+  Robot, Lowpass, Gain, Limiter.
+- Formant Lab chain remains High-Pass, Noise Gate, Compressor, Experimental
+  Pitch/Formant, Robot, Lowpass, Gain, Limiter.
+- The planner produces recommendations only. It does not modify audio, DSP
+  parameters, devices, routes, meters, soundboard behavior, settings, presets,
+  built-in characters, or Signalsmith configuration.
+- Target values and calculated plans are session-only and are not written to
+  `settings.json` or `presets.json`.
+- The Target Planner UI states `Experimental - Planning Only - Audio Is Not
+  Modified`.
+- The UI intentionally has no Apply, Preview, Save, or Export action.
+
+Implementation notes:
+
+- Core relationship:
+  `Source Voice Profile + Target Voice Profile + Character Strength =
+  Immutable Transformation Plan`.
+- `TargetVoiceProfile` and `TransformationPlan` are frozen scalar contracts.
+- `TransformationPlanner` is pure and stateless.
+- Character Strength maps UI `0..100` to planner `0..1`.
+- Pitch center uses `12 * log2(target_median_f0 / source_median_f0)`, strength
+  scaling, and target clamping.
+- Pitch range uses `target_span / source_span`, strength interpolation, and
+  target clamping.
+- Formant recommendation comes from target intent only and is clamped to a
+  natural planning maximum of `+/-2` semitones.
+- F1/F2/F3 remain weak descriptors only and do not directly determine automatic
+  formant shift.
+- Spectral recommendations use source/target energy-ratio comparisons, and
+  missing source evidence degrades only the affected control.
+- Dynamics are recommendations only and use M8.0-compatible ranges. Live M8.0
+  settings are not mutated.
+- No planner code runs in the audio callback.
+
+Diagnostic references:
+
+- Diagnostic Neutral.
+- Higher / Brighter Reference.
+- Lower / Weightier Reference.
+
+These references are target-neutral planning aids, not production characters
+and not identity or gender classifiers.
+
+Automated M9.1 verification covers:
+
+- immutable planner contracts;
+- target-profile validation;
+- strength `0/50/100` behavior;
+- pitch-center and pitch-range formulas;
+- formant recommendation isolation from F1/F2/F3;
+- spectral ratio and tilt formulas;
+- de-essing, texture, and dynamics recommendations;
+- plan state reporting;
+- lab-mode UI exposure;
+- normal/formant/analysis mode isolation;
+- normal and target-planner audio transparency;
+- settings and presets compatibility;
+- callback/source architecture guards.
+
+M9.1 remains PROVISIONAL until live hardware acceptance is completed. Do not
+record M9.1 as PASS based on automated verification alone.
