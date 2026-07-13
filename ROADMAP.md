@@ -1305,7 +1305,7 @@ Signalsmith pitch configuration.
 
 ## M8.1 - Real-Time Formant Backend Prototype
 
-Status: PROVISIONAL
+Status: PASS
 
 Purpose: prove whether the existing local Signalsmith backend can support
 real-time formant shifting in a bounded streaming path before any user-facing
@@ -1366,10 +1366,38 @@ character, preset, persistence, or production-chain integration is attempted.
   like a man attempting to imitate a woman. The backend remains viable as an
   M8.2 character-transformation component, but raw standalone formant controls
   are not sufficient production character targets.
-- Accepted prototype limitations: formant quality is only algorithmic evidence
-  until live operator listening; the implementation uses Signalsmith's rough
-  internal F0 estimation by leaving formant base at default; production
-  character integration, persistence, preset storage, and UX naming are
-  deferred to later milestones; M8.1 must remain PROVISIONAL until the
-  immutable-snapshot correction is briefly live-smoked and final acceptance is
-  committed.
+- Final M8.1 live hardware/audio smoke passed. Confirmed PASS results: normal
+  launch unchanged, normal mode launches stopped, prototype launches stopped,
+  neutral pitch 0 / formant 0 sound, subtle formant around +/-1 audible and
+  usable, live pitch/formant parameter changes, Prototype A/B Bypass preserves
+  values, Stop/Start recovery, close while processing, prototype relaunch,
+  normal relaunch unchanged, no crash, no severe burst, and acceptable latency.
+- Parameter-change artifact: severe clicks or bursts were NONE; a minor
+  transition artifact was OBSERVED when changing formant rapidly toward one
+  extreme or the other. The output can briefly sound as though prototype bypass
+  is active before formant processing settles and becomes audible again. This
+  is MINOR / NON-BLOCKING: it was not persistent, did not crash processing,
+  did not alter settings, did not create growing latency, was associated with
+  extreme live parameter changes, and can be avoided by staying away from
+  extreme settings. No correction is required before beginning the next epic;
+  this remains known DSP transition debt.
+- Accepted technical conclusion: Signalsmith provides genuine independent
+  formant control; formant-only shifts preserve fundamental pitch
+  substantially; pitch and formant run in one native Signalsmith processing
+  stage; formant processing adds no measured latency beyond the accepted
+  production pitch path; normal production mode remains isolated; immutable
+  whole-parameter snapshot replacement prevents mixed per-block pitch/formant
+  configurations; no callback lock, queue, history, stream restart, device
+  reopen, or persistence change was introduced; native lifecycle and `.pyd`
+  release/rename/relaunch checks passed.
+- Perceptual conclusion: the plausible natural formant range is approximately
+  +/-0.5 to +/-2 semitones, approximately +/-3 begins to sound unnatural, and
+  larger shifts are primarily experimental or special-effect territory. Pitch
+  and formant alone are insufficient for accurate intended-character
+  transformation; pitch +3 / formant +1 still sounded like a man attempting to
+  imitate a woman.
+- M8.1 closes with formant shifting accepted as one bounded component of the
+  future adaptive/target-based character-transformation engine. Production
+  integration of raw formant values into existing characters remains deferred,
+  and the next epic must target complete character transformation rather than
+  exposing more isolated offsets.

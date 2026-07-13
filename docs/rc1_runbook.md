@@ -908,7 +908,7 @@ Lifecycle and Regression:
 
 ## Real-Time Formant Backend Prototype
 
-M8.1 Status: PROVISIONAL.
+M8.1 Status: PASS.
 
 M8.1 adds an isolated experimental formant-shift prototype for local evidence
 gathering only. Launch it with:
@@ -986,33 +986,69 @@ Live perceptual findings recorded before final closeout:
 - Raw standalone formant controls are not sufficient for production character
   targeting.
 
-Manual M8.1 acceptance checklist:
+Final M8.1 live acceptance results:
 
-- Normal `main.py` launch opens without Formant Lab controls.
-- Normal voice behavior remains unchanged.
-- `main.py --formant-lab` opens with Formant Lab controls.
-- Formant Lab launch starts stopped.
-- Start/Stop behavior remains normal in Formant Lab.
-- Prototype Pitch `0`, `+4`, and `-4` produce expected pitch movement.
-- Formant `0` is neutral enough for practical listening.
-- Formant `+4` sounds brighter/smaller without changing perceived pitch more
-  than expected.
-- Formant `-4` sounds darker/larger without changing perceived pitch more than
-  expected.
-- Combined pitch plus formant movement is stable.
-- Prototype A/B Bypass returns to the unmodified prototype input path while
-  processing continues.
-- Reset Prototype returns pitch/formant to `0.0` and clears bypass.
-- Normal microphone, virtual microphone, monitor, monitor-disabled operation,
-  soundboard, Bypass Effects, device refresh, close, and relaunch regressions
-  remain acceptable.
-- Metallic tail remains absent.
-- Flutter/choppiness remains absent.
-- Latency remains acceptable for prototype evaluation.
+- Normal launch unchanged: PASS.
+- Normal mode launches stopped: PASS.
+- Prototype launches stopped: PASS.
+- Neutral pitch 0 / formant 0 sound: PASS.
+- Subtle formant approximately +/-1 is audible and usable: PASS.
+- Live pitch/formant parameter changes: PASS.
+- Prototype A/B Bypass preserves values: PASS.
+- Stop/Start recovery: PASS.
+- Close while processing: PASS.
+- Prototype relaunch: PASS.
+- Normal relaunch remains unchanged: PASS.
+- No crash: PASS.
+- No severe burst: PASS.
+- Latency remains acceptable: PASS.
 
-M8.1 remains PROVISIONAL until the immutable-snapshot correction is briefly
-live-smoked and final acceptance is committed. Do not record unexecuted manual
-scenarios as passed.
+Parameter-change artifact:
+
+- Severe clicks or bursts: NONE.
+- Minor transition artifact: OBSERVED.
+- Exact observation: when changing the formant rapidly toward one extreme or
+  the other, there can be a brief period where the output sounds as though
+  prototype bypass is active before the formant processing settles and becomes
+  audible again.
+- Classification: MINOR / NON-BLOCKING.
+- The artifact was not persistent, did not crash processing, did not alter
+  settings, did not create growing latency, and was associated with extreme
+  live parameter changes.
+- Luke can avoid it by staying away from extreme settings.
+- No correction is required before beginning the next epic.
+- The artifact remains known DSP transition debt.
+
+Accepted M8.1 backend decision:
+
+- Signalsmith provides genuine independent formant control.
+- Formant-only shifts preserve fundamental pitch substantially.
+- Pitch and formant run in one native Signalsmith processing stage.
+- Formant processing adds no measured latency beyond the accepted production
+  pitch path.
+- Normal production mode remains isolated.
+- Immutable whole-parameter snapshot replacement prevents mixed per-block
+  pitch/formant configurations.
+- No callback lock, queue, history, stream restart, device reopen, or
+  persistence change was introduced.
+- Native lifecycle and `.pyd` release/rename/relaunch checks passed.
+- The backend is accepted as a bounded component for the next
+  adaptive/target-based character-transformation engine.
+
+Perceptual closeout:
+
+- Plausible natural formant range is approximately +/-0.5 to +/-2 semitones.
+- Approximately +/-3 begins to sound unnatural.
+- Larger shifts are primarily experimental or special-effect territory.
+- Pitch and formant alone are insufficient for accurate intended-character
+  transformation.
+- Pitch +3 / formant +1 still sounded like a man attempting to imitate a
+  woman.
+- The next epic must target complete character transformation rather than
+  expose more isolated offsets.
+- Production integration of raw formant values into existing characters remains
+  deferred. Do not represent the full +/-12 prototype range as
+  production-quality.
 
 ## Device Failure Recovery
 
