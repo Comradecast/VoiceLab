@@ -49,6 +49,13 @@ stable manual pitch/formant trims.
 - Return to Suggested Plan clears trims without clearing the lock.
 - Return to Neutral disables execution without deleting session calibration,
   suggestion, lock, or trim state.
+- The workflow-truthfulness correction renames this operator action in the UI
+  to Return Audio to Neutral and adds Clear Stored Transformation for the
+  separate case where the operator wants to discard the locked transformation
+  and manual trims. Return Audio to Neutral keeps the stored transformation;
+  Clear Stored Transformation removes the lock, clears trims, disables
+  execution, clears retained latest execution state, and leaves authority
+  `none`.
 - M9.3 remains a lab workflow and does not replace production characters.
 
 ## Accepted Authority Model

@@ -2514,3 +2514,63 @@ Lifecycle and persistence checks:
 M9.4 intentionally does not mark planner `parametric_eq` or
 `spectral_tilt_shaping` supported. Future spectral-tilt execution must map into
 the same EQ authority.
+
+## Laboratory Workflow Truthfulness Retest
+
+Status: required before final M9.4 PASS.
+
+The laboratory UI distinguishes three neutral concepts:
+
+- Neutral Target in Target Planner generates a neutral suggestion only. It does
+  not erase a lock or change audio while Adaptive Updating is Off.
+- Return Audio to Neutral disables execution and returns runtime pitch,
+  formant, compressor, and limiter overlays to baseline while preserving
+  calibration, suggestion, locked transformation, and manual trims.
+- Clear Stored Transformation disables execution, neutralizes runtime, clears
+  the locked transformation, clears manual pitch/formant trims, clears retained
+  latest execution state, and leaves authority as `none`.
+
+During retest, confirm Plan Execution shows separate sections:
+
+- Suggested Plan: preview-only Target Planner output.
+- Stored Plan: present or absent locked transformation.
+- Applied Runtime: the currently audible state and authority.
+
+In Formant Lab, Transformation Execution Lab, Calibrate/Lock Lab, and
+Parametric EQ Lab, the Voice tab must not expose an editable production Pitch
+Shift control. It should show the actual active chain and explain that pitch
+and formant are controlled through Plan Execution / Calibrate & Lock. Gain,
+Robot, and Lowpass remain available only because those stages are in the active
+lab chain.
+
+In experimental laboratory modes, Soundboard is disabled and playback commands
+fail safely with:
+
+```text
+Soundboard is disabled in experimental voice laboratories.
+```
+
+Normal production mode keeps existing production Pitch Shift and Soundboard
+behavior.
+
+Target Planner retest notes:
+
+- Neutral target does not clear an existing lock.
+- Higher / Brighter currently executes adaptive pitch center, restrained
+  formant shift, compressor, and limiter recommendations.
+- Lower / Weightier currently executes lower pitch center, restrained formant
+  movement, compressor, and limiter recommendations; lower formant behavior is
+  experimental and lower pitch does not necessarily require lower formants.
+- Unsupported future capabilities are separated under Planned but Not Executed.
+- Target or strength changes after lock must show that a new suggestion is
+  available and the stored transformation is unchanged until Lock Suggested
+  Transformation is pressed.
+
+Parametric EQ retest note:
+
+- Live EQ processing and the graph UI were already accepted during inspection.
+  No pops, buzz, bad delay, or obvious EQ transition instability were observed.
+- The nasal/vowel artifact is separate pitch/formant work. It appears with
+  transformation active and EQ bypassed, worsens with negative formant
+  movement, and must not be hidden with static EQ. Luke commonly prefers pitch
+  around -3 to -4 st with positive formant compensation around +1 to +2.5 st.

@@ -259,6 +259,12 @@ class App(QWidget):
         self.pitch = self.slider(layout, "Pitch", -12, 12, 0)
         self.robot = self.slider(layout, "Robot amount", 0, 100, 0)
         self.lowpass = self.slider(layout, "Lowpass Hz", 300, 8000, 4000)
+        self.voice_chain_status = QLabel("")
+        self.voice_chain_status.setWordWrap(True)
+        layout.addWidget(self.voice_chain_status)
+        self.voice_pitch_lab_note = QLabel("")
+        self.voice_pitch_lab_note.setWordWrap(True)
+        layout.addWidget(self.voice_pitch_lab_note)
         self.advanced_widgets.extend(
             (
                 self.gain._voice_lab_label,
@@ -272,7 +278,9 @@ class App(QWidget):
             )
         )
 
-        soundboard_tab_layout.addWidget(QLabel("Soundboard - F1/F2/F3 for first 3 sounds"))
+        self.soundboard_policy = QLabel("Soundboard - F1/F2/F3 for first 3 sounds")
+        self.soundboard_policy.setWordWrap(True)
+        soundboard_tab_layout.addWidget(self.soundboard_policy)
         self.soundboard_layout = QHBoxLayout()
         soundboard_tab_layout.addLayout(self.soundboard_layout)
 
@@ -313,6 +321,7 @@ class App(QWidget):
 
         self.advanced_widgets.append(self.diagnostic_status)
         self.sync_voice_controls_from_service()
+        self.refresh_voice_control_availability()
         self.sync_input_processing_from_service()
         self.sync_formant_lab_from_service()
         self.set_advanced_visible()
@@ -364,9 +373,37 @@ class App(QWidget):
         self.tabs.addTab(scroll_area, title)
         return layout
 
+    def _open_tab(self, title):
+        for index in range(self.tabs.count()):
+            if self.tabs.tabText(index) == title:
+                self.tabs.setCurrentIndex(index)
+                return
+
     def play_sound_by_index(self, index):
         result = self.service.play_sound_by_index(index)
         self.display_result(result)
+
+    def refresh_voice_control_availability(self):
+        if not hasattr(self.service, "voice_control_availability"):
+            return
+        availability = self.service.voice_control_availability()
+        controls = availability.get("controls", {})
+        pitch = controls.get("pitch", {})
+        self.voice_chain_status.setText(availability.get("chain_label", ""))
+        self.voice_chain_status.setVisible(bool(availability.get("laboratory_mode")))
+        self.voice_pitch_lab_note.setText(pitch.get("reason", ""))
+        self.voice_pitch_lab_note.setVisible(bool(pitch.get("reason")))
+        self.pitch.setEnabled(bool(pitch.get("editable", True)))
+        if hasattr(self.pitch, "_voice_lab_label"):
+            self.pitch._voice_lab_label.setEnabled(self.pitch.isEnabled())
+        for name in ("gain", "robot", "lowpass"):
+            state = controls.get(name, {"editable": True})
+            widget = getattr(self, name, None)
+            if widget is None:
+                continue
+            widget.setEnabled(bool(state.get("editable", True)))
+            if hasattr(widget, "_voice_lab_label"):
+                widget._voice_lab_label.setEnabled(widget.isEnabled())
 
     def _create_level_meter(self, layout, title):
         title_label = QLabel(title)
@@ -897,6 +934,13 @@ class App(QWidget):
         heading = QLabel("Experimental - Planning Only - Audio Is Not Modified")
         heading.setWordWrap(True)
         layout.addWidget(heading)
+        planner_guidance = QLabel(
+            "Neutral Target generates a neutral suggestion only; it does not clear an existing lock or change audio "
+            "while Adaptive Updating is Off. Character Strength 0% is neutral, and strength or target changes require "
+            "Lock Suggested Transformation before a stored plan changes."
+        )
+        planner_guidance.setWordWrap(True)
+        layout.addWidget(planner_guidance)
 
         refs = QHBoxLayout()
         neutral = QPushButton("Neutral")
@@ -955,6 +999,18 @@ class App(QWidget):
         self.target_plan_details = QLabel("")
         self.target_plan_details.setWordWrap(True)
         layout.addWidget(self.target_plan_details)
+        self.target_execution_details = QLabel("")
+        self.target_execution_details.setWordWrap(True)
+        layout.addWidget(self.target_execution_details)
+        self.target_unsupported_toggle = QCheckBox("Show Planned but Not Executed")
+        self.target_unsupported_toggle.stateChanged.connect(lambda _state: self.refresh_target_planner())
+        layout.addWidget(self.target_unsupported_toggle)
+        self.target_unsupported_details = QLabel("")
+        self.target_unsupported_details.setWordWrap(True)
+        layout.addWidget(self.target_unsupported_details)
+        nav = QPushButton("Continue to Calibrate & Lock")
+        nav.clicked.connect(lambda: self._open_tab("Calibrate & Lock"))
+        layout.addWidget(nav)
         reset = QPushButton("Reset Planner")
         reset.clicked.connect(self.reset_target_planner)
         layout.addWidget(reset)
@@ -1031,11 +1087,28 @@ class App(QWidget):
             f"brightness {self._fmt_db(brightness.get('applied_db'))} | "
             f"tilt {self._fmt_db(tilt.get('applied_db'))}"
         )
+        guidance = state.get("guidance", {})
+        lower_warning = (
+            " " + guidance.get("lower_weightier", "")
+            if profile.get("target_id") == "diagnostic-lower-weightier"
+            else ""
+        )
         self.target_plan_details.setText(
-            "Capabilities: "
-            f"{', '.join(plan.get('required_capabilities') or ('none',))} | "
-            "Warnings: "
-            f"{', '.join(plan.get('warnings') or ('none',))}"
+            f"Target Guidance: {guidance.get('neutral', '')}{lower_warning} "
+            f"Warnings: {', '.join(plan.get('warnings') or ('none',))}"
+        )
+        executed = ("adaptive_pitch_center", "formant_shift", "compressor", "limiter")
+        requested = tuple(plan.get("required_capabilities") or ())
+        executing = tuple(name for name in executed if name in requested)
+        unsupported = tuple(name for name in requested if name not in executed)
+        self.target_execution_details.setText(
+            "Executed Now: "
+            + ", ".join(executing or ("none",))
+            + " | Suggested plan only until explicitly locked or followed by Continuous mode; changes require Lock Suggested Transformation."
+        )
+        self.target_unsupported_details.setVisible(self.target_unsupported_toggle.isChecked())
+        self.target_unsupported_details.setText(
+            "Planned but Not Executed: " + ", ".join(unsupported or ("none",))
         )
         self.refresh_execution_lab()
 
@@ -1043,19 +1116,29 @@ class App(QWidget):
         self.execution_enable = QCheckBox("Enable Plan Execution")
         self.execution_enable.stateChanged.connect(lambda _state: self.set_plan_execution_enabled())
         layout.addWidget(self.execution_enable)
-        neutral = QPushButton("Return to Neutral")
+        neutral = QPushButton("Return Audio to Neutral")
         neutral.clicked.connect(self.return_execution_to_neutral)
         layout.addWidget(neutral)
+        clear = QPushButton("Clear Stored Transformation")
+        clear.clicked.connect(self.clear_stored_transformation)
+        layout.addWidget(clear)
+        nav = QPushButton("Open Calibrate & Lock")
+        nav.clicked.connect(lambda: self._open_tab("Calibrate & Lock"))
+        layout.addWidget(nav)
 
         self.execution_control = QLabel("Execution Control: disabled")
-        self.execution_plan_state = QLabel("Plan State: unavailable")
+        self.execution_suggested_state = QLabel("Suggested Plan: unavailable")
+        self.execution_stored_state = QLabel("Stored Plan: unavailable")
+        self.execution_applied_state = QLabel("Applied Runtime: unavailable")
         self.execution_supported = QLabel("Supported Execution: unavailable")
         self.execution_unsupported = QLabel("Unsupported Capabilities: unavailable")
         self.execution_runtime = QLabel("Runtime Status: unavailable")
         self.execution_baseline = QLabel("Baseline Context: unavailable")
         for label in (
             self.execution_control,
-            self.execution_plan_state,
+            self.execution_suggested_state,
+            self.execution_stored_state,
+            self.execution_applied_state,
             self.execution_supported,
             self.execution_unsupported,
             self.execution_runtime,
@@ -1078,6 +1161,14 @@ class App(QWidget):
         self.display_result(result)
         self.refresh_execution_lab()
 
+    def clear_stored_transformation(self):
+        if not getattr(self, "calibrate_lock_enabled", False):
+            return
+        result = self.service.clear_stored_transformation()
+        self.display_result(result)
+        self.refresh_calibrate_lock()
+        self.refresh_execution_lab()
+
     def refresh_execution_lab(self):
         if not getattr(self, "execution_lab_enabled", False):
             return
@@ -1097,15 +1188,35 @@ class App(QWidget):
             f"Execution Control: {'enabled' if state.get('enabled') else 'disabled'} | "
             f"global bypass {'on' if state.get('bypassed') else 'off'} | no automatic enable on Start"
         )
-        self.execution_plan_state.setText(
-            f"Plan State: target {state.get('target_id') or 'none'} | strength "
+        stable = self.service.stable_control_snapshot() if getattr(self, "calibrate_lock_enabled", False) else None
+        suggestion = stable.get("suggestion") if stable is not None else None
+        locked = stable.get("locked") if stable is not None else None
+        self.execution_suggested_state.setText(
+            "Suggested Plan: unavailable"
+            if suggestion is None
+            else (
+                f"Suggested Plan: target {suggestion.target_id} | strength {suggestion.character_strength * 100.0:.0f}% | "
+                f"status {suggestion.planner_status} | preview only, not necessarily audible"
+            )
+        )
+        self.execution_stored_state.setText(
+            "Stored Plan: Absent"
+            if locked is None
+            else (
+                f"Stored Plan: Present | target {locked.target_id} | strength {locked.character_strength * 100.0:.0f}% | "
+                f"new suggestion available {locked.newer_suggestion_available} | retained after Return Audio to Neutral"
+            )
+        )
+        applied_label = "Neutral" if not state.get("enabled") or state.get("neutral") else "Active"
+        authority = stable.get("execution_authority") if stable is not None else ("live adaptive plan" if state.get("enabled") else "none")
+        self.execution_applied_state.setText(
+            f"Applied Runtime: {applied_label} | target {state.get('target_id') or 'none'} | strength "
             f"{float(state.get('character_strength') or 0.0) * 100.0:.0f}% | "
             f"planner {state.get('plan_status')} | confidence {self._fmt_ratio(state.get('plan_confidence'))} | "
             f"source age {self._fmt_seconds(state.get('source_age_seconds'))} | "
-            f"plan generation {state.get('source_plan_generation', 'latest')} | "
             f"execution generation {state.get('execution_generation')} | "
             f"{'partial' if state.get('partial_execution') else 'full/neutral'} | "
-            f"blocked {state.get('blocked_reason') or 'none'}"
+            f"authority {authority} | blocked {state.get('blocked_reason') or 'none'}"
         )
         baseline_c = state.get("baseline_compressor", {})
         plan_c = state.get("plan_compressor", {})
@@ -1169,6 +1280,15 @@ class App(QWidget):
         title = QLabel("Stable Workflow - Calibrate, Lock, Then Tune")
         title.setWordWrap(True)
         layout.addWidget(title)
+        workflow = QLabel(
+            "1. Start processing  2. Wait for Source Analysis Ready  3. Calibrate Source  "
+            "4. Choose target and strength  5. Lock Suggested Transformation  6. Enable Execution  "
+            "7. Tune pitch/formant trims  8. Shape with Parametric EQ where available\n"
+            "Calibrate & Lock converts a live source measurement into a stable suggested transformation. "
+            "Locking freezes that suggestion so your voice does not continuously chase live measurements."
+        )
+        workflow.setWordWrap(True)
+        layout.addWidget(workflow)
         buttons = QHBoxLayout()
         calibrate = QPushButton("Calibrate Source")
         calibrate.clicked.connect(self.calibrate_source)
@@ -1206,12 +1326,22 @@ class App(QWidget):
         trim_buttons = QHBoxLayout()
         suggested = QPushButton("Return to Suggested Plan")
         suggested.clicked.connect(self.return_to_suggested_plan)
-        neutral = QPushButton("Return to Neutral")
+        neutral = QPushButton("Return Audio to Neutral")
         neutral.clicked.connect(self.return_execution_to_neutral)
+        clear = QPushButton("Clear Stored Transformation")
+        clear.clicked.connect(self.clear_stored_transformation)
         trim_buttons.addWidget(suggested)
         trim_buttons.addWidget(neutral)
+        trim_buttons.addWidget(clear)
         layout.addLayout(trim_buttons)
+        if getattr(self, "parametric_eq_enabled", False):
+            open_eq = QPushButton("Open Parametric EQ")
+            open_eq.clicked.connect(lambda: self._open_tab("Parametric EQ"))
+            layout.addWidget(open_eq)
 
+        self.workflow_state = QLabel("Workflow: waiting for source analysis")
+        self.workflow_state.setWordWrap(True)
+        layout.addWidget(self.workflow_state)
         self.calibration_state = QLabel("Calibration: none")
         self.suggestion_state = QLabel("Suggestion: unavailable")
         self.locked_state = QLabel("Locked Transformation: none")
@@ -1290,6 +1420,17 @@ class App(QWidget):
         calibration = state.get("calibration")
         suggestion = state.get("suggestion")
         locked = state.get("locked")
+        if calibration is None:
+            workflow = "Workflow: step 2/3 - wait for Source Analysis Ready, then Calibrate Source."
+        elif suggestion is None:
+            workflow = "Workflow: step 4 - choose target and strength to create a suggestion."
+        elif locked is None:
+            workflow = "Workflow: step 5 - Lock Suggested Transformation. No stored transformation."
+        elif not state.get("execution_enabled"):
+            workflow = "Workflow: step 6 - Enable Execution. Audio is neutral while execution is disabled."
+        else:
+            workflow = "Workflow: step 7/8 - tune trims and shape with Parametric EQ where available."
+        self.workflow_state.setText(workflow)
         self.calibration_state.setText(
             "Calibration: none"
             if calibration is None
@@ -1348,7 +1489,7 @@ class App(QWidget):
             f"Adaptation: {state.get('adaptive_mode')} | authority {state.get('execution_authority')} | "
             f"live readiness matters {state.get('live_source_readiness_matters')} | "
             f"lock available {state.get('locked_plan_available_for_off')} | "
-            f"new suggestion {state.get('newer_suggestion_available')} | "
+            f"{'New suggestion available - stored transformation unchanged. Press Lock Suggested Transformation to apply it. | ' if state.get('newer_suggestion_available') else ''}"
             f"target dirty {state.get('target_changed_after_lock')} | "
             f"strength dirty {state.get('strength_changed_after_lock')} | "
             f"calibration dirty {state.get('calibration_changed_after_lock')}"
@@ -1845,6 +1986,10 @@ class App(QWidget):
             if widget:
                 widget.deleteLater()
 
+        if hasattr(self.service, "soundboard_available") and not self.service.soundboard_available():
+            self.soundboard_policy.setText("Soundboard is disabled in experimental voice laboratories.")
+            return
+        self.soundboard_policy.setText("Soundboard - F1/F2/F3 for first 3 sounds")
         files = self.service.sound_files()
         if not files:
             self.set_status("No sound files found in ./sounds")

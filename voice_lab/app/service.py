@@ -387,9 +387,72 @@ class ApplicationService(QObject):
                 "higher_brighter": HIGHER_BRIGHTER_REFERENCE.asdict(),
                 "lower_weightier": LOWER_WEIGHTIER_REFERENCE.asdict(),
             },
+            "guidance": self.target_planner_guidance(),
         }
         self.telemetry.set_metadata("target_planner", state)
         return state
+
+    def target_planner_guidance(self):
+        return {
+            "neutral": "Neutral generates a neutral suggestion. It does not erase or replace an existing lock.",
+            "higher_brighter": (
+                "Higher / Brighter currently executes higher pitch center, restrained formant movement, "
+                "compressor, and limiter recommendations."
+            ),
+            "lower_weightier": (
+                "Lower / Weightier currently executes lower pitch center, restrained formant movement, "
+                "compressor, and limiter recommendations. Lower/Weightier formant behavior remains "
+                "experimental. Lower pitch does not necessarily require lower formants."
+            ),
+            "strength": (
+                "0% is a neutral suggested plan. Increasing strength scales the suggestion. Changes do "
+                "not alter a stored lock until re-locked; Continuous mode may follow live suggestions."
+            ),
+        }
+
+    def laboratory_mode_enabled(self):
+        return bool(
+            self.formant_lab_enabled
+            or self.voice_analysis_lab_enabled
+            or self.target_planner_lab_enabled
+            or self.transformation_execution_lab_enabled
+            or self.calibrate_lock_lab_enabled
+            or self.parametric_eq_lab_enabled
+        )
+
+    def laboratory_voice_chain_label(self):
+        names = tuple(self.engine.effect_chain.effect_names())
+        return "Active laboratory voice stages: " + " -> ".join(names)
+
+    def voice_control_availability(self):
+        names = set(self.engine.effect_chain.effect_names())
+        lab = self.laboratory_mode_enabled()
+        pitch_available = "Pitch Shift" in names
+        availability = {
+            "laboratory_mode": lab,
+            "chain": tuple(self.engine.effect_chain.effect_names()),
+            "chain_label": self.laboratory_voice_chain_label() if lab else "",
+            "controls": {
+                "pitch": {
+                    "available": pitch_available,
+                    "editable": pitch_available,
+                    "reason": ""
+                    if pitch_available
+                    else (
+                        "Production Pitch Shift is not in this lab chain. Pitch and formant are "
+                        "controlled through Plan Execution / Calibrate & Lock."
+                    ),
+                },
+                "robot": {"available": "Robot" in names, "editable": "Robot" in names, "reason": ""},
+                "lowpass": {"available": "Lowpass" in names, "editable": "Lowpass" in names, "reason": ""},
+                "gain": {"available": "Gain" in names, "editable": "Gain" in names, "reason": ""},
+            },
+        }
+        self.telemetry.set_metadata("voice_control_availability", availability)
+        return availability
+
+    def soundboard_available(self):
+        return not self.laboratory_mode_enabled()
 
     def execution_lab_state(self):
         if not self.transformation_execution_lab_enabled:
@@ -554,10 +617,18 @@ class ApplicationService(QObject):
         _, projection = apply_manual_trim(projection_plan, self._manual_trim)
         target_name = getattr(self.current_target_profile, "display_name", self.current_target_profile.target_id)
         newer = self._newer_suggestion_available()
+        authority = "none"
+        if self.execution_enabled:
+            if self.stable_adaptive_mode == ADAPTIVE_CONTINUOUS:
+                authority = "live adaptive plan"
+            elif self._locked_transformation is not None:
+                authority = "locked plan"
+            elif self._manual_trim.pitch_changed_from_zero or self._manual_trim.formant_changed_from_zero:
+                authority = "manual trim overlay"
         snapshot = StableTransformationControlSnapshot(
             lab="Experimental - Calibrate, Lock, and Manual Trim",
             adaptive_mode=self.stable_adaptive_mode,
-            execution_authority="live adaptive plan" if self.stable_adaptive_mode == ADAPTIVE_CONTINUOUS else "locked plan",
+            execution_authority=authority,
             calibration=self._current_calibration,
             suggestion=self._current_suggestion,
             locked=self._locked_snapshot(newer_suggestion_available=newer),
@@ -694,8 +765,40 @@ class ApplicationService(QObject):
         if self.transformation_execution_runtime is not None:
             self.transformation_execution_runtime.reset()
         state = self.transformation_execution_snapshot()
-        result = CommandResult.ok("Plan execution returned to neutral.", transformation_execution=state)
+        result = CommandResult.ok(
+            "Audio is neutral. Stored transformation retained.",
+            transformation_execution=state,
+            stable_control=self.stable_control_snapshot() if self.calibrate_lock_lab_enabled else None,
+        )
         self.telemetry.record_command_result("return_transformation_to_neutral", result)
+        return result
+
+    def clear_stored_transformation(self):
+        if not self.calibrate_lock_lab_enabled:
+            result = CommandResult.fail("Calibrate/Lock Lab is not enabled.")
+            self.telemetry.record_command_result("clear_stored_transformation", result)
+            return result
+        self.stable_adaptive_mode = ADAPTIVE_OFF
+        self.execution_enabled = False
+        self._locked_transformation = None
+        self._lock_generation += 1
+        self._trim_generation += 1
+        self._manual_trim = manual_trim(generation=self._trim_generation)
+        if self.transformation_execution_runtime is not None:
+            self.transformation_execution_runtime.reset()
+        if self.transformation_execution_controller is not None:
+            self.transformation_execution_controller.clear_retained()
+        state = self.stable_control_snapshot()
+        result = CommandResult.ok(
+            "No stored transformation. Audio is neutral.",
+            stable_control=state,
+            transformation_execution=(
+                self.transformation_execution_runtime.snapshot()
+                if self.transformation_execution_runtime is not None
+                else None
+            ),
+        )
+        self.telemetry.record_command_result("clear_stored_transformation", result)
         return result
 
     def _refresh_execution_target(self):
@@ -1391,6 +1494,8 @@ class ApplicationService(QObject):
         return self.config.preset_names()
 
     def sound_files(self):
+        if not self.soundboard_available():
+            return ()
         return list_sound_files()
 
     def register_hotkeys(self):
@@ -1687,6 +1792,10 @@ class ApplicationService(QObject):
         return CommandResult.ok(name=normalized_name, conflict=False)
 
     def play_sound(self, path):
+        if not self.soundboard_available():
+            result = CommandResult.fail("Soundboard is disabled in experimental voice laboratories.")
+            self.telemetry.record_command_result("play_sound", result, path=path)
+            return result
         try:
             self.mixer.queue_auxiliary(load_sound(path))
         except Exception as exc:
@@ -1701,6 +1810,10 @@ class ApplicationService(QObject):
         return self.play_sound(os.path.join(SOUNDS_DIR, filename))
 
     def play_sound_by_index(self, index):
+        if not self.soundboard_available():
+            result = CommandResult.fail("Soundboard is disabled in experimental voice laboratories.")
+            self.telemetry.record_command_result("play_sound_by_index", result, index=index)
+            return result
         files = self.sound_files()
         if not 0 <= index < len(files):
             result = CommandResult.fail(f"No sound at hotkey index {index}")

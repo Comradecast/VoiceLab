@@ -105,6 +105,23 @@ enable. M9.4 owns only manual EQ values, EQ local enable/bypass, and final
 applied EQ plan. EQ changes do not mutate calibration, suggestion, lock, trims,
 or adaptive mode.
 
+## Live Workflow Finding
+
+Live inspection confirmed Parametric EQ processing, the graph UI, Input
+Processing, Routing, Diagnostics, and Source Analysis. No pops, buzz, bad
+delay, or obvious EQ transition instability were observed. The graph UI was
+accepted.
+
+Final M9.4 PASS remains pending the workflow-truthfulness correction and a
+brief retest. This correction does not change Parametric EQ DSP, graph
+behavior, one-EQ authority, RBJ coefficients, bounded transitions, spectrum
+worker, zero added latency, or session-only EQ policy.
+
+The nasal/vowel artifact remains outside Parametric EQ. It occurs with
+transformation active and EQ bypassed, worsens with negative formant movement,
+and should be addressed by later pitch/formant planner direction work rather
+than hidden with static EQ.
+
 ## Deferred Work
 
 Planner `parametric_eq` remains unsupported in M9.4. Planner

@@ -642,6 +642,10 @@ class TransformationExecutionController:
     def latest_target(self):
         return self._latest_target
 
+    def clear_retained(self):
+        self._latest_plan = None
+        self._latest_target = None
+
     def retained_counts(self):
         return {"plans": 1 if self._latest_plan is not None else 0, "targets": 1 if self._latest_target is not None else 0}
 

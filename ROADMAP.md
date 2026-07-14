@@ -1929,8 +1929,9 @@ or the audio effect chain.
 
 ## M9.4 - Parametric EQ Foundation
 
-Status: PROVISIONAL. Automated contract coverage is in place; final live EQ
-acceptance has not been recorded.
+Status: PROVISIONAL. Automated contract coverage is in place; live EQ graph and
+processing inspection passed, but final M9.4 PASS remains pending the
+workflow-truthfulness correction and brief retest.
 
 M9.4 adds one manual five-band Parametric EQ authority in an isolated lab mode.
 It does not change normal production mode, prior lab chains, production
@@ -1949,6 +1950,19 @@ Graph drag is coarse by default, Shift provides fine adjustment, the graph
 shows compact Coarse/Fine value feedback during interaction, the inspector
 offers explicit fine stepping, and whole-EQ A/B is prominent through the
 existing local bypass authority. DSP ranges and behavior are unchanged.
+
+Live workflow inspection confirmed Parametric EQ processing, the accepted graph
+UI, Input Processing, Routing, Diagnostics, and Source Analysis. No pops, buzz,
+bad delay, or obvious EQ transition instability were observed. Workflow
+truthfulness defects were found around lab Voice-tab Pitch Shift visibility,
+ambiguous Plan State wording, Return to Neutral semantics, target/lock
+isolation explanation, Calibrate & Lock guidance, unsupported planner
+capabilities, and Soundboard availability in laboratory modes.
+
+The correction preserves accepted DSP behavior and distinguishes Suggested
+Plan, Stored/Locked Plan, and Applied Runtime. It also distinguishes Neutral
+Target, Return Audio to Neutral, and Clear Stored Transformation. M9.4 remains
+PROVISIONAL until the corrected workflow receives brief live retest.
 
 ### Scope
 
@@ -2006,6 +2020,15 @@ existing local bypass authority. DSP ranges and behavior are unchanged.
 - Planner `spectral_tilt_shaping` remains unsupported in M9.4.
 - Spectral-tilt execution is deferred and must map into this EQ authority in a
   later milestone.
+- Mode-aware Voice controls disable production Pitch Shift in experimental
+  pitch/formant chains and show the actual active chain.
+- Soundboard is disabled in experimental voice laboratories and normal
+  production Soundboard behavior remains unchanged.
+- The nasal/vowel artifact is separate pitch/formant work: it occurs with
+  transformation active and EQ bypassed, worsens with negative formant
+  movement, and should not be concealed with static EQ. Luke commonly prefers
+  pitch around -3 to -4 st with positive formant compensation around +1 to
+  +2.5 st.
 - Known non-blocking debt: final live EQ acceptance is pending; finished
   production feminine/deep-masculine characters remain future work; automatic
   target-profile EQ, spectral tilt, de-essing, breathiness, harmonic
