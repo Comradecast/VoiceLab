@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import threading
+import time
 from dataclasses import asdict, dataclass, replace
 from numbers import Real
 from time import monotonic
@@ -14,6 +16,9 @@ PARAMETRIC_EQ_BAND_ORDER = ("low_shelf", "low_mid", "mid", "presence", "high_she
 PARAMETRIC_EQ_BACKEND = "builtin_biquad"
 PARAMETRIC_EQ_TRANSITION_MS = 20.0
 PARAMETRIC_EQ_ADDED_LATENCY_FRAMES = 0
+PARAMETRIC_EQ_VISUALIZATION_POINTS = 256
+PARAMETRIC_EQ_SPECTRUM_FFT_SIZE = 2048
+PARAMETRIC_EQ_SPECTRUM_RATE_HZ = 20.0
 EPSILON = 1.0e-12
 
 
@@ -161,6 +166,52 @@ class ParametricEqRuntimeStatus:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class ParametricEqVisualizationSnapshot:
+    plan_generation: int
+    coefficient_generation: int
+    frequency_hz: tuple[float, ...]
+    response_db: tuple[float, ...]
+    stored_response_db: tuple[float, ...]
+    selected_band_id: str
+    sample_rate: int
+    graph_min_frequency_hz: float
+    graph_max_frequency_hz: float
+    graph_min_gain_db: float
+    graph_max_gain_db: float
+    flat: bool
+    local_bypass: bool
+    global_bypass: bool
+    transition_active: bool
+    transition_pending: bool
+    transition_progress: float
+    backend_status: str
+    failure_reason: str
+
+    def asdict(self):
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ParametricEqSpectrumSnapshot:
+    active: bool
+    source_mode: str
+    frequency_hz: tuple[float, ...]
+    output_magnitude_db: tuple[float, ...]
+    capture_generation: int
+    analysis_generation: int
+    timestamp: float
+    age_seconds: float
+    sample_rate: int
+    fft_size: int
+    update_rate_hz: float
+    stale: bool
+    failure_reason: str
+
+    def asdict(self):
+        return asdict(self)
+
+
 def default_band_definitions():
     return (
         ParametricEqBandDefinition(
@@ -232,6 +283,10 @@ class ParametricEqController:
         self._reset_generation = 0
         self._backend_health = ParametricEqBackendHealth()
         self._last_runtime_status = ParametricEqRuntimeStatus(sample_rate=self._sample_rate)
+        self._selected_band_id = PARAMETRIC_EQ_BAND_ORDER[2]
+        self._visualization_cache_key = None
+        self._visualization_cache = None
+        self._spectrum = _ParametricEqSpectrumAnalyzer(clock=clock)
         self._requested_plan = self._make_plan(
             bands=flat_band_parameters(self._sample_rate),
             requested_enabled=False,
@@ -262,7 +317,11 @@ class ParametricEqController:
             transition_active=bool(runtime.transition_active and not global_bypass),
             transition_pending=bool(runtime.transition_active and global_bypass),
             transition_progress=float(runtime.transition_progress),
-            local_bypass=bool(runtime.local_bypass or self._requested_plan.requested_bypassed or not self._requested_plan.applied_enabled),
+            local_bypass=bool(
+                runtime.failure_reason
+                or self._requested_plan.requested_bypassed
+                or not self._requested_plan.applied_enabled
+            ),
             global_bypass=bool(global_bypass),
             coefficient_generation=self._coefficient_bank.coefficient_generation,
             processing_active=bool(runtime.processing_active and not global_bypass),
@@ -285,6 +344,71 @@ class ParametricEqController:
 
     def runtime_status(self):
         return self._last_runtime_status
+
+    def visualization_snapshot(self, global_bypass=False):
+        app_snapshot = self.snapshot(global_bypass=global_bypass)
+        bank = self._coefficient_bank
+        key = (
+            bank.coefficient_generation,
+            bank.sample_rate,
+            app_snapshot.local_bypass,
+            app_snapshot.global_bypass,
+            app_snapshot.backend_health.failed,
+            app_snapshot.transition_active,
+            app_snapshot.transition_pending,
+            round(app_snapshot.transition_progress, 6),
+            self._selected_band_id,
+        )
+        if self._visualization_cache_key == key and self._visualization_cache is not None:
+            return self._visualization_cache
+        frequencies = _visualization_frequency_grid()
+        stored = _response_db_tuple(bank, frequencies)
+        audible = tuple(0.0 for _ in frequencies) if (
+            app_snapshot.local_bypass or app_snapshot.global_bypass or app_snapshot.backend_health.failed
+        ) else stored
+        snapshot = ParametricEqVisualizationSnapshot(
+            plan_generation=app_snapshot.applied_plan.plan_generation,
+            coefficient_generation=bank.coefficient_generation,
+            frequency_hz=frequencies,
+            response_db=audible,
+            stored_response_db=stored,
+            selected_band_id=self._selected_band_id,
+            sample_rate=bank.sample_rate,
+            graph_min_frequency_hz=20.0,
+            graph_max_frequency_hz=20000.0,
+            graph_min_gain_db=-12.0,
+            graph_max_gain_db=12.0,
+            flat=app_snapshot.applied_plan.flat,
+            local_bypass=app_snapshot.local_bypass,
+            global_bypass=app_snapshot.global_bypass,
+            transition_active=app_snapshot.transition_active,
+            transition_pending=app_snapshot.transition_pending,
+            transition_progress=app_snapshot.transition_progress,
+            backend_status=app_snapshot.backend_health.backend_status,
+            failure_reason=app_snapshot.failure_reason,
+        )
+        self._visualization_cache_key = key
+        self._visualization_cache = snapshot
+        return snapshot
+
+    def set_selected_band(self, band_id):
+        if band_id not in PARAMETRIC_EQ_BAND_ORDER:
+            raise ValueError("unknown EQ band")
+        self._selected_band_id = band_id
+        self._visualization_cache_key = None
+        return self._selected_band_id
+
+    def spectrum_snapshot(self):
+        return self._spectrum.snapshot()
+
+    def set_spectrum_mode(self, mode):
+        return self._spectrum.set_mode(mode)
+
+    def publish_spectrum_frame(self, samples, sample_rate):
+        self._spectrum.publish(samples, sample_rate)
+
+    def close(self):
+        self._spectrum.close()
 
     def record_runtime_status(self, status):
         if isinstance(status, ParametricEqRuntimeStatus):
@@ -394,6 +518,7 @@ class ParametricEqController:
         self._requested_plan = plan
         self._applied_plan = plan
         self._coefficient_bank = bank
+        self._visualization_cache_key = None
         return plan
 
     def _make_plan(self, *, bands, requested_enabled, requested_bypassed, coefficient_generation):
@@ -445,6 +570,7 @@ class ParametricEqEffect(Effect):
             self._ensure_processor(bank, int(sample_rate), dry_target=dry_target)
             if dry_target and not self._transition_active():
                 output = source.astype(np.float32, copy=False)
+                self.controller.publish_spectrum_frame(output, sample_rate)
                 self._publish_status(
                     bank,
                     sample_rate,
@@ -457,6 +583,7 @@ class ParametricEqEffect(Effect):
             output = self._process_with_transition(source)
             if not np.all(np.isfinite(output)):
                 raise RuntimeError("Parametric EQ produced nonfinite output")
+            self.controller.publish_spectrum_frame(output, sample_rate)
             self._publish_status(
                 bank,
                 sample_rate,
@@ -488,6 +615,9 @@ class ParametricEqEffect(Effect):
 
     def telemetry(self):
         return self._runtime_status
+
+    def close(self):
+        self.controller.close()
 
     def reset(self):
         self._active_processor = None
@@ -602,6 +732,129 @@ class _BiquadCascade:
         return output.astype(np.float32)
 
 
+class _ParametricEqSpectrumAnalyzer:
+    def __init__(self, clock=monotonic, fft_size=PARAMETRIC_EQ_SPECTRUM_FFT_SIZE, update_rate_hz=PARAMETRIC_EQ_SPECTRUM_RATE_HZ):
+        self.clock = clock
+        self.fft_size = int(fft_size)
+        self.update_rate_hz = float(update_rate_hz)
+        self.mode = "off"
+        self._latest_frame = None
+        self._capture_generation = 0
+        self._analysis_generation = 0
+        self._latest_snapshot = ParametricEqSpectrumSnapshot(
+            active=False,
+            source_mode="off",
+            frequency_hz=(),
+            output_magnitude_db=(),
+            capture_generation=0,
+            analysis_generation=0,
+            timestamp=0.0,
+            age_seconds=0.0,
+            sample_rate=48000,
+            fft_size=self.fft_size,
+            update_rate_hz=self.update_rate_hz,
+            stale=True,
+            failure_reason="",
+        )
+        self._stop = threading.Event()
+        self._thread = None
+
+    def set_mode(self, mode):
+        normalized = str(mode or "off").strip().casefold().replace("_", "-")
+        if normalized in {"post", "post-eq", "output"}:
+            normalized = "post-eq"
+        elif normalized not in {"off"}:
+            raise ValueError("unsupported EQ spectrum mode")
+        self.mode = normalized
+        if normalized == "off":
+            self.close()
+            self._latest_snapshot = replace(
+                self._latest_snapshot,
+                active=False,
+                source_mode="off",
+                stale=True,
+                age_seconds=0.0,
+            )
+        return self.mode
+
+    def publish(self, samples, sample_rate):
+        if self.mode == "off":
+            return
+        self._ensure_worker()
+        source = np.asarray(samples, dtype=np.float32).reshape(-1)
+        frame = np.zeros(self.fft_size, dtype=np.float32)
+        if source.size:
+            count = min(source.size, self.fft_size)
+            frame[:count] = source[-count:]
+        self._capture_generation += 1
+        self._latest_frame = (self._capture_generation, int(sample_rate), self.clock(), frame)
+
+    def snapshot(self):
+        snap = self._latest_snapshot
+        if not snap.active:
+            return snap
+        age = max(0.0, self.clock() - snap.timestamp)
+        return replace(snap, age_seconds=age, stale=age > 1.0)
+
+    def close(self):
+        self._stop.set()
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=1.0)
+        self._thread = None
+        self._stop = threading.Event()
+
+    def _ensure_worker(self):
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, name="ParametricEqSpectrum", daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        interval = 1.0 / max(self.update_rate_hz, 1.0)
+        last_generation = -1
+        while not self._stop.wait(interval):
+            latest = self._latest_frame
+            if latest is None:
+                continue
+            capture_generation, sample_rate, timestamp, frame = latest
+            if capture_generation == last_generation:
+                continue
+            last_generation = capture_generation
+            try:
+                window = np.hanning(self.fft_size).astype(np.float32)
+                spectrum = np.fft.rfft(frame * window)
+                magnitude = np.abs(spectrum)
+                reference = max(float(np.max(magnitude)), 1.0e-9)
+                magnitude_db = np.clip(20.0 * np.log10(np.maximum(magnitude / reference, 1.0e-6)), -120.0, 0.0)
+                frequencies = np.fft.rfftfreq(self.fft_size, 1.0 / float(sample_rate))
+                self._analysis_generation += 1
+                self._latest_snapshot = ParametricEqSpectrumSnapshot(
+                    active=self.mode != "off",
+                    source_mode=self.mode,
+                    frequency_hz=tuple(float(value) for value in frequencies),
+                    output_magnitude_db=tuple(float(value) for value in magnitude_db),
+                    capture_generation=int(capture_generation),
+                    analysis_generation=int(self._analysis_generation),
+                    timestamp=float(timestamp),
+                    age_seconds=max(0.0, self.clock() - timestamp),
+                    sample_rate=int(sample_rate),
+                    fft_size=self.fft_size,
+                    update_rate_hz=self.update_rate_hz,
+                    stale=False,
+                    failure_reason="",
+                )
+            except Exception as exc:
+                self._latest_snapshot = replace(
+                    self._latest_snapshot,
+                    active=False,
+                    source_mode=self.mode,
+                    stale=True,
+                    failure_reason=str(exc),
+                )
+
+
 def validate_band_parameters(band_id, *, enabled=True, frequency_hz=None, gain_db=None, q=None, sample_rate=48000):
     definitions = {definition.band_id: definition for definition in default_band_definitions()}
     if band_id not in definitions:
@@ -672,6 +925,17 @@ def frequency_response(bank, frequencies_hz):
         denominator = 1.0 + a1 * z + a2 * z2
         response *= numerator / denominator
     return response
+
+
+def _visualization_frequency_grid(points=PARAMETRIC_EQ_VISUALIZATION_POINTS):
+    return tuple(float(value) for value in np.geomspace(20.0, 20000.0, int(points)))
+
+
+def _response_db_tuple(bank, frequencies):
+    response = frequency_response(bank, frequencies)
+    magnitudes = np.maximum(np.abs(response), 1.0e-12)
+    values = np.clip(20.0 * np.log10(magnitudes), -24.0, 24.0)
+    return tuple(float(value) for value in values)
 
 
 def _band_from_definition(definition, sample_rate):

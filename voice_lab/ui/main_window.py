@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QGroupBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from voice_lab.ui.parametric_eq_graph import ParametricEqGraph
 from voice_lab.ui.level_display import LevelDisplayModel
 
 
@@ -1353,95 +1355,123 @@ class App(QWidget):
         )
 
     def _build_parametric_eq_tab(self, layout):
-        title = QLabel("Manual Voice-Shaping EQ")
+        title = QLabel("Parametric EQ")
         title.setWordWrap(True)
         layout.addWidget(title)
-        note = QLabel("Manual and session-only. Spectral-tilt and character-plan automation are not active yet.")
+        note = QLabel("Manual Voice-Shaping EQ")
         note.setWordWrap(True)
         layout.addWidget(note)
+
         controls = QHBoxLayout()
         self.parametric_eq_enable = QCheckBox("Enable Parametric EQ")
         self.parametric_eq_enable.stateChanged.connect(lambda _state: self.set_parametric_eq_enabled())
+        self.parametric_eq_bypass = QCheckBox("Bypass EQ")
+        self.parametric_eq_bypass.stateChanged.connect(lambda _state: self.set_parametric_eq_bypassed())
         reset = QPushButton("Reset EQ to Flat")
         reset.clicked.connect(self.reset_parametric_eq_to_flat)
         defaults = QPushButton("Restore Default Band Positions")
         defaults.clicked.connect(self.restore_parametric_eq_defaults)
+        self.parametric_eq_analyzer_mode = QComboBox()
+        self.parametric_eq_analyzer_mode.addItem("Analyzer Off", "off")
+        self.parametric_eq_analyzer_mode.addItem("Post-EQ Spectrum", "post-eq")
+        self.parametric_eq_analyzer_mode.currentIndexChanged.connect(lambda _index: self.set_parametric_eq_spectrum_mode())
         controls.addWidget(self.parametric_eq_enable)
+        controls.addWidget(self.parametric_eq_bypass)
         controls.addWidget(reset)
         controls.addWidget(defaults)
+        controls.addWidget(QLabel("Analyzer"))
+        controls.addWidget(self.parametric_eq_analyzer_mode)
         layout.addLayout(controls)
+
+        self.parametric_eq_graph = ParametricEqGraph(self)
+        self.parametric_eq_graph.on_select = self.select_parametric_eq_band
+        self.parametric_eq_graph.on_drag = self.drag_parametric_eq_band
+        self.parametric_eq_graph.on_q_change = self.set_parametric_eq_band_q_value
+        self.parametric_eq_graph.on_reset = self.reset_parametric_eq_band
+        layout.addWidget(self.parametric_eq_graph, stretch=1)
+
+        inspector = QHBoxLayout()
+        self.parametric_eq_selected_band_id = "mid"
+        self.parametric_eq_band_title = QLabel("Mid Peak")
+        self.parametric_eq_band_title.setMinimumWidth(130)
+        self.parametric_eq_band_state = QLabel("")
+        self.parametric_eq_band_state.setWordWrap(True)
+        self.parametric_eq_frequency = QDoubleSpinBox()
+        self.parametric_eq_frequency.setRange(20.0, 20000.0)
+        self.parametric_eq_frequency.setDecimals(1)
+        self.parametric_eq_frequency.setSingleStep(10.0)
+        self.parametric_eq_frequency.valueChanged.connect(lambda _value: self.set_selected_parametric_eq_frequency())
+        self.parametric_eq_gain = QDoubleSpinBox()
+        self.parametric_eq_gain.setRange(-6.0, 6.0)
+        self.parametric_eq_gain.setDecimals(1)
+        self.parametric_eq_gain.setSingleStep(0.5)
+        self.parametric_eq_gain.valueChanged.connect(lambda _value: self.set_selected_parametric_eq_gain())
+        self.parametric_eq_q = QDoubleSpinBox()
+        self.parametric_eq_q.setRange(0.3, 6.0)
+        self.parametric_eq_q.setDecimals(2)
+        self.parametric_eq_q.setSingleStep(0.1)
+        self.parametric_eq_q.valueChanged.connect(lambda _value: self.set_selected_parametric_eq_q())
+        reset_band = QPushButton("Reset Band")
+        reset_band.clicked.connect(lambda: self.reset_parametric_eq_band(self.parametric_eq_selected_band_id))
+        inspector.addWidget(self.parametric_eq_band_title)
+        inspector.addWidget(QLabel("Hz"))
+        inspector.addWidget(self.parametric_eq_frequency)
+        inspector.addWidget(QLabel("dB"))
+        inspector.addWidget(self.parametric_eq_gain)
+        inspector.addWidget(QLabel("Q"))
+        inspector.addWidget(self.parametric_eq_q)
+        inspector.addWidget(reset_band)
+        layout.addLayout(inspector)
+        layout.addWidget(self.parametric_eq_band_state)
+
         self.parametric_eq_status = QLabel("Parametric EQ: disabled")
         self.parametric_eq_status.setWordWrap(True)
-        layout.addWidget(self.parametric_eq_status)
-        self.parametric_eq_band_widgets = {}
-        for band_id, name, frequency_range, q_enabled in (
-            ("low_shelf", "Low Shelf", (60.0, 250.0), False),
-            ("low_mid", "Low-Mid Peak", (150.0, 800.0), True),
-            ("mid", "Mid Peak", (500.0, 2500.0), True),
-            ("presence", "Presence Peak", (1500.0, 6000.0), True),
-            ("high_shelf", "High Shelf", (4000.0, 12000.0), False),
-        ):
-            layout.addWidget(QLabel(name))
-            row = QHBoxLayout()
-            frequency = QDoubleSpinBox()
-            frequency.setRange(frequency_range[0], frequency_range[1])
-            frequency.setDecimals(1)
-            frequency.setSingleStep(10.0)
-            frequency.valueChanged.connect(lambda _value, band_id=band_id: self.set_parametric_eq_band_frequency(band_id))
-            gain = QDoubleSpinBox()
-            gain.setRange(-6.0, 6.0)
-            gain.setDecimals(1)
-            gain.setSingleStep(0.5)
-            gain.valueChanged.connect(lambda _value, band_id=band_id: self.set_parametric_eq_band_gain(band_id))
-            q = QDoubleSpinBox()
-            q.setRange(0.3, 6.0)
-            q.setDecimals(2)
-            q.setSingleStep(0.1)
-            q.setEnabled(q_enabled)
-            q.valueChanged.connect(lambda _value, band_id=band_id: self.set_parametric_eq_band_q(band_id))
-            reset_band = QPushButton("Reset")
-            reset_band.clicked.connect(lambda _checked=False, band_id=band_id: self.reset_parametric_eq_band(band_id))
-            row.addWidget(QLabel("Hz"))
-            row.addWidget(frequency)
-            row.addWidget(QLabel("dB"))
-            row.addWidget(gain)
-            row.addWidget(QLabel("Q"))
-            row.addWidget(q)
-            row.addWidget(reset_band)
-            layout.addLayout(row)
-            state = QLabel("")
-            state.setWordWrap(True)
-            layout.addWidget(state)
-            self.parametric_eq_band_widgets[band_id] = {
-                "frequency": frequency,
-                "gain": gain,
-                "q": q,
-                "state": state,
-            }
+        self.parametric_eq_diagnostics = QGroupBox("Diagnostics")
+        self.parametric_eq_diagnostics.setCheckable(True)
+        self.parametric_eq_diagnostics.setChecked(False)
+        diagnostic_layout = QVBoxLayout(self.parametric_eq_diagnostics)
+        diagnostic_layout.addWidget(self.parametric_eq_status)
+        self.parametric_eq_band_table = QLabel("")
+        self.parametric_eq_band_table.setWordWrap(True)
+        diagnostic_layout.addWidget(self.parametric_eq_band_table)
+        layout.addWidget(self.parametric_eq_diagnostics)
 
     def refresh_parametric_eq(self):
         if not getattr(self, "parametric_eq_enabled", False):
             return
         try:
             snapshot = self.service.parametric_eq_snapshot()
+            visualization = self.service.parametric_eq_visualization_snapshot()
+            spectrum = self.service.parametric_eq_spectrum_snapshot()
         except Exception:
             return
-        if snapshot is None or not hasattr(self, "parametric_eq_status"):
+        if snapshot is None or visualization is None or not hasattr(self, "parametric_eq_status"):
             return
         plan = snapshot.get("applied_plan")
+        selected_band_id = visualization.selected_band_id
+        selected_band = next((band for band in plan.bands if band.band_id == selected_band_id), plan.bands[0])
         self._updating_parametric_eq = True
         try:
             self.parametric_eq_enable.setChecked(bool(plan.applied_enabled and not plan.requested_bypassed))
-            for band in plan.bands:
-                widgets = self.parametric_eq_band_widgets.get(band.band_id)
-                if not widgets:
-                    continue
-                widgets["frequency"].setValue(float(band.requested_frequency_hz))
-                widgets["gain"].setValue(float(band.requested_gain_db))
-                widgets["q"].setValue(float(band.requested_q))
+            self.parametric_eq_bypass.setChecked(bool(plan.requested_bypassed))
+            self.parametric_eq_selected_band_id = selected_band.band_id
+            self.parametric_eq_frequency.setRange(20.0, 20000.0)
+            self.parametric_eq_frequency.setValue(float(selected_band.requested_frequency_hz))
+            self.parametric_eq_gain.setValue(float(selected_band.requested_gain_db))
+            self.parametric_eq_q.setEnabled(selected_band.filter_type == "peaking")
+            self.parametric_eq_q.setValue(float(selected_band.requested_q))
+            self.parametric_eq_graph.set_snapshots(visualization, snapshot, spectrum)
         finally:
             self._updating_parametric_eq = False
         health = snapshot.backend_health
+        self.parametric_eq_band_title.setText(selected_band.display_name)
+        self.parametric_eq_band_state.setText(
+            f"{selected_band.filter_type} | requested/applied Hz "
+            f"{selected_band.requested_frequency_hz:.1f}/{selected_band.applied_frequency_hz:.1f} | "
+            f"requested/applied dB {selected_band.requested_gain_db:.1f}/{selected_band.applied_gain_db:.1f} | "
+            f"Q {selected_band.requested_q:.2f}/{selected_band.applied_q:.2f} | "
+            f"clamps f/g/q {selected_band.frequency_clamped}/{selected_band.gain_clamped}/{selected_band.q_clamped}"
+        )
         self.parametric_eq_status.setText(
             f"EQ {'enabled' if plan.applied_enabled and not plan.requested_bypassed else 'disabled'} | "
             f"flat {plan.flat} | active bands {plan.active_band_count} | "
@@ -1452,17 +1482,12 @@ class App(QWidget):
             f"local bypass {snapshot.local_bypass} | global bypass {snapshot.global_bypass} | "
             f"added latency {snapshot.added_latency_frames} frames"
         )
-        for band in plan.bands:
-            widgets = self.parametric_eq_band_widgets.get(band.band_id)
-            if not widgets:
-                continue
-            widgets["state"].setText(
-                f"{band.display_name}: {band.filter_type} | "
-                f"requested/applied Hz {band.requested_frequency_hz:.1f}/{band.applied_frequency_hz:.1f} | "
-                f"requested/applied dB {band.requested_gain_db:.1f}/{band.applied_gain_db:.1f} | "
-                f"Q {band.requested_q:.2f}/{band.applied_q:.2f} | "
-                f"clamps f/g/q {band.frequency_clamped}/{band.gain_clamped}/{band.q_clamped}"
+        self.parametric_eq_band_table.setText(
+            " | ".join(
+                f"{band.display_name}: {band.applied_frequency_hz:.1f} Hz, {band.applied_gain_db:.1f} dB, Q {band.applied_q:.2f}"
+                for band in plan.bands
             )
+        )
 
     def set_parametric_eq_enabled(self):
         if self._updating_parametric_eq or not getattr(self, "parametric_eq_enabled", False):
@@ -1470,25 +1495,57 @@ class App(QWidget):
         self.display_result(self.service.set_parametric_eq_enabled(self.parametric_eq_enable.isChecked()))
         self.refresh_parametric_eq()
 
-    def set_parametric_eq_band_frequency(self, band_id):
+    def set_parametric_eq_bypassed(self):
         if self._updating_parametric_eq or not getattr(self, "parametric_eq_enabled", False):
             return
-        value = self.parametric_eq_band_widgets[band_id]["frequency"].value()
-        self.display_result(self.service.set_parametric_eq_band_frequency(band_id, value))
+        self.display_result(self.service.set_parametric_eq_bypassed(self.parametric_eq_bypass.isChecked()))
         self.refresh_parametric_eq()
 
-    def set_parametric_eq_band_gain(self, band_id):
-        if self._updating_parametric_eq or not getattr(self, "parametric_eq_enabled", False):
+    def select_parametric_eq_band(self, band_id):
+        if not getattr(self, "parametric_eq_enabled", False):
             return
-        value = self.parametric_eq_band_widgets[band_id]["gain"].value()
-        self.display_result(self.service.set_parametric_eq_band_gain(band_id, value))
+        if hasattr(self.service, "set_parametric_eq_selected_band"):
+            self.service.set_parametric_eq_selected_band(band_id)
+        self.parametric_eq_selected_band_id = band_id
         self.refresh_parametric_eq()
 
-    def set_parametric_eq_band_q(self, band_id):
+    def drag_parametric_eq_band(self, band_id, frequency_hz, gain_db):
         if self._updating_parametric_eq or not getattr(self, "parametric_eq_enabled", False):
             return
-        value = self.parametric_eq_band_widgets[band_id]["q"].value()
-        self.display_result(self.service.set_parametric_eq_band_q(band_id, value))
+        self.service.set_parametric_eq_band_frequency(band_id, frequency_hz)
+        self.service.set_parametric_eq_band_gain(band_id, gain_db)
+        self.refresh_parametric_eq()
+
+    def set_parametric_eq_band_q_value(self, band_id, q):
+        if self._updating_parametric_eq or not getattr(self, "parametric_eq_enabled", False):
+            return
+        self.display_result(self.service.set_parametric_eq_band_q(band_id, q))
+        self.refresh_parametric_eq()
+
+    def set_selected_parametric_eq_frequency(self):
+        if self._updating_parametric_eq or not getattr(self, "parametric_eq_enabled", False):
+            return
+        self.display_result(self.service.set_parametric_eq_band_frequency(self.parametric_eq_selected_band_id, self.parametric_eq_frequency.value()))
+        self.refresh_parametric_eq()
+
+    def set_selected_parametric_eq_gain(self):
+        if self._updating_parametric_eq or not getattr(self, "parametric_eq_enabled", False):
+            return
+        self.display_result(self.service.set_parametric_eq_band_gain(self.parametric_eq_selected_band_id, self.parametric_eq_gain.value()))
+        self.refresh_parametric_eq()
+
+    def set_selected_parametric_eq_q(self):
+        if self._updating_parametric_eq or not getattr(self, "parametric_eq_enabled", False):
+            return
+        self.display_result(self.service.set_parametric_eq_band_q(self.parametric_eq_selected_band_id, self.parametric_eq_q.value()))
+        self.refresh_parametric_eq()
+
+    def set_parametric_eq_spectrum_mode(self):
+        if self._updating_parametric_eq or not getattr(self, "parametric_eq_enabled", False):
+            return
+        mode = self.parametric_eq_analyzer_mode.currentData()
+        if hasattr(self.service, "set_parametric_eq_spectrum_mode"):
+            self.display_result(self.service.set_parametric_eq_spectrum_mode(mode))
         self.refresh_parametric_eq()
 
     def reset_parametric_eq_band(self, band_id):
@@ -1932,6 +1989,8 @@ class App(QWidget):
             self.calibrate_lock_timer.stop()
         if hasattr(self, "parametric_eq_timer"):
             self.parametric_eq_timer.stop()
+        if getattr(self, "parametric_eq_enabled", False) and hasattr(self.service, "set_parametric_eq_spectrum_mode"):
+            self.service.set_parametric_eq_spectrum_mode("off")
         if self.on_close is not None:
             self.on_close()
         event.accept()

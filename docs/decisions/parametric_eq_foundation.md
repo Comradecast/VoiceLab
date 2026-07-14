@@ -10,11 +10,15 @@ overlapping processors.
 ## Decision
 
 - Add an isolated `--parametric-eq-lab` launch mode.
-- Build the mode on the accepted M9.3 lab path and add one Parametric EQ tab.
+- Build the mode on the accepted M9.3 lab path and add one graph-first
+  Parametric EQ tab. The original form-style five-row control surface was
+  rejected before live DSP acceptance.
 - Insert exactly one Parametric EQ stage after Experimental Pitch/Formant and
   before Robot. Limiter remains downstream.
 - Use five fixed-role bands: Low Shelf, Low-Mid Peak, Mid Peak, Presence Peak,
   and High Shelf.
+- Present those bands as five fixed draggable graph nodes with one selected-band
+  inspector. M9.4 does not support arbitrary band creation or deletion.
 - Use RBJ Audio EQ Cookbook biquad formulas implemented in the repository.
 - Design coefficients in the service/controller path, outside the audio
   callback.
@@ -23,6 +27,25 @@ overlapping processors.
   bounded dual-bank crossfade transition.
 - Keep manual EQ values, local bypass, and EQ enable state session-only.
 - Do not write settings, presets, calibration, lock, trim, or EQ files.
+
+## Visualization Policy
+
+- The Parametric EQ tab is graph-first: compact toolbar, large native Qt
+  frequency-response canvas, selected-band inspector, and collapsed Diagnostics.
+- The graph uses a logarithmic 20 Hz-20 kHz frequency axis, gain centered at
+  0 dB, five fixed nodes, combined audible response curve, and subdued/disabled
+  states for flat, local bypass, global bypass, and backend failure.
+- ApplicationService exposes bounded immutable visualization snapshots derived
+  from the same published coefficient bank used by DSP. The UI does not design
+  coefficients, duplicate RBJ formulas, or import the EQ effect.
+- Response snapshots use a fixed 256-point frequency grid and expose tuples, not
+  NumPy arrays or mutable histories. Polling the snapshot does not create a new
+  DSP generation.
+- A bounded optional Post-EQ spectrum display uses a one-slot latest-frame
+  mailbox and worker-side FFT. There is no FFT, UI work, queue accumulation, or
+  history accumulation in the callback. Input/output/both analyzer modes remain
+  deferred; M9.4 exposes Off and Post-EQ only.
+- Engineering telemetry remains available in a collapsed Diagnostics panel.
 
 ## Band Ranges
 

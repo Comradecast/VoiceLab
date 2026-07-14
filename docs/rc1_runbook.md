@@ -2359,6 +2359,10 @@ Expected launch and isolation behavior:
 - EQ starts disabled or flat-neutral.
 - All band gains start at 0 dB.
 - No EQ persistence is restored.
+- The Parametric EQ tab is graph-first: compact toolbar, large frequency
+  response graph, selected-band inspector, and collapsed Diagnostics panel.
+- The rejected form-style five-row primary editor should not be used for live
+  acceptance.
 - Normal mode, Formant Lab, Voice Analysis Lab, Target Planner Lab,
   Transformation Execution Lab, and Calibrate/Lock Lab remain unchanged.
 
@@ -2388,6 +2392,10 @@ High-Pass
 
 Manual EQ controls:
 
+- Drag one of the five fixed graph nodes to adjust frequency and gain.
+- Use the selected-band inspector for precise frequency, gain, and peak-band Q.
+- Mouse wheel over a selected peak node adjusts Q; Shift provides finer control.
+- Double-click a node or use Reset Band to restore one band.
 - Low Shelf: body/chest weight, 60-250 Hz, +/-6 dB.
 - Low-Mid Peak: mud/boxiness, 150-800 Hz, +/-6 dB, Q 0.3-6.0.
 - Mid Peak: nasal/central color, 500-2500 Hz, +/-6 dB, Q 0.3-6.0.
@@ -2395,6 +2403,17 @@ Manual EQ controls:
   Q 0.3-6.0.
 - High Shelf: brightness/air, 4000-12000 Hz, +/-6 dB, capped safely below
   Nyquist.
+
+Visualization expectations:
+
+- The response curve is derived from a bounded immutable ApplicationService
+  visualization snapshot based on the applied coefficient bank.
+- The UI does not calculate EQ coefficients and does not import the EQ effect.
+- Optional spectrum display is Post-EQ only in M9.4. Input, Output, and Both
+  analyzer modes remain deferred.
+- Spectrum analysis uses a bounded one-slot latest-frame mailbox and worker-side
+  FFT; it is visualization-only and does not affect audio or source analysis.
+- Diagnostics are available but collapsed by default.
 
 Expected flat and bypass behavior:
 

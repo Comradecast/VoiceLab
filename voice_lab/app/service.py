@@ -413,6 +413,50 @@ class ApplicationService(QObject):
         self.telemetry.set_metadata("parametric_eq", snapshot.asdict())
         return snapshot
 
+    def parametric_eq_visualization_snapshot(self):
+        if not self.parametric_eq_lab_enabled:
+            return None
+        snapshot = self.parametric_eq_controller.visualization_snapshot(global_bypass=self.effects_bypassed)
+        self.telemetry.set_metadata("parametric_eq_visualization", snapshot.asdict())
+        return snapshot
+
+    def parametric_eq_spectrum_snapshot(self):
+        if not self.parametric_eq_lab_enabled:
+            return None
+        snapshot = self.parametric_eq_controller.spectrum_snapshot()
+        self.telemetry.set_metadata("parametric_eq_spectrum", snapshot.asdict())
+        return snapshot
+
+    def set_parametric_eq_spectrum_mode(self, mode):
+        if not self.parametric_eq_lab_enabled:
+            result = CommandResult.fail("Parametric EQ Lab is not enabled.")
+            self.telemetry.record_command_result("set_parametric_eq_spectrum_mode", result)
+            return result
+        try:
+            applied = self.parametric_eq_controller.set_spectrum_mode(mode)
+        except ValueError as exc:
+            result = CommandResult.fail(str(exc))
+            self.telemetry.record_command_result("set_parametric_eq_spectrum_mode", result)
+            return result
+        result = CommandResult.ok(f"Parametric EQ analyzer {applied}.", parametric_eq_spectrum=self.parametric_eq_spectrum_snapshot())
+        self.telemetry.record_command_result("set_parametric_eq_spectrum_mode", result)
+        return result
+
+    def set_parametric_eq_selected_band(self, band_id):
+        if not self.parametric_eq_lab_enabled:
+            result = CommandResult.fail("Parametric EQ Lab is not enabled.")
+            self.telemetry.record_command_result("set_parametric_eq_selected_band", result)
+            return result
+        try:
+            selected = self.parametric_eq_controller.set_selected_band(band_id)
+        except ValueError as exc:
+            result = CommandResult.fail(str(exc))
+            self.telemetry.record_command_result("set_parametric_eq_selected_band", result)
+            return result
+        result = CommandResult.ok("Parametric EQ band selected.", selected_band_id=selected)
+        self.telemetry.record_command_result("set_parametric_eq_selected_band", result)
+        return result
+
     def set_parametric_eq_enabled(self, enabled):
         if not self.parametric_eq_lab_enabled:
             result = CommandResult.fail("Parametric EQ Lab is not enabled.")

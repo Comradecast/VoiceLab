@@ -1,4 +1,5 @@
 import dataclasses
+import inspect
 import math
 import os
 import threading
@@ -6,6 +7,8 @@ import time
 import unittest
 
 import numpy as np
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QMouseEvent, QPixmap, QWheelEvent
 from PySide6.QtWidgets import QApplication
 
 from voice_lab.app.service import ApplicationService
@@ -23,6 +26,13 @@ from voice_lab.parametric_eq import (
 )
 from voice_lab.planner import HIGHER_BRIGHTER_REFERENCE, LOWER_WEIGHTIER_REFERENCE
 from voice_lab.tests.test_m9_3_calibrate_lock import calibrate_and_lock, make_service, process_blocks, ready_source
+from voice_lab.ui.parametric_eq_graph import (
+    adjusted_q_from_wheel,
+    frequency_to_x,
+    gain_to_y,
+    x_to_frequency,
+    y_to_gain,
+)
 from voice_lab.ui.main_window import App
 
 
@@ -492,6 +502,149 @@ class M94ProcessingAndIntegrationTests(unittest.TestCase):
         self.assertFalse(service.parametric_eq_snapshot().transition_active)
         self.assertEqual(service.operator_preferences(), preferences)
         self.assertEqual(service.custom_preset_names(), presets)
+
+    def test_graph_coordinate_helpers_are_logarithmic_and_reversible(self):
+        app = qt_application()
+        window = App(make_service(parametric_eq_lab=True))
+        try:
+            rect = window.parametric_eq_graph.plot_rect()
+            if rect.width() <= 0:
+                window.parametric_eq_graph.resize(900, 360)
+                window.parametric_eq_graph.repaint()
+                rect = window.parametric_eq_graph._current_plot_rect()
+            for hz in (20, 60, 120, 300, 1000, 3000, 8000, 12000, 20000):
+                mapped = x_to_frequency(frequency_to_x(hz, rect), rect)
+                self.assertAlmostEqual(mapped, hz, delta=max(0.02, hz * 0.001))
+            for gain in (-12, -6, 0, 6, 12):
+                mapped = y_to_gain(gain_to_y(gain, rect), rect)
+                self.assertAlmostEqual(mapped, gain, places=6)
+            self.assertGreater(adjusted_q_from_wheel(1.0, 120), 1.0)
+            self.assertLess(adjusted_q_from_wheel(1.0, -120), 1.0)
+            self.assertLess(adjusted_q_from_wheel(1.0, 120, fine=True) - 1.0, adjusted_q_from_wheel(1.0, 120) - 1.0)
+        finally:
+            window.close()
+            app.processEvents()
+
+    def test_graph_editor_replaces_five_row_form_and_renders_offscreen(self):
+        app = qt_application()
+        service = make_service(parametric_eq_lab=True)
+        window = App(service)
+        try:
+            self.assertTrue(hasattr(window, "parametric_eq_graph"))
+            self.assertFalse(hasattr(window, "parametric_eq_band_widgets"))
+            self.assertEqual(window.parametric_eq_graph.node_count(), 5)
+            self.assertEqual(tuple(b.band_id for b in window.parametric_eq_graph.bands), PARAMETRIC_EQ_BAND_ORDER)
+            self.assertFalse(window.parametric_eq_diagnostics.isChecked())
+            self.assertEqual(window.parametric_eq_band_title.text(), "Mid Peak")
+            pixmap = QPixmap(900, 420)
+            window.parametric_eq_graph.resize(900, 360)
+            window.parametric_eq_graph.render(pixmap)
+            image = pixmap.toImage()
+            colors = {
+                image.pixelColor(x, y).rgb()
+                for x in range(0, image.width(), 90)
+                for y in range(0, image.height(), 70)
+            }
+            self.assertGreater(len(colors), 3)
+            window.resize(720, 620)
+            window.parametric_eq_graph.resize(620, 280)
+            window.parametric_eq_graph.render(QPixmap(620, 280))
+            window.resize(1280, 760)
+            window.parametric_eq_graph.resize(1100, 420)
+            window.parametric_eq_graph.render(QPixmap(1100, 420))
+        finally:
+            window.close()
+            app.processEvents()
+
+    def test_graph_selection_drag_wheel_reset_and_visual_states_use_service(self):
+        app = qt_application()
+        service = make_service(parametric_eq_lab=True)
+        window = App(service)
+        try:
+            graph = window.parametric_eq_graph
+            graph.resize(900, 360)
+            window.select_parametric_eq_band("presence")
+            self.assertEqual(window.parametric_eq_selected_band_id, "presence")
+            self.assertEqual(service.parametric_eq_visualization_snapshot().selected_band_id, "presence")
+            window.drag_parametric_eq_band("presence", 30000.0, 9.0)
+            band = service.parametric_eq_snapshot().applied_plan.bands[3]
+            self.assertTrue(band.frequency_clamped)
+            self.assertTrue(band.gain_clamped)
+            self.assertEqual(band.applied_gain_db, 6.0)
+            window.set_parametric_eq_band_q_value("presence", 2.5)
+            self.assertEqual(service.parametric_eq_snapshot().applied_plan.bands[3].applied_q, 2.5)
+            window.reset_parametric_eq_band("presence")
+            self.assertEqual(service.parametric_eq_snapshot().applied_plan.bands[3].applied_gain_db, 0.0)
+            service.set_parametric_eq_enabled(True)
+            service.set_parametric_eq_band_gain("mid", 4.0)
+            settle_parametric_eq(service)
+            window.refresh_parametric_eq()
+            self.assertIn("enabled", window.parametric_eq_status.text())
+            service.set_parametric_eq_bypassed(True)
+            window.refresh_parametric_eq()
+            self.assertTrue(service.parametric_eq_visualization_snapshot().local_bypass)
+            service.set_effects_bypassed(True)
+            window.refresh_parametric_eq()
+            self.assertTrue(service.parametric_eq_visualization_snapshot().global_bypass)
+            effect = parametric_eq_effect(service)
+            effect._runtime_status = dataclasses.replace(effect._runtime_status, failure_reason="forced display failure")
+            service.parametric_eq_controller.record_runtime_status(effect._runtime_status)
+            window.refresh_parametric_eq()
+            self.assertEqual(service.parametric_eq_visualization_snapshot().backend_status, "failed")
+        finally:
+            window.close()
+            app.processEvents()
+
+    def test_visualization_response_is_cached_immutable_and_matches_applied_bank(self):
+        service = make_service(parametric_eq_lab=True)
+        first = service.parametric_eq_visualization_snapshot()
+        second = service.parametric_eq_visualization_snapshot()
+        self.assertIs(first, second)
+        self.assertIsInstance(first.frequency_hz, tuple)
+        self.assertIsInstance(first.response_db, tuple)
+        self.assertEqual(len(first.frequency_hz), 256)
+        np.testing.assert_allclose(first.response_db, np.zeros(len(first.response_db)), atol=1e-9)
+        service.set_parametric_eq_enabled(True)
+        service.set_parametric_eq_band_gain("mid", 6.0)
+        active = service.parametric_eq_visualization_snapshot()
+        bank = service.parametric_eq_controller.coefficient_bank()
+        expected = 20.0 * np.log10(np.maximum(np.abs(frequency_response(bank, active.frequency_hz)), 1.0e-12))
+        np.testing.assert_allclose(active.response_db, expected, atol=1e-9)
+        self.assertNotEqual(active.response_db, first.response_db)
+        service.reset_parametric_eq_to_flat()
+        flat = service.parametric_eq_visualization_snapshot()
+        np.testing.assert_allclose(flat.response_db, np.zeros(len(flat.response_db)), atol=1e-9)
+        self.assertEqual(service.parametric_eq_visualization_snapshot().coefficient_generation, flat.coefficient_generation)
+        self.assertEqual(service.parametric_eq_controller.retained_counts(), {"plans": 1, "coefficient_banks": 1, "transitions": 1})
+
+    def test_post_eq_spectrum_is_bounded_finite_and_has_no_callback_fft(self):
+        source = inspect.getsource(parametric_eq_effect(make_service(parametric_eq_lab=True)).process)
+        self.assertNotIn("fft", source.casefold())
+        service = make_service(parametric_eq_lab=True)
+        before_threads = [thread.name for thread in threading.enumerate()]
+        self.assertTrue(service.set_parametric_eq_spectrum_mode("post-eq").success)
+        t = np.arange(4096, dtype=np.float32) / SAMPLE_RATE
+        sine = (0.5 * np.sin(2.0 * np.pi * 1000.0 * t)).astype(np.float32)
+        for _ in range(8):
+            service.parametric_eq_controller.publish_spectrum_frame(sine, SAMPLE_RATE)
+            time.sleep(0.03)
+        spectrum = service.parametric_eq_spectrum_snapshot()
+        self.assertTrue(spectrum.active)
+        self.assertEqual(spectrum.source_mode, "post-eq")
+        self.assertEqual(spectrum.fft_size, 2048)
+        self.assertGreater(spectrum.analysis_generation, 0)
+        self.assertLessEqual(spectrum.capture_generation - spectrum.analysis_generation, spectrum.capture_generation)
+        self.assertTrue(np.all(np.isfinite(np.array(spectrum.output_magnitude_db))))
+        peak_hz = spectrum.frequency_hz[int(np.argmax(np.array(spectrum.output_magnitude_db)))]
+        self.assertLess(abs(peak_hz - 1000.0), 80.0)
+        service.parametric_eq_controller.publish_spectrum_frame(np.zeros(2048, dtype=np.float32), SAMPLE_RATE)
+        time.sleep(0.06)
+        silence = service.parametric_eq_spectrum_snapshot()
+        self.assertTrue(np.all(np.array(silence.output_magnitude_db) <= 0.0))
+        self.assertTrue(service.set_parametric_eq_spectrum_mode("off").success)
+        time.sleep(0.05)
+        after_threads = [thread.name for thread in threading.enumerate()]
+        self.assertEqual(before_threads, after_threads)
 
 
 if __name__ == "__main__":

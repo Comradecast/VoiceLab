@@ -1937,11 +1937,23 @@ It does not change normal production mode, prior lab chains, production
 characters, settings schema, presets schema, M9.1 planner formulas, M9.2
 execution mapping, M9.3 lock authority, or Signalsmith configuration.
 
+The original form-style Parametric EQ tab was rejected before live DSP
+acceptance. The accepted M9.4 interaction model is a graph-first visual EQ
+editor with five fixed draggable nodes, one selected-band inspector, compact
+global controls, optional Post-EQ spectrum visualization, and diagnostics
+collapsed by default.
+
 ### Scope
 
 - Launches only with `main.py --parametric-eq-lab`.
 - Includes Source Analysis, Target Planner, Plan Execution, Calibrate & Lock,
   and Parametric EQ tabs.
+- Parametric EQ is presented as a native Qt frequency-response graph, not a
+  five-row primary form.
+- Uses a bounded immutable 256-point visualization snapshot derived from the
+  applied coefficient bank as the graph source of truth.
+- Adds a bounded optional Post-EQ spectrum display using a one-slot latest-frame
+  mailbox and worker-side FFT; Input/Output/Both spectrum modes remain deferred.
 - Adds exactly one Parametric EQ stage after Experimental Pitch/Formant and
   before Robot. Limiter remains downstream.
 - Uses one final manual EQ plan authority owned by `ParametricEqController`.
@@ -1977,9 +1989,11 @@ execution mapping, M9.3 lock authority, or Signalsmith configuration.
   band and five-band cascade behavior, dynamic updates, local/global bypass,
   invalid-plan preservation, neutral/bypass transition settling, Reset Flat
   during transition, global-bypass pending/resume behavior, runtime-failure
-  transition clearing, mode and chain isolation, guarded UI exposure, M9.3
-  authority isolation, session-only state, bounded 1,000-operation updates,
-  and lifecycle thread shutdown.
+  transition clearing, graph coordinate mapping, graph rendering, node
+  selection/drag/Q/reset, response-snapshot truthfulness, bounded Post-EQ
+  spectrum behavior, mode and chain isolation, guarded UI exposure, M9.3
+  authority isolation, session-only state, bounded 1,000-operation updates, and
+  lifecycle thread shutdown.
 - Planner `parametric_eq` remains unsupported in M9.4.
 - Planner `spectral_tilt_shaping` remains unsupported in M9.4.
 - Spectral-tilt execution is deferred and must map into this EQ authority in a
