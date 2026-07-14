@@ -115,6 +115,7 @@ class ParametricEqApplicationSnapshot:
     requested_plan: ParametricEqPlan
     applied_plan: ParametricEqPlan
     transition_active: bool
+    transition_pending: bool
     transition_progress: float
     local_bypass: bool
     global_bypass: bool
@@ -258,12 +259,13 @@ class ParametricEqController:
             lab="Experimental - Parametric EQ",
             requested_plan=self._requested_plan,
             applied_plan=self._applied_plan,
-            transition_active=bool(runtime.transition_active),
+            transition_active=bool(runtime.transition_active and not global_bypass),
+            transition_pending=bool(runtime.transition_active and global_bypass),
             transition_progress=float(runtime.transition_progress),
-            local_bypass=self._requested_plan.requested_bypassed or not self._requested_plan.applied_enabled,
+            local_bypass=bool(runtime.local_bypass or self._requested_plan.requested_bypassed or not self._requested_plan.applied_enabled),
             global_bypass=bool(global_bypass),
             coefficient_generation=self._coefficient_bank.coefficient_generation,
-            processing_active=bool(runtime.processing_active),
+            processing_active=bool(runtime.processing_active and not global_bypass),
             backend_health=health,
             failure_reason=runtime.failure_reason,
             reset_generation=self._reset_generation,
@@ -429,6 +431,7 @@ class ParametricEqEffect(Effect):
         self._transition_total = 0
         self._transition_done = 0
         self._active_generation = None
+        self._active_dry = True
         self._reset_generation = 0
         self._runtime_status = ParametricEqRuntimeStatus()
 
@@ -436,10 +439,11 @@ class ParametricEqEffect(Effect):
         source = np.asarray(mono, dtype=np.float32)
         try:
             bank = self.controller.coefficient_bank()
-            self._ensure_processor(bank, int(sample_rate))
             local_bypass = self.controller.local_bypass()
             flat = bool(bank.flat)
-            if local_bypass or flat:
+            dry_target = bool(local_bypass or flat)
+            self._ensure_processor(bank, int(sample_rate), dry_target=dry_target)
+            if dry_target and not self._transition_active():
                 output = source.astype(np.float32, copy=False)
                 self._publish_status(
                     bank,
@@ -457,17 +461,23 @@ class ParametricEqEffect(Effect):
                 bank,
                 sample_rate,
                 frames,
-                processing_active=True,
-                local_bypass=False,
-                flat=False,
+                processing_active=(not dry_target) or self._transition_active(),
+                local_bypass=local_bypass,
+                flat=flat,
             )
             return output.astype(np.float32, copy=False)
         except Exception as exc:
+            self._clear_transition()
+            self._active_processor = None
+            self._active_generation = None
+            self._active_dry = True
             self._runtime_status = replace(
                 self._runtime_status,
                 backend_status="failed",
                 failure_reason=str(exc),
                 processing_active=False,
+                transition_active=False,
+                transition_progress=1.0,
                 local_bypass=True,
             )
             self.controller.record_runtime_status(self._runtime_status)
@@ -486,6 +496,7 @@ class ParametricEqEffect(Effect):
         self._transition_total = 0
         self._transition_done = 0
         self._active_generation = None
+        self._active_dry = True
         self._reset_generation += 1
         self._runtime_status = replace(
             self._runtime_status,
@@ -498,24 +509,28 @@ class ParametricEqEffect(Effect):
         )
         self.controller.record_runtime_status(self._runtime_status)
 
-    def _ensure_processor(self, bank, sample_rate):
+    def _ensure_processor(self, bank, sample_rate, *, dry_target):
         if bank.sample_rate != int(sample_rate):
             raise RuntimeError("Parametric EQ coefficient sample rate does not match callback sample rate")
         if self._active_generation is None:
-            self._active_processor = _BiquadCascade(bank.sections)
+            target_processor = _DryPath() if dry_target else _BiquadCascade(bank.sections)
+            self._active_processor = target_processor
             self._active_generation = bank.coefficient_generation
+            self._active_dry = bool(dry_target)
             return
         if self._active_generation == bank.coefficient_generation:
             return
+        target_processor = _DryPath() if dry_target else _BiquadCascade(bank.sections)
         self._transition_old = self._active_processor
-        self._transition_new = _BiquadCascade(bank.sections)
+        self._transition_new = target_processor
         self._transition_total = max(1, int(round((self.transition_ms / 1000.0) * float(sample_rate))))
         self._transition_done = 0
         self._active_processor = self._transition_new
         self._active_generation = bank.coefficient_generation
+        self._active_dry = bool(dry_target)
 
     def _process_with_transition(self, source):
-        if self._transition_old is None or self._transition_new is None:
+        if not self._transition_active():
             return self._active_processor.process(source)
         old = self._transition_old.process(source)
         new = self._transition_new.process(source)
@@ -526,13 +541,12 @@ class ParametricEqEffect(Effect):
         output = old * (1.0 - weights) + new * weights
         self._transition_done += count
         if self._transition_done >= self._transition_total:
-            self._transition_old = None
-            self._transition_new = None
+            self._clear_transition()
             self._transition_done = self._transition_total
         return output.astype(np.float32)
 
     def _publish_status(self, bank, sample_rate, frames, *, processing_active, local_bypass, flat):
-        transition_active = self._transition_old is not None and self._transition_new is not None
+        transition_active = self._transition_active()
         progress = 1.0
         if self._transition_total > 0 and transition_active:
             progress = min(1.0, self._transition_done / float(self._transition_total))
@@ -554,6 +568,20 @@ class ParametricEqEffect(Effect):
             added_latency_frames=PARAMETRIC_EQ_ADDED_LATENCY_FRAMES,
         )
         self.controller.record_runtime_status(self._runtime_status)
+
+    def _transition_active(self):
+        return self._transition_old is not None and self._transition_new is not None
+
+    def _clear_transition(self):
+        self._transition_old = None
+        self._transition_new = None
+        self._transition_total = 0
+        self._transition_done = 0
+
+
+class _DryPath:
+    def process(self, source):
+        return np.asarray(source, dtype=np.float32).astype(np.float32, copy=False)
 
 
 class _BiquadCascade:

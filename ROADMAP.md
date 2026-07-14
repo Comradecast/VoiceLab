@@ -1949,7 +1949,13 @@ execution mapping, M9.3 lock authority, or Signalsmith configuration.
   Peak, and High Shelf bands.
 - Designs coefficients outside the audio callback and publishes one latest
   immutable coefficient bank to the effect.
-- Uses a bounded dual-bank crossfade transition for coefficient changes.
+- Uses a bounded dual-path crossfade transition for coefficient, flat, local
+  bypass, disable, and re-enable changes. Dry/neutral endpoints are explicit
+  transition destinations, so neutralizing commands settle and do not leave
+  stale transition telemetry.
+- Global Bypass Effects bypasses EQ immediately, reports any in-flight EQ
+  transition as pending rather than audibly progressing, and lets the latest
+  requested EQ state settle after bypass release.
 - Reports zero added algorithmic latency for Parametric EQ.
 - Keeps EQ values, enable/bypass state, and plans session-only with no
   persistence.
@@ -1969,9 +1975,11 @@ execution mapping, M9.3 lock authority, or Signalsmith configuration.
   bands, validation and clamp behavior, nonfinite rejection, stable finite
   coefficients, directional frequency responses, flat neutrality, individual
   band and five-band cascade behavior, dynamic updates, local/global bypass,
-  invalid-plan preservation, mode and chain isolation, guarded UI exposure,
-  M9.3 authority isolation, session-only state, bounded 1,000-operation
-  updates, and lifecycle thread shutdown.
+  invalid-plan preservation, neutral/bypass transition settling, Reset Flat
+  during transition, global-bypass pending/resume behavior, runtime-failure
+  transition clearing, mode and chain isolation, guarded UI exposure, M9.3
+  authority isolation, session-only state, bounded 1,000-operation updates,
+  and lifecycle thread shutdown.
 - Planner `parametric_eq` remains unsupported in M9.4.
 - Planner `spectral_tilt_shaping` remains unsupported in M9.4.
 - Spectral-tilt execution is deferred and must map into this EQ authority in a

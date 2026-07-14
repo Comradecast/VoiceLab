@@ -2403,6 +2403,13 @@ Expected flat and bypass behavior:
 - Local EQ bypass passes audio through EQ unchanged while retaining values.
 - Global Bypass Effects remains the top-level bypass authority.
 - Reset EQ to Flat restores neutrality.
+- Active-to-flat, active-to-local-bypass, flat-to-active, disable, and re-enable
+  changes settle through a bounded dry/wet transition. After the transition,
+  `transition_active` is false, `transition_progress` is settled, and flat,
+  local-bypass, and processing-active states are truthful.
+- While Global Bypass Effects is active, EQ audio is bypassed immediately and
+  EQ transitions are reported as pending rather than audibly progressing. After
+  global bypass is released, the latest requested EQ state resumes and settles.
 
 Expected band-audibility checks:
 
@@ -2421,11 +2428,14 @@ Expected dynamic stability checks while speaking continuously:
 
 - Move gain, frequency, and Q controls.
 - Toggle EQ.
+- Toggle local EQ bypass and global Bypass Effects.
 - Reset individual bands.
 - Reset EQ to Flat.
 - Confirm no crackle, zipper noise, pop, unstable ringing, sudden volume
   explosion, stream restart, or growing delay.
 - Transitions should settle promptly.
+- Reset Flat or local bypass during a transition should supersede the previous
+  destination and leave no stale transition telemetry.
 
 Expected M9.3 interaction:
 

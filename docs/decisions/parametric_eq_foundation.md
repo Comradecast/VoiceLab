@@ -42,6 +42,22 @@ overlapping processors.
   values are clamped and reported.
 - Runtime processing failure local-bypasses EQ and reports failed backend state
   without stopping the audio path.
+- Active-to-flat, active-to-local-bypass, flat-to-active, and disable/enable
+  changes use the same bounded dry/wet transition path as coefficient changes.
+  The current wet bank and dry path crossfade for the configured transition
+  duration, then the old path is retired and transition telemetry reports
+  inactive.
+- Flat-to-flat changes do not retain processor state or an active transition.
+- New commands during a transition supersede the previous destination; the
+  runtime keeps only one current path and one destination path, so UI updates do
+  not accumulate a transition queue.
+- Global Bypass Effects remains immediate and top-level. While global bypass is
+  active, EQ audio is bypassed by the engine, audible transition progress is not
+  claimed, and any bounded EQ transition is reported as pending. Releasing
+  global bypass resumes processing the latest requested EQ state and settles the
+  transition normally.
+- Stop/reset clears active transition processors and runtime failure clears
+  transition state into a truthful failed, locally bypassed snapshot.
 - Stop/Start retains session EQ values and local enabled/bypass state; relaunch
   returns to flat disabled EQ.
 

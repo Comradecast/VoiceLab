@@ -1447,6 +1447,7 @@ class App(QWidget):
             f"flat {plan.flat} | active bands {plan.active_band_count} | "
             f"plan #{plan.plan_generation} | coefficients #{plan.coefficient_generation} | "
             f"transition {snapshot.transition_active} ({snapshot.transition_progress:.2f}) | "
+            f"pending {getattr(snapshot, 'transition_pending', False)} | "
             f"processing {snapshot.processing_active} | backend {health.backend_status} | "
             f"local bypass {snapshot.local_bypass} | global bypass {snapshot.global_bypass} | "
             f"added latency {snapshot.added_latency_frames} frames"

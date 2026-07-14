@@ -58,6 +58,37 @@ def band_dict(band_id, frequency_hz=None, gain_db=0.0, q=1.0, enabled=True):
     }
 
 
+def parametric_eq_effect(service):
+    return next(effect for effect in service.engine.effects if getattr(effect, "name", "") == "Parametric EQ")
+
+
+def settle_parametric_eq(service, samples=None, block=256, extra_blocks=1):
+    data = sine_mix(4096) if samples is None else samples
+    chunks = []
+    blocks = int(math.ceil(len(data) / float(block))) + extra_blocks
+    for index in range(blocks):
+        start = (index * block) % len(data)
+        chunk = data[start : start + block]
+        if len(chunk) < block:
+            chunk = np.concatenate((chunk, data[: block - len(chunk)]))
+        chunks.append(service.engine.process_voice(chunk.copy(), len(chunk)))
+    return np.concatenate(chunks)
+
+
+def assert_eq_transition_settled(testcase, service, *, flat=None, local_bypass=None, processing_active=None):
+    snapshot = service.parametric_eq_snapshot()
+    testcase.assertFalse(snapshot.transition_active)
+    testcase.assertFalse(getattr(snapshot, "transition_pending", False))
+    testcase.assertEqual(snapshot.transition_progress, 1.0)
+    if flat is not None:
+        testcase.assertEqual(snapshot.applied_plan.flat, flat)
+    if local_bypass is not None:
+        testcase.assertEqual(snapshot.local_bypass, local_bypass)
+    if processing_active is not None:
+        testcase.assertEqual(snapshot.processing_active, processing_active)
+    return snapshot
+
+
 class M94ContractValidationAndCoefficientTests(unittest.TestCase):
     def test_contracts_are_frozen_scalar_snapshots_with_five_ordered_bands(self):
         service = make_service(parametric_eq_lab=True)
@@ -302,6 +333,165 @@ class M94ProcessingAndIntegrationTests(unittest.TestCase):
         self.assertIn("TransformationExecutionController", during)
         self.assertEqual(before, after)
         self.assertIsInstance(snapshot.applied_plan.bands[0], ParametricEqBandParameters)
+
+    def test_neutral_reset_transition_settles_and_reenable_flat_stays_truthful(self):
+        service = make_service(parametric_eq_lab=True)
+        service.set_parametric_eq_enabled(True)
+        service.set_parametric_eq_band_gain("mid", 6.0)
+        settle_parametric_eq(service)
+        assert_eq_transition_settled(self, service, flat=False, local_bypass=False, processing_active=True)
+
+        self.assertTrue(service.reset_parametric_eq_to_flat().success)
+        progress = []
+        output = []
+        for _ in range(6):
+            output.append(settle_parametric_eq(service, sine_mix(256), block=256, extra_blocks=0))
+            progress.append(service.parametric_eq_snapshot().transition_progress)
+        self.assertTrue(np.all(np.isfinite(np.concatenate(output))))
+        self.assertGreater(max(progress), min(progress))
+        snapshot = assert_eq_transition_settled(self, service, flat=True, local_bypass=True, processing_active=False)
+        self.assertFalse(snapshot.applied_plan.applied_enabled)
+
+        self.assertTrue(service.set_parametric_eq_enabled(True).success)
+        settle_parametric_eq(service)
+        assert_eq_transition_settled(self, service, flat=True, local_bypass=False, processing_active=False)
+
+    def test_local_bypass_transitions_settle_preserve_settings_and_latest_wins(self):
+        service = make_service(parametric_eq_lab=True)
+        service.set_parametric_eq_enabled(True)
+        service.set_parametric_eq_band_gain("presence", 4.0)
+        settle_parametric_eq(service)
+        before = service.parametric_eq_snapshot().applied_plan.bands[3]
+
+        self.assertTrue(service.set_parametric_eq_bypassed(True).success)
+        settle_parametric_eq(service)
+        bypassed = assert_eq_transition_settled(self, service, flat=False, local_bypass=True, processing_active=False)
+        self.assertEqual(bypassed.applied_plan.bands[3].applied_gain_db, before.applied_gain_db)
+
+        self.assertTrue(service.set_parametric_eq_bypassed(False).success)
+        settle_parametric_eq(service)
+        active = assert_eq_transition_settled(self, service, flat=False, local_bypass=False, processing_active=True)
+        self.assertEqual(active.applied_plan.bands[3].applied_gain_db, before.applied_gain_db)
+
+        self.assertTrue(service.set_parametric_eq_band_gain("mid", 5.0).success)
+        service.engine.process_voice(sine_mix(128), 128)
+        self.assertTrue(service.parametric_eq_snapshot().transition_active)
+        self.assertTrue(service.set_parametric_eq_bypassed(True).success)
+        self.assertTrue(service.set_parametric_eq_bypassed(False).success)
+        settle_parametric_eq(service)
+        latest = assert_eq_transition_settled(self, service, flat=False, local_bypass=False, processing_active=True)
+        self.assertEqual(latest.applied_plan.bands[2].applied_gain_db, 5.0)
+        self.assertEqual(service.parametric_eq_controller.retained_counts(), {"plans": 1, "coefficient_banks": 1, "transitions": 1})
+
+    def test_reset_and_reenable_supersede_active_transitions_without_stale_state(self):
+        service = make_service(parametric_eq_lab=True)
+        service.set_parametric_eq_enabled(True)
+        service.set_parametric_eq_band_gain("low_shelf", 4.0)
+        settle_parametric_eq(service)
+
+        self.assertTrue(service.set_parametric_eq_band_gain("presence", 6.0).success)
+        service.engine.process_voice(sine_mix(128), 128)
+        self.assertTrue(service.parametric_eq_snapshot().transition_active)
+        self.assertTrue(service.reset_parametric_eq_to_flat().success)
+        settle_parametric_eq(service)
+        flat = assert_eq_transition_settled(self, service, flat=True, local_bypass=True, processing_active=False)
+        self.assertEqual(flat.applied_plan.active_band_count, 0)
+        effect = parametric_eq_effect(service)
+        self.assertIsNone(effect._transition_old)
+        self.assertIsNone(effect._transition_new)
+
+        service.set_parametric_eq_band_gain("mid", 3.0)
+        service.set_parametric_eq_enabled(True)
+        settle_parametric_eq(service)
+        active = assert_eq_transition_settled(self, service, flat=False, local_bypass=False, processing_active=True)
+        self.assertEqual(active.applied_plan.bands[2].applied_gain_db, 3.0)
+
+    def test_global_bypass_pauses_transition_reporting_and_release_settles(self):
+        service = make_service(parametric_eq_lab=True)
+        service.set_parametric_eq_enabled(True)
+        service.set_parametric_eq_band_gain("mid", 4.0)
+        settle_parametric_eq(service)
+
+        service.set_parametric_eq_band_gain("presence", 6.0)
+        service.engine.process_voice(sine_mix(128), 128)
+        self.assertTrue(service.parametric_eq_snapshot().transition_active)
+        self.assertTrue(service.set_effects_bypassed(True).success)
+        globally_bypassed = service.parametric_eq_snapshot()
+        self.assertTrue(globally_bypassed.global_bypass)
+        self.assertFalse(globally_bypassed.transition_active)
+        self.assertTrue(globally_bypassed.transition_pending)
+        self.assertFalse(globally_bypassed.processing_active)
+
+        self.assertTrue(service.set_effects_bypassed(False).success)
+        settle_parametric_eq(service)
+        settled = assert_eq_transition_settled(self, service, flat=False, local_bypass=False, processing_active=True)
+        self.assertEqual(settled.applied_plan.bands[3].applied_gain_db, 6.0)
+
+    def test_stop_start_and_runtime_failure_clear_transition_state(self):
+        service = make_service(parametric_eq_lab=True)
+        service.set_parametric_eq_enabled(True)
+        service.set_parametric_eq_band_gain("mid", 4.0)
+        settle_parametric_eq(service)
+        service.set_parametric_eq_band_gain("mid", -4.0)
+        service.engine.process_voice(sine_mix(128), 128)
+        self.assertTrue(service.parametric_eq_snapshot().transition_active)
+        service.engine.stop()
+        stopped = assert_eq_transition_settled(self, service, flat=False, local_bypass=False, processing_active=False)
+        self.assertEqual(stopped.backend_health.backend_status, "active")
+        settle_parametric_eq(service)
+        assert_eq_transition_settled(self, service, flat=False, local_bypass=False, processing_active=True)
+
+        service.set_parametric_eq_band_gain("presence", 5.0)
+        service.engine.process_voice(sine_mix(128), 128)
+        effect = parametric_eq_effect(service)
+
+        class FailingPath:
+            def process(self, source):
+                raise RuntimeError("forced EQ transition failure")
+
+        effect._transition_new = FailingPath()
+        output = service.engine.process_voice(sine_mix(256), 256)
+        self.assertTrue(np.all(np.isfinite(output)))
+        failed = service.parametric_eq_snapshot()
+        self.assertFalse(failed.transition_active)
+        self.assertEqual(failed.backend_health.backend_status, "failed")
+        self.assertTrue(failed.backend_health.failed)
+        self.assertTrue(failed.local_bypass)
+        service.engine.stop()
+        settle_parametric_eq(service)
+        recovered = service.parametric_eq_snapshot()
+        self.assertEqual(recovered.backend_health.backend_status, "active")
+        self.assertFalse(recovered.transition_active)
+
+    def test_rapid_transition_mix_remains_bounded_without_stale_telemetry(self):
+        service = make_service(parametric_eq_lab=True)
+        service.set_parametric_eq_enabled(True)
+        preferences = service.operator_preferences()
+        presets = service.custom_preset_names()
+        for index in range(1000):
+            band = PARAMETRIC_EQ_BAND_ORDER[index % len(PARAMETRIC_EQ_BAND_ORDER)]
+            self.assertTrue(service.set_parametric_eq_band_gain(band, (index % 13) - 6).success)
+            self.assertTrue(service.set_parametric_eq_band_frequency(band, 100.0 + index).success)
+            if band in {"low_mid", "mid", "presence"}:
+                self.assertTrue(service.set_parametric_eq_band_q(band, 0.3 + (index % 50) / 10.0).success)
+            if index % 31 == 0:
+                self.assertTrue(service.set_parametric_eq_bypassed(index % 62 == 0).success)
+            if index % 47 == 0:
+                self.assertTrue(service.set_parametric_eq_enabled(index % 94 != 0).success)
+            if index % 71 == 0:
+                self.assertTrue(service.reset_parametric_eq_to_flat().success)
+            if index % 97 == 0:
+                service.set_effects_bypassed(True)
+                service.set_effects_bypassed(False)
+            if index % 113 == 0:
+                service.engine.stop()
+            service.engine.process_voice(sine_mix(128), 128)
+        output = settle_parametric_eq(service)
+        self.assertTrue(np.all(np.isfinite(output)))
+        self.assertEqual(service.parametric_eq_controller.retained_counts(), {"plans": 1, "coefficient_banks": 1, "transitions": 1})
+        self.assertFalse(service.parametric_eq_snapshot().transition_active)
+        self.assertEqual(service.operator_preferences(), preferences)
+        self.assertEqual(service.custom_preset_names(), presets)
 
 
 if __name__ == "__main__":
