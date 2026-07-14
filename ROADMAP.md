@@ -1943,6 +1943,13 @@ editor with five fixed draggable nodes, one selected-band inspector, compact
 global controls, optional Post-EQ spectrum visualization, and diagnostics
 collapsed by default.
 
+Accessible interaction scaling was added after initial live use showed the
+original precise graph movements were too subtle for Luke to audition reliably.
+Graph drag is coarse by default, Shift provides fine adjustment, the graph
+shows compact Coarse/Fine value feedback during interaction, the inspector
+offers explicit fine stepping, and whole-EQ A/B is prominent through the
+existing local bypass authority. DSP ranges and behavior are unchanged.
+
 ### Scope
 
 - Launches only with `main.py --parametric-eq-lab`.
@@ -1989,11 +1996,12 @@ collapsed by default.
   band and five-band cascade behavior, dynamic updates, local/global bypass,
   invalid-plan preservation, neutral/bypass transition settling, Reset Flat
   during transition, global-bypass pending/resume behavior, runtime-failure
-  transition clearing, graph coordinate mapping, graph rendering, node
-  selection/drag/Q/reset, response-snapshot truthfulness, bounded Post-EQ
-  spectrum behavior, mode and chain isolation, guarded UI exposure, M9.3
-  authority isolation, session-only state, bounded 1,000-operation updates, and
-  lifecycle thread shutdown.
+  transition clearing, graph coordinate mapping, graph rendering, accessible
+  coarse/fine quantization, value overlay feedback, inspector step behavior,
+  prominent whole-EQ A/B, node selection/drag/Q/reset, response-snapshot
+  truthfulness, bounded Post-EQ spectrum behavior, mode and chain isolation,
+  guarded UI exposure, M9.3 authority isolation, session-only state, bounded
+  1,000-operation updates, and lifecycle thread shutdown.
 - Planner `parametric_eq` remains unsupported in M9.4.
 - Planner `spectral_tilt_shaping` remains unsupported in M9.4.
 - Spectral-tilt execution is deferred and must map into this EQ authority in a

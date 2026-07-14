@@ -2393,9 +2393,18 @@ High-Pass
 Manual EQ controls:
 
 - Drag one of the five fixed graph nodes to adjust frequency and gain.
+- Normal graph drag uses coarse audible steps: gain snaps to 0.5 dB,
+  and frequency snaps to practical band-dependent Hz increments.
+- Hold Shift while dragging for fine adjustment: gain snaps to 0.1 dB
+  and frequency uses smaller band-dependent Hz increments.
 - Use the selected-band inspector for precise frequency, gain, and peak-band Q.
-- Mouse wheel over a selected peak node adjusts Q; Shift provides finer control.
+- Mouse wheel over a selected peak node adjusts Q in 0.25 steps; Shift uses
+  0.05 steps. Shelf bands keep fixed slope/Q behavior.
 - Double-click a node or use Reset Band to restore one band.
+- The graph displays a compact interaction overlay with band name, frequency,
+  gain, Q for peak bands, and Coarse/Fine mode while adjusting.
+- Use the prominent whole-EQ A/B control, EQ ON / BYPASS, to compare processed
+  EQ against dry local-bypassed EQ without losing stored EQ values.
 - Low Shelf: body/chest weight, 60-250 Hz, +/-6 dB.
 - Low-Mid Peak: mud/boxiness, 150-800 Hz, +/-6 dB, Q 0.3-6.0.
 - Mid Peak: nasal/central color, 500-2500 Hz, +/-6 dB, Q 0.3-6.0.
@@ -2455,6 +2464,22 @@ Expected dynamic stability checks while speaking continuously:
 - Transitions should settle promptly.
 - Reset Flat or local bypass during a transition should supersede the previous
   destination and leave no stale transition telemetry.
+
+Focused accessibility check:
+
+1. Set one band to 0 dB.
+2. Drag normally upward and confirm visible 0.5 dB gain steps.
+3. Hold Shift and confirm visible 0.1 dB gain steps.
+4. Use whole-EQ A/B to compare processed versus bypassed sound.
+5. Confirm normal adjustment produces an audible tonal change within a few
+   movements.
+6. Confirm fine mode permits precise finishing.
+7. Confirm no pops, buzz, zipper noise, stream restart, or growing delay.
+
+Known separate live finding: the nasal/vowel resonance artifact heard on words
+such as "weird" is attributed to upstream pitch/formant transformation behavior
+with transformation execution active and EQ bypassed. It is not an M9.4
+Parametric EQ defect and should not be hidden with static EQ.
 
 Expected M9.3 interaction:
 

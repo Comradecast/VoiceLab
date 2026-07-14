@@ -1,7 +1,7 @@
 import math
 
-from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
 
@@ -42,10 +42,57 @@ def y_to_gain(y, rect, minimum_db=-12.0, maximum_db=12.0):
     return float(float(maximum_db) - ratio * (float(maximum_db) - float(minimum_db)))
 
 
+def _finite_number(value, label):
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{label} must be finite")
+    return number
+
+
+def _round_half_away_from_zero(value):
+    if value >= 0.0:
+        return math.floor(value + 0.5)
+    return math.ceil(value - 0.5)
+
+
+def _quantize(value, step, decimals):
+    scaled = _finite_number(value, "value") / float(step)
+    quantized = _round_half_away_from_zero(scaled) * float(step)
+    return round(quantized, int(decimals))
+
+
+def quantize_gain_db(value, fine=False):
+    """Quantize graph gain movement without changing DSP limits."""
+    return _quantize(value, 0.1 if fine else 0.5, 1)
+
+
+def frequency_step_hz(frequency_hz, fine=False):
+    frequency = abs(_finite_number(frequency_hz, "frequency"))
+    if frequency < 200.0:
+        return 1.0 if fine else 5.0
+    if frequency < 1000.0:
+        return 5.0 if fine else 10.0
+    if frequency < 4000.0:
+        return 10.0 if fine else 25.0
+    return 25.0 if fine else 50.0
+
+
+def quantize_frequency_hz(value, fine=False):
+    """Snap graph frequency movement to useful audible increments."""
+    step = frequency_step_hz(value, fine=fine)
+    return _quantize(value, step, 1)
+
+
+def quantize_q(value, fine=False):
+    """Quantize peak-band Q interaction; service validation owns limits."""
+    return _quantize(value, 0.05 if fine else 0.25, 2)
+
+
 def adjusted_q_from_wheel(q, wheel_delta, fine=False, minimum=0.3, maximum=6.0):
-    step = 0.03 if fine else 0.15
+    step = 0.05 if fine else 0.25
     notches = float(wheel_delta) / 120.0
-    return min(float(maximum), max(float(minimum), float(q) + notches * step))
+    adjusted = quantize_q(float(q) + notches * step, fine=fine)
+    return min(float(maximum), max(float(minimum), adjusted))
 
 
 class ParametricEqGraph(QWidget):
@@ -65,6 +112,10 @@ class ParametricEqGraph(QWidget):
         self.on_reset = None
         self._dragging = False
         self._plot_rect = QRectF()
+        self._interaction_overlay = ()
+        self._overlay_timer = QTimer(self)
+        self._overlay_timer.setSingleShot(True)
+        self._overlay_timer.timeout.connect(self._clear_interaction_overlay)
 
     def node_count(self):
         return len(self.bands)
@@ -98,6 +149,7 @@ class ParametricEqGraph(QWidget):
         self._draw_response(painter, rect)
         self._draw_nodes(painter, rect)
         self._draw_state_label(painter, rect)
+        self._draw_interaction_overlay(painter, rect)
 
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
@@ -114,15 +166,14 @@ class ParametricEqGraph(QWidget):
     def mouseMoveEvent(self, event):
         if self._dragging and self.selected_band_id:
             rect = self._current_plot_rect()
-            frequency = x_to_frequency(event.position().x(), rect)
-            gain = y_to_gain(event.position().y(), rect)
-            if event.modifiers() & Qt.ShiftModifier:
-                current = self._band(self.selected_band_id)
-                if current is not None:
-                    frequency = current.requested_frequency_hz + (frequency - current.requested_frequency_hz) * 0.25
-                    gain = current.requested_gain_db + (gain - current.requested_gain_db) * 0.25
+            fine = bool(event.modifiers() & Qt.ShiftModifier)
+            frequency = quantize_frequency_hz(x_to_frequency(event.position().x(), rect), fine=fine)
+            gain = quantize_gain_db(y_to_gain(event.position().y(), rect), fine=fine)
+            current = self._band(self.selected_band_id)
             if self.on_drag is not None:
                 self.on_drag(self.selected_band_id, frequency, gain)
+            if current is not None:
+                self._show_interaction_overlay(current, frequency, gain, current.requested_q, fine=fine, persistent=True)
             return
         band = self._nearest_band(event.position())
         self.hover_band_id = None if band is None else band.band_id
@@ -131,6 +182,7 @@ class ParametricEqGraph(QWidget):
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._dragging = False
+            self._overlay_timer.start(900)
 
     def mouseDoubleClickEvent(self, event):
         band = self._nearest_band(event.position())
@@ -145,6 +197,14 @@ class ParametricEqGraph(QWidget):
         q = adjusted_q_from_wheel(band.requested_q, event.angleDelta().y(), fine=fine)
         if self.on_q_change is not None:
             self.on_q_change(band.band_id, q)
+        self._show_interaction_overlay(
+            band,
+            band.requested_frequency_hz,
+            band.requested_gain_db,
+            q,
+            fine=fine,
+            persistent=False,
+        )
         event.accept()
 
     def keyPressEvent(self, event):
@@ -154,13 +214,21 @@ class ParametricEqGraph(QWidget):
         step_gain = 0.1 if event.modifiers() & Qt.ShiftModifier else 0.5
         step_freq = 1.01 if event.modifiers() & Qt.ShiftModifier else 1.05
         if event.key() == Qt.Key_Up:
-            self.on_drag(band.band_id, band.requested_frequency_hz, band.requested_gain_db + step_gain)
+            gain = quantize_gain_db(band.requested_gain_db + step_gain, fine=bool(event.modifiers() & Qt.ShiftModifier))
+            self.on_drag(band.band_id, band.requested_frequency_hz, gain)
+            self._show_interaction_overlay(band, band.requested_frequency_hz, gain, band.requested_q, fine=bool(event.modifiers() & Qt.ShiftModifier))
         elif event.key() == Qt.Key_Down:
-            self.on_drag(band.band_id, band.requested_frequency_hz, band.requested_gain_db - step_gain)
+            gain = quantize_gain_db(band.requested_gain_db - step_gain, fine=bool(event.modifiers() & Qt.ShiftModifier))
+            self.on_drag(band.band_id, band.requested_frequency_hz, gain)
+            self._show_interaction_overlay(band, band.requested_frequency_hz, gain, band.requested_q, fine=bool(event.modifiers() & Qt.ShiftModifier))
         elif event.key() == Qt.Key_Left:
-            self.on_drag(band.band_id, band.requested_frequency_hz / step_freq, band.requested_gain_db)
+            frequency = quantize_frequency_hz(band.requested_frequency_hz / step_freq, fine=bool(event.modifiers() & Qt.ShiftModifier))
+            self.on_drag(band.band_id, frequency, band.requested_gain_db)
+            self._show_interaction_overlay(band, frequency, band.requested_gain_db, band.requested_q, fine=bool(event.modifiers() & Qt.ShiftModifier))
         elif event.key() == Qt.Key_Right:
-            self.on_drag(band.band_id, band.requested_frequency_hz * step_freq, band.requested_gain_db)
+            frequency = quantize_frequency_hz(band.requested_frequency_hz * step_freq, fine=bool(event.modifiers() & Qt.ShiftModifier))
+            self.on_drag(band.band_id, frequency, band.requested_gain_db)
+            self._show_interaction_overlay(band, frequency, band.requested_gain_db, band.requested_q, fine=bool(event.modifiers() & Qt.ShiftModifier))
 
     def _current_plot_rect(self):
         return QRectF(56, 18, max(120, self.width() - 82), max(120, self.height() - 56))
@@ -259,6 +327,45 @@ class ParametricEqGraph(QWidget):
         painter.setPen(QColor("#d8dee9"))
         painter.setFont(QFont("Segoe UI", 9))
         painter.drawText(QPointF(rect.left(), rect.top() - 4), " | ".join(labels))
+
+    def _draw_interaction_overlay(self, painter, rect):
+        if not self._interaction_overlay:
+            return
+        lines = tuple(str(line) for line in self._interaction_overlay)
+        font = QFont("Segoe UI", 9)
+        painter.setFont(font)
+        metrics = QFontMetrics(font)
+        width = max(metrics.horizontalAdvance(line) for line in lines) + 18
+        height = metrics.height() * len(lines) + 14
+        box = QRectF(rect.right() - width - 10, rect.top() + 10, width, height)
+        painter.setBrush(QColor(20, 24, 28, 225))
+        painter.setPen(QPen(QColor("#d8dee9"), 1))
+        painter.drawRoundedRect(box, 4, 4)
+        painter.setPen(QColor("#f6f8fa"))
+        y = box.top() + 8 + metrics.ascent()
+        for line in lines:
+            painter.drawText(QPointF(box.left() + 9, y), line)
+            y += metrics.height()
+
+    def _show_interaction_overlay(self, band, frequency_hz, gain_db, q, *, fine=False, persistent=False):
+        lines = [
+            band.display_name,
+            f"{float(frequency_hz):.1f} Hz",
+            f"{float(gain_db):+.1f} dB",
+        ]
+        if band.filter_type == "peaking":
+            lines.append(f"Q {float(q):.2f}")
+        lines.append("Fine" if fine else "Coarse")
+        self._interaction_overlay = tuple(lines)
+        if persistent:
+            self._overlay_timer.stop()
+        else:
+            self._overlay_timer.start(900)
+        self.update()
+
+    def _clear_interaction_overlay(self):
+        self._interaction_overlay = ()
+        self.update()
 
     def _nearest_band(self, position):
         nearest = None

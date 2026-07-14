@@ -19,6 +19,19 @@ overlapping processors.
   and High Shelf.
 - Present those bands as five fixed draggable graph nodes with one selected-band
   inspector. M9.4 does not support arbitrary band creation or deletion.
+- Use coarse graph interaction by default for practical audible audition:
+  gain snaps to 0.5 dB during normal drag and 0.1 dB with Shift; frequency
+  snaps to practical band-dependent Hz increments during normal drag and finer
+  band-dependent increments with Shift; mouse-wheel Q uses 0.25 steps normally
+  and 0.05 with Shift.
+- Keep direct numeric inspector entry available for precise bounded values,
+  with explicit fine stepping for finishing.
+- Provide visible interaction feedback that names the band, current values, and
+  Coarse/Fine mode, plus visible graph guidance for drag, wheel, Shift, and
+  double-click reset.
+- Make whole-EQ A/B comparison prominent through the existing local bypass
+  authority. Bypass preserves EQ values and remains subordinate to global
+  Bypass Effects.
 - Use RBJ Audio EQ Cookbook biquad formulas implemented in the repository.
 - Design coefficients in the service/controller path, outside the audio
   callback.

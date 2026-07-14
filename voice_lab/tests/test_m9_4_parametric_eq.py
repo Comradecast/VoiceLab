@@ -8,7 +8,7 @@ import unittest
 
 import numpy as np
 from PySide6.QtCore import QPoint, QPointF, Qt
-from PySide6.QtGui import QMouseEvent, QPixmap, QWheelEvent
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication
 
 from voice_lab.app.service import ApplicationService
@@ -28,8 +28,12 @@ from voice_lab.planner import HIGHER_BRIGHTER_REFERENCE, LOWER_WEIGHTIER_REFEREN
 from voice_lab.tests.test_m9_3_calibrate_lock import calibrate_and_lock, make_service, process_blocks, ready_source
 from voice_lab.ui.parametric_eq_graph import (
     adjusted_q_from_wheel,
+    frequency_step_hz,
     frequency_to_x,
     gain_to_y,
+    quantize_frequency_hz,
+    quantize_gain_db,
+    quantize_q,
     x_to_frequency,
     y_to_gain,
 )
@@ -85,6 +89,38 @@ def settle_parametric_eq(service, samples=None, block=256, extra_blocks=1):
     return np.concatenate(chunks)
 
 
+class _FakeMouseEvent:
+    def __init__(self, position, modifiers=Qt.NoModifier, button=Qt.LeftButton):
+        self._position = position
+        self._modifiers = modifiers
+        self._button = button
+
+    def position(self):
+        return self._position
+
+    def modifiers(self):
+        return self._modifiers
+
+    def button(self):
+        return self._button
+
+
+class _FakeWheelEvent:
+    def __init__(self, delta, modifiers=Qt.NoModifier):
+        self._delta = delta
+        self._modifiers = modifiers
+        self.accepted = False
+
+    def angleDelta(self):
+        return QPoint(0, self._delta)
+
+    def modifiers(self):
+        return self._modifiers
+
+    def accept(self):
+        self.accepted = True
+
+
 def assert_eq_transition_settled(testcase, service, *, flat=None, local_bypass=None, processing_active=None):
     snapshot = service.parametric_eq_snapshot()
     testcase.assertFalse(snapshot.transition_active)
@@ -100,6 +136,62 @@ def assert_eq_transition_settled(testcase, service, *, flat=None, local_bypass=N
 
 
 class M94ContractValidationAndCoefficientTests(unittest.TestCase):
+    def test_accessible_quantization_helpers_are_deterministic(self):
+        self.assertEqual(quantize_gain_db(2.26, fine=False), 2.5)
+        self.assertEqual(quantize_gain_db(2.24, fine=False), 2.0)
+        self.assertEqual(quantize_gain_db(-2.26, fine=False), -2.5)
+        self.assertEqual(quantize_gain_db(-2.24, fine=False), -2.0)
+        self.assertEqual(quantize_gain_db(2.26, fine=True), 2.3)
+        self.assertEqual(quantize_gain_db(-2.26, fine=True), -2.3)
+        self.assertEqual(quantize_gain_db(0.0), 0.0)
+        self.assertEqual(quantize_gain_db(0.25), 0.5)
+        self.assertEqual(quantize_gain_db(-0.25), -0.5)
+        service = make_service(parametric_eq_lab=True)
+        self.assertTrue(service.set_parametric_eq_band_gain("mid", quantize_gain_db(99.0)).success)
+        self.assertEqual(service.parametric_eq_snapshot().applied_plan.bands[2].applied_gain_db, 6.0)
+        self.assertTrue(service.set_parametric_eq_band_gain("mid", quantize_gain_db(-99.0)).success)
+        self.assertEqual(service.parametric_eq_snapshot().applied_plan.bands[2].applied_gain_db, -6.0)
+
+        frequency_cases = (
+            (60.0, False, 60.0),
+            (62.6, False, 65.0),
+            (62.6, True, 63.0),
+            (120.0, False, 120.0),
+            (199.0, False, 200.0),
+            (199.0, True, 199.0),
+            (200.0, False, 200.0),
+            (300.0, False, 300.0),
+            (999.0, False, 1000.0),
+            (999.0, True, 1000.0),
+            (1000.0, False, 1000.0),
+            (3000.0, False, 3000.0),
+            (3999.0, False, 4000.0),
+            (3999.0, True, 4000.0),
+            (4000.0, False, 4000.0),
+            (8000.0, False, 8000.0),
+            (12000.0, False, 12000.0),
+        )
+        for value, fine, expected in frequency_cases:
+            self.assertEqual(quantize_frequency_hz(value, fine=fine), expected)
+        self.assertEqual(frequency_step_hz(120.0, fine=False), 5.0)
+        self.assertEqual(frequency_step_hz(120.0, fine=True), 1.0)
+        self.assertEqual(frequency_step_hz(300.0, fine=False), 10.0)
+        self.assertEqual(frequency_step_hz(3000.0, fine=False), 25.0)
+        self.assertEqual(frequency_step_hz(8000.0, fine=True), 25.0)
+        self.assertTrue(service.set_parametric_eq_band_frequency("low_shelf", quantize_frequency_hz(10.0)).success)
+        self.assertEqual(service.parametric_eq_snapshot().applied_plan.bands[0].applied_frequency_hz, 60.0)
+
+        self.assertEqual(quantize_q(1.13, fine=False), 1.25)
+        self.assertEqual(quantize_q(1.13, fine=True), 1.15)
+        self.assertEqual(adjusted_q_from_wheel(1.0, 120), 1.25)
+        self.assertEqual(adjusted_q_from_wheel(1.0, -120), 0.75)
+        self.assertEqual(adjusted_q_from_wheel(1.0, 120, fine=True), 1.05)
+        self.assertEqual(adjusted_q_from_wheel(0.31, -120), 0.3)
+        self.assertEqual(adjusted_q_from_wheel(5.95, 120), 6.0)
+        for helper in (quantize_gain_db, quantize_frequency_hz, quantize_q):
+            with self.assertRaises(ValueError):
+                helper(math.nan)
+
     def test_contracts_are_frozen_scalar_snapshots_with_five_ordered_bands(self):
         service = make_service(parametric_eq_lab=True)
         snapshot = service.parametric_eq_snapshot()
@@ -556,6 +648,79 @@ class M94ProcessingAndIntegrationTests(unittest.TestCase):
             window.close()
             app.processEvents()
 
+    def test_graph_drag_wheel_overlay_and_inspector_use_coarse_fine_accessible_steps(self):
+        app = qt_application()
+        service = make_service(parametric_eq_lab=True)
+        window = App(service)
+        try:
+            graph = window.parametric_eq_graph
+            graph.resize(900, 360)
+            window.refresh_parametric_eq()
+            window.select_parametric_eq_band("presence")
+            rect = graph._current_plot_rect()
+
+            graph._dragging = True
+            graph.selected_band_id = "presence"
+            coarse_point = QPointF(
+                frequency_to_x(3026.0, rect),
+                gain_to_y(2.26, rect),
+            )
+            graph.mouseMoveEvent(_FakeMouseEvent(coarse_point))
+            band = service.parametric_eq_snapshot().applied_plan.bands[3]
+            self.assertEqual(band.requested_frequency_hz, 3025.0)
+            self.assertEqual(band.requested_gain_db, 2.5)
+            self.assertIn("Coarse", graph._interaction_overlay)
+            self.assertIn("+2.5 dB", graph._interaction_overlay)
+
+            fine_point = QPointF(
+                frequency_to_x(3026.0, rect),
+                gain_to_y(2.26, rect),
+            )
+            graph.mouseMoveEvent(_FakeMouseEvent(fine_point, modifiers=Qt.ShiftModifier))
+            band = service.parametric_eq_snapshot().applied_plan.bands[3]
+            self.assertEqual(band.requested_frequency_hz, 3030.0)
+            self.assertEqual(band.requested_gain_db, 2.3)
+            self.assertIn("Fine", graph._interaction_overlay)
+            graph.mouseReleaseEvent(_FakeMouseEvent(fine_point))
+
+            window.set_parametric_eq_band_q_value("presence", 1.0)
+            graph.wheelEvent(_FakeWheelEvent(120))
+            band = service.parametric_eq_snapshot().applied_plan.bands[3]
+            self.assertEqual(band.requested_q, 1.25)
+            self.assertIn("Coarse", graph._interaction_overlay)
+
+            window.set_parametric_eq_band_q_value("presence", 1.0)
+            graph.wheelEvent(_FakeWheelEvent(120, modifiers=Qt.ShiftModifier))
+            band = service.parametric_eq_snapshot().applied_plan.bands[3]
+            self.assertEqual(band.requested_q, 1.05)
+            self.assertIn("Fine", graph._interaction_overlay)
+
+            window.select_parametric_eq_band("low_shelf")
+            graph.wheelEvent(_FakeWheelEvent(120))
+            shelf = service.parametric_eq_snapshot().applied_plan.bands[0]
+            self.assertEqual(shelf.requested_q, 1.0)
+
+            window.select_parametric_eq_band("presence")
+            self.assertEqual(window.parametric_eq_gain.singleStep(), 0.5)
+            self.assertEqual(window.parametric_eq_q.singleStep(), 0.25)
+            self.assertEqual(window.parametric_eq_frequency.singleStep(), 25.0)
+            window.parametric_eq_fine_steps.setChecked(True)
+            self.assertEqual(window.parametric_eq_gain.singleStep(), 0.1)
+            self.assertEqual(window.parametric_eq_q.singleStep(), 0.05)
+            self.assertEqual(window.parametric_eq_frequency.singleStep(), 10.0)
+
+            window.parametric_eq_gain.setValue(2.3)
+            window.set_selected_parametric_eq_gain()
+            self.assertEqual(service.parametric_eq_snapshot().applied_plan.bands[3].requested_gain_db, 2.3)
+            window.parametric_eq_q.setValue(1.37)
+            window.set_selected_parametric_eq_q()
+            self.assertEqual(service.parametric_eq_snapshot().applied_plan.bands[3].requested_q, 1.37)
+            self.assertIn("requested/applied", window.parametric_eq_band_state.text())
+            self.assertIn("clamps f/g/q", window.parametric_eq_band_state.text())
+        finally:
+            window.close()
+            app.processEvents()
+
     def test_graph_selection_drag_wheel_reset_and_visual_states_use_service(self):
         app = qt_application()
         service = make_service(parametric_eq_lab=True)
@@ -591,6 +756,42 @@ class M94ProcessingAndIntegrationTests(unittest.TestCase):
             service.parametric_eq_controller.record_runtime_status(effect._runtime_status)
             window.refresh_parametric_eq()
             self.assertEqual(service.parametric_eq_visualization_snapshot().backend_status, "failed")
+        finally:
+            window.close()
+            app.processEvents()
+
+    def test_prominent_ab_control_uses_local_bypass_and_preserves_plan(self):
+        app = qt_application()
+        service = make_service(parametric_eq_lab=True)
+        window = App(service)
+        try:
+            self.assertEqual(window.parametric_eq_ab_on.text(), "EQ ON")
+            self.assertEqual(window.parametric_eq_bypass.text(), "BYPASS")
+            service.set_parametric_eq_enabled(True)
+            service.set_parametric_eq_band_gain("mid", 4.0)
+            service.set_parametric_eq_band_frequency("mid", 1200.0)
+            settle_parametric_eq(service)
+            window.refresh_parametric_eq()
+            before = service.parametric_eq_snapshot().applied_plan.bands[2]
+
+            window.set_parametric_eq_ab(True)
+            bypassed = service.parametric_eq_snapshot()
+            self.assertTrue(bypassed.local_bypass)
+            self.assertTrue(bypassed.requested_plan.requested_bypassed)
+            self.assertEqual(bypassed.applied_plan.bands[2].requested_gain_db, before.requested_gain_db)
+            self.assertTrue(window.parametric_eq_bypass.isChecked())
+
+            window.set_parametric_eq_ab(False)
+            restored = service.parametric_eq_snapshot()
+            self.assertFalse(restored.local_bypass)
+            self.assertFalse(restored.requested_plan.requested_bypassed)
+            self.assertEqual(restored.applied_plan.bands[2].requested_gain_db, before.requested_gain_db)
+            self.assertTrue(window.parametric_eq_ab_on.isChecked())
+
+            service.set_effects_bypassed(True)
+            window.refresh_parametric_eq()
+            self.assertTrue(service.parametric_eq_snapshot().global_bypass)
+            self.assertFalse(service.parametric_eq_snapshot().requested_plan.requested_bypassed)
         finally:
             window.close()
             app.processEvents()
