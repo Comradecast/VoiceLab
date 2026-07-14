@@ -1,0 +1,308 @@
+import dataclasses
+import math
+import os
+import threading
+import time
+import unittest
+
+import numpy as np
+from PySide6.QtWidgets import QApplication
+
+from voice_lab.app.service import ApplicationService
+from voice_lab.parametric_eq import (
+    PARAMETRIC_EQ_BAND_ORDER,
+    PARAMETRIC_EQ_TRANSITION_MS,
+    ParametricEqApplicationSnapshot,
+    ParametricEqBandParameters,
+    ParametricEqPlan,
+    default_band_definitions,
+    design_coefficient_bank,
+    flat_band_parameters,
+    frequency_response,
+    validate_band_parameters,
+)
+from voice_lab.planner import HIGHER_BRIGHTER_REFERENCE, LOWER_WEIGHTIER_REFERENCE
+from voice_lab.tests.test_m9_3_calibrate_lock import calibrate_and_lock, make_service, process_blocks, ready_source
+from voice_lab.ui.main_window import App
+
+
+SAMPLE_RATE = 48000
+
+
+def qt_application():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    return QApplication.instance() or QApplication([])
+
+
+def sine_mix(samples=8192):
+    t = np.arange(samples, dtype=np.float32) / SAMPLE_RATE
+    data = (
+        0.12 * np.sin(2.0 * np.pi * 120.0 * t)
+        + 0.08 * np.sin(2.0 * np.pi * 300.0 * t)
+        + 0.07 * np.sin(2.0 * np.pi * 1000.0 * t)
+        + 0.05 * np.sin(2.0 * np.pi * 3000.0 * t)
+        + 0.03 * np.sin(2.0 * np.pi * 8000.0 * t)
+    )
+    return data.astype(np.float32)
+
+
+def band_dict(band_id, frequency_hz=None, gain_db=0.0, q=1.0, enabled=True):
+    definitions = {definition.band_id: definition for definition in default_band_definitions()}
+    definition = definitions[band_id]
+    return {
+        "band_id": band_id,
+        "enabled": enabled,
+        "frequency_hz": definition.default_frequency_hz if frequency_hz is None else frequency_hz,
+        "gain_db": gain_db,
+        "q": definition.default_q if not definition.q_editable else q,
+    }
+
+
+class M94ContractValidationAndCoefficientTests(unittest.TestCase):
+    def test_contracts_are_frozen_scalar_snapshots_with_five_ordered_bands(self):
+        service = make_service(parametric_eq_lab=True)
+        snapshot = service.parametric_eq_snapshot()
+        self.assertIsInstance(snapshot, ParametricEqApplicationSnapshot)
+        self.assertIsInstance(snapshot.applied_plan, ParametricEqPlan)
+        self.assertEqual(tuple(b.band_id for b in snapshot.applied_plan.bands), PARAMETRIC_EQ_BAND_ORDER)
+        self.assertEqual(len(snapshot.applied_plan.bands), 5)
+        self.assertIsInstance(snapshot.applied_plan.bands, tuple)
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            snapshot.processing_active = True
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            snapshot.applied_plan.bands[0].applied_gain_db = 1.0
+        old = snapshot
+        service.set_parametric_eq_band_gain("mid", 2.0)
+        self.assertEqual(old.applied_plan.bands[2].applied_gain_db, 0.0)
+
+    def test_validation_clamps_boundaries_and_rejects_nonfinite_values_atomically(self):
+        service = make_service(parametric_eq_lab=True)
+        before = service.parametric_eq_snapshot()
+        self.assertTrue(service.set_parametric_eq_band_gain("mid", 99.0).success)
+        after = service.parametric_eq_snapshot()
+        self.assertEqual(after.applied_plan.bands[2].applied_gain_db, 6.0)
+        self.assertTrue(after.applied_plan.bands[2].gain_clamped)
+        self.assertTrue(service.set_parametric_eq_band_frequency("high_shelf", 30000.0).success)
+        high = service.parametric_eq_snapshot().applied_plan.bands[4]
+        self.assertLessEqual(high.applied_frequency_hz, SAMPLE_RATE * 0.45)
+        invalid_values = (math.nan, math.inf, -math.inf, True, "bad", None)
+        for value in invalid_values:
+            preserved = service.parametric_eq_snapshot()
+            self.assertFalse(service.set_parametric_eq_band_gain("mid", value).success)
+            self.assertEqual(service.parametric_eq_snapshot(), preserved)
+            self.assertFalse(service.set_parametric_eq_band_frequency("mid", value).success)
+            self.assertEqual(service.parametric_eq_snapshot(), preserved)
+            self.assertFalse(service.set_parametric_eq_band_q("mid", value).success)
+            self.assertEqual(service.parametric_eq_snapshot(), preserved)
+        self.assertFalse(service.set_parametric_eq_band_gain("unknown", 1.0).success)
+        self.assertEqual(before.applied_plan.bands[2].applied_gain_db, 0.0)
+
+    def test_coefficients_are_finite_stable_deterministic_and_frequency_responses_are_directional(self):
+        for sample_rate in (44100, 48000, 96000):
+            flat = design_coefficient_bank(flat_band_parameters(sample_rate), sample_rate=sample_rate, coefficient_generation=1)
+            self.assertTrue(flat.flat)
+            np.testing.assert_allclose(np.abs(frequency_response(flat, [120, 1000, 8000])), np.ones(3), atol=1e-6)
+            for definition in default_band_definitions():
+                plus_band = validate_band_parameters(
+                    definition.band_id,
+                    frequency_hz=definition.default_frequency_hz,
+                    gain_db=6.0,
+                    q=definition.default_q,
+                    sample_rate=sample_rate,
+                )
+                minus_band = validate_band_parameters(
+                    definition.band_id,
+                    frequency_hz=definition.default_frequency_hz,
+                    gain_db=-6.0,
+                    q=definition.default_q,
+                    sample_rate=sample_rate,
+                )
+                plus = design_coefficient_bank((plus_band,), sample_rate=sample_rate, coefficient_generation=1)
+                minus = design_coefficient_bank((minus_band,), sample_rate=sample_rate, coefficient_generation=1)
+                self.assertTrue(all(np.isfinite(np.array(plus.sections).ravel())))
+                self.assertEqual(plus.sections, design_coefficient_bank((plus_band,), sample_rate=sample_rate, coefficient_generation=1).sections)
+                center = definition.default_frequency_hz
+                center_plus = abs(frequency_response(plus, [center])[0])
+                center_minus = abs(frequency_response(minus, [center])[0])
+                self.assertGreater(center_plus, 1.05)
+                self.assertLess(center_minus, 0.95)
+
+
+class M94ProcessingAndIntegrationTests(unittest.TestCase):
+    def test_flat_neutrality_disabled_and_enabled_match_calibrate_lock_chain(self):
+        x = sine_mix()
+        stable = make_service(calibrate_lock_lab=True)
+        eq = make_service(parametric_eq_lab=True)
+        eq_flat = make_service(parametric_eq_lab=True)
+        y_stable = process_blocks(stable, x)
+        y_disabled = process_blocks(eq, x)
+        np.testing.assert_allclose(y_stable, y_disabled, atol=0.0)
+        self.assertTrue(eq_flat.set_parametric_eq_enabled(True).success)
+        y_flat = process_blocks(eq_flat, x)
+        np.testing.assert_allclose(y_stable, y_flat, atol=0.0)
+        self.assertEqual(y_flat.shape, x.shape)
+        self.assertEqual(y_flat.dtype, np.float32)
+        self.assertTrue(np.array_equal(x, sine_mix()))
+
+    def test_each_band_changes_intended_region_and_five_band_cascade_is_finite(self):
+        probes = (
+            ("low_shelf", 80.0, 8000.0),
+            ("low_mid", 300.0, 5000.0),
+            ("mid", 1000.0, 120.0),
+            ("presence", 3000.0, 120.0),
+            ("high_shelf", 9000.0, 120.0),
+        )
+        for band_id, target, distant in probes:
+            plus = design_coefficient_bank(
+                (validate_band_parameters(band_id, frequency_hz=target, gain_db=6.0, q=1.0),),
+                sample_rate=SAMPLE_RATE,
+                coefficient_generation=1,
+            )
+            minus = design_coefficient_bank(
+                (validate_band_parameters(band_id, frequency_hz=target, gain_db=-6.0, q=1.0),),
+                sample_rate=SAMPLE_RATE,
+                coefficient_generation=2,
+            )
+            target_plus = abs(frequency_response(plus, [target])[0])
+            target_minus = abs(frequency_response(minus, [target])[0])
+            distant_plus = abs(frequency_response(plus, [distant])[0])
+            self.assertGreater(target_plus, 1.05, band_id)
+            self.assertLess(target_minus, 0.95, band_id)
+            self.assertLess(abs(distant_plus - 1.0), abs(target_plus - 1.0) + 0.05)
+
+        service = make_service(parametric_eq_lab=True)
+        self.assertTrue(service.set_parametric_eq_plan(
+            (
+                band_dict("low_shelf", gain_db=2.0),
+                band_dict("low_mid", gain_db=-2.0, q=1.0),
+                band_dict("mid", gain_db=-1.0, q=1.2),
+                band_dict("presence", gain_db=2.0, q=1.0),
+                band_dict("high_shelf", gain_db=1.5),
+            ),
+            enabled=True,
+            bypassed=False,
+        ).success)
+        y = process_blocks(service, sine_mix())
+        self.assertTrue(np.all(np.isfinite(y)))
+        self.assertEqual(y.shape, sine_mix().shape)
+        self.assertEqual(service.engine.effect_chain.effect_names()[-1], "Limiter")
+
+    def test_dynamic_updates_transition_bounded_latest_wins_and_no_stream_restart(self):
+        service = make_service(parametric_eq_lab=True)
+        self.assertTrue(service.set_parametric_eq_enabled(True).success)
+        x = sine_mix(4096)
+        baseline = process_blocks(service, x, block=512)
+        max_jump = 0.0
+        for index in range(30):
+            self.assertTrue(service.set_parametric_eq_band_gain("mid", -6.0 + (index % 13)).success)
+            self.assertTrue(service.set_parametric_eq_band_frequency("presence", 1500.0 + (index * 100.0)).success)
+            self.assertTrue(service.set_parametric_eq_band_q("low_mid", 0.3 + (index % 10) * 0.5).success)
+            y = process_blocks(service, x, block=512)
+            self.assertTrue(np.all(np.isfinite(y)))
+            max_jump = max(max_jump, float(np.max(np.abs(np.diff(y)))))
+        snapshot = service.parametric_eq_snapshot()
+        self.assertFalse(snapshot.transition_active)
+        self.assertGreater(snapshot.coefficient_generation, 1)
+        self.assertLess(max_jump, 2.0)
+        self.assertNotEqual(float(np.max(np.abs(process_blocks(service, x, block=512) - baseline))), 0.0)
+
+    def test_local_global_bypass_failure_and_reset_are_truthful(self):
+        service = make_service(parametric_eq_lab=True)
+        service.set_parametric_eq_enabled(True)
+        service.set_parametric_eq_band_gain("mid", 4.0)
+        x = sine_mix()
+        active = process_blocks(service, x)
+        self.assertTrue(service.set_parametric_eq_bypassed(True).success)
+        bypassed = process_blocks(service, x)
+        self.assertGreater(float(np.max(np.abs(active - bypassed))), 0.0)
+        service.set_effects_bypassed(True)
+        global_bypassed = service.parametric_eq_snapshot()
+        self.assertTrue(global_bypassed.global_bypass)
+        before = service.parametric_eq_snapshot()
+        self.assertFalse(service.set_parametric_eq_plan(({"band_id": "mid", "enabled": True, "frequency_hz": math.nan, "gain_db": 1.0, "q": 1.0},)).success)
+        self.assertEqual(service.parametric_eq_snapshot(), before)
+        self.assertTrue(service.reset_parametric_eq_to_flat().success)
+        flat = service.parametric_eq_snapshot()
+        self.assertTrue(flat.applied_plan.flat)
+        self.assertFalse(flat.applied_plan.applied_enabled)
+
+    def test_mode_isolation_ui_chain_and_m9_3_authority_are_preserved(self):
+        app = qt_application()
+        normal = make_service()
+        formant = make_service(formant_lab=True)
+        execution = make_service(transformation_execution_lab=True)
+        stable = make_service(calibrate_lock_lab=True)
+        eq = make_service(parametric_eq_lab=True)
+        windows = []
+        try:
+            for service in (normal, formant, execution, stable, eq):
+                windows.append(App(service))
+            self.assertFalse(getattr(windows[0], "parametric_eq_enabled", False))
+            self.assertFalse(getattr(windows[1], "parametric_eq_enabled", False))
+            self.assertFalse(getattr(windows[2], "parametric_eq_enabled", False))
+            self.assertFalse(getattr(windows[3], "parametric_eq_enabled", False))
+            self.assertTrue(windows[4].parametric_eq_enabled)
+            titles = [windows[4].tabs.tabText(i) for i in range(windows[4].tabs.count())]
+            for title in ("Source Analysis", "Target Planner", "Plan Execution", "Calibrate & Lock", "Parametric EQ"):
+                self.assertIn(title, titles)
+        finally:
+            for window in windows:
+                window.close()
+            app.processEvents()
+        self.assertNotIn("Parametric EQ", normal.engine.effect_chain.effect_names())
+        self.assertNotIn("Parametric EQ", stable.engine.effect_chain.effect_names())
+        self.assertEqual(eq.engine.effect_chain.effect_names(), [
+            "High-Pass",
+            "Noise Gate",
+            "Compressor",
+            "Experimental Pitch/Formant",
+            "Parametric EQ",
+            "Robot",
+            "Lowpass",
+            "Gain",
+            "Limiter",
+        ])
+        calibrate_and_lock(eq, source=ready_source(median_f0_hz=110.0), target=HIGHER_BRIGHTER_REFERENCE)
+        locked = eq.stable_control_snapshot().locked
+        eq.set_parametric_eq_band_gain("mid", 3.0)
+        eq.return_to_suggested_plan()
+        eq.return_transformation_to_neutral()
+        self.assertEqual(eq.stable_control_snapshot().locked, locked)
+        self.assertEqual(eq.parametric_eq_snapshot().applied_plan.bands[2].applied_gain_db, 3.0)
+        eq.load_target_reference("lower_weightier")
+        eq.lock_suggested_transformation()
+        self.assertEqual(eq.parametric_eq_snapshot().applied_plan.bands[2].applied_gain_db, 3.0)
+
+    def test_bounded_operations_lifecycle_and_no_persistence_mutation(self):
+        service = make_service(parametric_eq_lab=True)
+        preferences = service.operator_preferences()
+        presets = service.custom_preset_names()
+        for index in range(1000):
+            band = PARAMETRIC_EQ_BAND_ORDER[index % len(PARAMETRIC_EQ_BAND_ORDER)]
+            service.set_parametric_eq_band_gain(band, (index % 17) - 8)
+            service.set_parametric_eq_band_frequency(band, 100.0 + (index % 5000))
+            if band in {"low_mid", "mid", "presence"}:
+                service.set_parametric_eq_band_q(band, 0.2 + (index % 8))
+            if index % 13 == 0:
+                service.set_parametric_eq_enabled(index % 26 == 0)
+            if index % 17 == 0:
+                service.reset_parametric_eq_to_flat()
+        snapshot = service.parametric_eq_snapshot()
+        self.assertEqual(service.parametric_eq_controller.retained_counts(), {"plans": 1, "coefficient_banks": 1, "transitions": 1})
+        self.assertEqual(service.operator_preferences(), preferences)
+        self.assertEqual(service.custom_preset_names(), presets)
+        before = [t.name for t in threading.enumerate()]
+        service.start_audio(0, 1)
+        time.sleep(0.05)
+        during = [t.name for t in threading.enumerate()]
+        service.stop_audio()
+        time.sleep(0.05)
+        after = [t.name for t in threading.enumerate()]
+        self.assertIn("VoiceLabSourceAnalysis", during)
+        self.assertIn("TransformationExecutionController", during)
+        self.assertEqual(before, after)
+        self.assertIsInstance(snapshot.applied_plan.bands[0], ParametricEqBandParameters)
+
+
+if __name__ == "__main__":
+    unittest.main()

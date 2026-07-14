@@ -9,6 +9,7 @@ from voice_lab.effects import (
     HighPassFilterEffect,
     LowpassEffect,
     NoiseGateEffect,
+    ParametricEqEffect,
     PitchShiftEffect,
     RobotEffect,
     VoiceLimiterEffect,
@@ -70,61 +71,73 @@ class ManifestLoadResult:
         return cls(candidate=candidate, success=False, reason=reason, diagnostics=diagnostics)
 
 
-def builtin_plugin_metadata(formant_lab=False):
-    return PluginMetadata(
-        plugin_id="voicelab.builtin.effects",
-        display_name="VoiceLab Built-In Effects",
-        version="1.0.0",
-        provider="VoiceLab",
-        description="Built-in input processing, Pitch Shift, Robot, Lowpass, Gain, and limiter effects.",
-        compatibility=Compatibility(min_api_version="1.0.0", max_api_version="1.0.0"),
-        effects=(
+def builtin_plugin_metadata(formant_lab=False, parametric_eq_lab=False):
+    effects = [
+        EffectDescriptor(
+            effect_id="voicelab.effect.high_pass",
+            display_name="High-Pass",
+            category="filter",
+            factory_id="voicelab.factory.high_pass",
+            factory=lambda effect_state: HighPassFilterEffect(effect_state.input_processing.high_pass),
+            parameter_metadata={
+                "enabled": {"default": False},
+                "cutoff_hz": {"unit": "Hz", "minimum": 40, "maximum": 200, "default": 80},
+            },
+        ),
+        EffectDescriptor(
+            effect_id="voicelab.effect.noise_gate",
+            display_name="Noise Gate",
+            category="dynamics",
+            factory_id="voicelab.factory.noise_gate",
+            factory=lambda effect_state: NoiseGateEffect(effect_state.input_processing.noise_gate),
+            parameter_metadata={
+                "enabled": {"default": False},
+                "threshold_dbfs": {"unit": "dBFS", "minimum": -70, "maximum": -20, "default": -45},
+                "release_ms": {"unit": "ms", "minimum": 40, "maximum": 1000, "default": 180},
+                "attack_ms": {"fixed": 8},
+                "hold_ms": {"fixed": 50},
+                "ratio": {"fixed": 2.5},
+                "attenuation_floor_db": {"fixed": -36},
+            },
+        ),
+        EffectDescriptor(
+            effect_id="voicelab.effect.compressor",
+            display_name="Compressor",
+            category="dynamics",
+            factory_id="voicelab.factory.compressor",
+            factory=lambda effect_state: CompressorEffect(
+                effect_state.input_processing.compressor,
+                _execution_compressor_provider(effect_state),
+            ),
+            parameter_metadata={
+                "enabled": {"default": False},
+                "threshold_dbfs": {"unit": "dBFS", "minimum": -40, "maximum": 0, "default": -18},
+                "ratio": {"unit": ":1", "minimum": 1.0, "maximum": 10.0, "default": 3.0},
+                "attack_ms": {"unit": "ms", "minimum": 1, "maximum": 100, "default": 10},
+                "release_ms": {"unit": "ms", "minimum": 20, "maximum": 1000, "default": 150},
+                "makeup_gain_db": {"unit": "dB", "minimum": 0, "maximum": 12, "default": 0},
+            },
+        ),
+        _pitch_descriptor(formant_lab),
+    ]
+    if parametric_eq_lab:
+        effects.append(
             EffectDescriptor(
-                effect_id="voicelab.effect.high_pass",
-                display_name="High-Pass",
+                effect_id="voicelab.effect.parametric_eq",
+                display_name="Parametric EQ",
                 category="filter",
-                factory_id="voicelab.factory.high_pass",
-                factory=lambda effect_state: HighPassFilterEffect(effect_state.input_processing.high_pass),
+                factory_id="voicelab.factory.parametric_eq",
+                factory=lambda effect_state: ParametricEqEffect(effect_state.parametric_eq_controller),
                 parameter_metadata={
-                    "enabled": {"default": False},
-                    "cutoff_hz": {"unit": "Hz", "minimum": 40, "maximum": 200, "default": 80},
+                    "bands": 5,
+                    "gain_db": {"unit": "dB", "minimum": -6.0, "maximum": 6.0},
+                    "latency_frames": 0,
+                    "scope": "manual session-only Parametric EQ Lab",
                 },
-            ),
-            EffectDescriptor(
-                effect_id="voicelab.effect.noise_gate",
-                display_name="Noise Gate",
-                category="dynamics",
-                factory_id="voicelab.factory.noise_gate",
-                factory=lambda effect_state: NoiseGateEffect(effect_state.input_processing.noise_gate),
-                parameter_metadata={
-                    "enabled": {"default": False},
-                    "threshold_dbfs": {"unit": "dBFS", "minimum": -70, "maximum": -20, "default": -45},
-                    "release_ms": {"unit": "ms", "minimum": 40, "maximum": 1000, "default": 180},
-                    "attack_ms": {"fixed": 8},
-                    "hold_ms": {"fixed": 50},
-                    "ratio": {"fixed": 2.5},
-                    "attenuation_floor_db": {"fixed": -36},
-                },
-            ),
-            EffectDescriptor(
-                effect_id="voicelab.effect.compressor",
-                display_name="Compressor",
-                category="dynamics",
-                factory_id="voicelab.factory.compressor",
-                factory=lambda effect_state: CompressorEffect(
-                    effect_state.input_processing.compressor,
-                    _execution_compressor_provider(effect_state),
-                ),
-                parameter_metadata={
-                    "enabled": {"default": False},
-                    "threshold_dbfs": {"unit": "dBFS", "minimum": -40, "maximum": 0, "default": -18},
-                    "ratio": {"unit": ":1", "minimum": 1.0, "maximum": 10.0, "default": 3.0},
-                    "attack_ms": {"unit": "ms", "minimum": 1, "maximum": 100, "default": 10},
-                    "release_ms": {"unit": "ms", "minimum": 20, "maximum": 1000, "default": 150},
-                    "makeup_gain_db": {"unit": "dB", "minimum": 0, "maximum": 12, "default": 0},
-                },
-            ),
-            _pitch_descriptor(formant_lab),
+            )
+        )
+    effects.extend(
+        (
             EffectDescriptor(
                 effect_id="voicelab.effect.robot",
                 display_name="Robot",
@@ -162,7 +175,16 @@ def builtin_plugin_metadata(formant_lab=False):
                     "scope": "processed voice path before Mixer",
                 },
             ),
-        ),
+        )
+    )
+    return PluginMetadata(
+        plugin_id="voicelab.builtin.effects",
+        display_name="VoiceLab Built-In Effects",
+        version="1.0.0",
+        provider="VoiceLab",
+        description="Built-in input processing, Pitch Shift, Robot, Lowpass, Gain, and limiter effects.",
+        compatibility=Compatibility(min_api_version="1.0.0", max_api_version="1.0.0"),
+        effects=tuple(effects),
     )
 
 
@@ -417,8 +439,11 @@ def _unknown_fields(data, known_fields):
     return sorted(field for field in data if field not in known_fields)
 
 
-def load_builtin_effect_chain(effect_state, runtime_failure_handler=None, formant_lab=False):
+def load_builtin_effect_chain(effect_state, runtime_failure_handler=None, formant_lab=False, parametric_eq_lab=False):
     return EffectChain(
-        load_effects_from_metadata(builtin_plugin_metadata(formant_lab=formant_lab), effect_state),
+        load_effects_from_metadata(
+            builtin_plugin_metadata(formant_lab=formant_lab, parametric_eq_lab=parametric_eq_lab),
+            effect_state,
+        ),
         runtime_failure_handler=runtime_failure_handler,
     )

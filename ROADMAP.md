@@ -1920,9 +1920,63 @@ or the audio effect chain.
   trims, mode, execution state, and runtime target.
 - Known non-blocking debt: diagnostic target profiles remain provisional; no
   finished production feminine or deep-masculine character exists yet;
-  pitch-range mapping, parametric EQ, spectral-tilt execution, de-essing,
+  pitch-range mapping, spectral-tilt execution, de-essing,
   breathiness synthesis, and harmonic enhancement remain unsupported; backend
   availability is visible through Plan Execution rather than duplicated fully
   in Calibrate & Lock; long-term neural conversion remains an optional plugin
   concern unrelated to M9.3; no persistence of calibration/lock/trim is
   currently intended. These are future milestones, not M9.3 failures.
+
+## M9.4 - Parametric EQ Foundation
+
+Status: PROVISIONAL. Automated contract coverage is in place; final live EQ
+acceptance has not been recorded.
+
+M9.4 adds one manual five-band Parametric EQ authority in an isolated lab mode.
+It does not change normal production mode, prior lab chains, production
+characters, settings schema, presets schema, M9.1 planner formulas, M9.2
+execution mapping, M9.3 lock authority, or Signalsmith configuration.
+
+### Scope
+
+- Launches only with `main.py --parametric-eq-lab`.
+- Includes Source Analysis, Target Planner, Plan Execution, Calibrate & Lock,
+  and Parametric EQ tabs.
+- Adds exactly one Parametric EQ stage after Experimental Pitch/Formant and
+  before Robot. Limiter remains downstream.
+- Uses one final manual EQ plan authority owned by `ParametricEqController`.
+- Uses RBJ biquad formulas for Low Shelf, Low-Mid Peak, Mid Peak, Presence
+  Peak, and High Shelf bands.
+- Designs coefficients outside the audio callback and publishes one latest
+  immutable coefficient bank to the effect.
+- Uses a bounded dual-bank crossfade transition for coefficient changes.
+- Reports zero added algorithmic latency for Parametric EQ.
+- Keeps EQ values, enable/bypass state, and plans session-only with no
+  persistence.
+
+### Band Model
+
+- Low Shelf: default 120 Hz, 60-250 Hz, +/-6 dB, fixed slope/Q 1.0.
+- Low-Mid Peak: default 300 Hz, 150-800 Hz, +/-6 dB, Q 0.3-6.0.
+- Mid Peak: default 1000 Hz, 500-2500 Hz, +/-6 dB, Q 0.3-6.0.
+- Presence Peak: default 3000 Hz, 1500-6000 Hz, +/-6 dB, Q 0.3-6.0.
+- High Shelf: default 8000 Hz, 4000-12000 Hz, +/-6 dB, fixed slope/Q 1.0,
+  with applied frequency also capped at 45% of sample rate.
+
+### Verification Notes
+
+- Focused M9.4 automated tests cover immutable EQ contracts, five ordered
+  bands, validation and clamp behavior, nonfinite rejection, stable finite
+  coefficients, directional frequency responses, flat neutrality, individual
+  band and five-band cascade behavior, dynamic updates, local/global bypass,
+  invalid-plan preservation, mode and chain isolation, guarded UI exposure,
+  M9.3 authority isolation, session-only state, bounded 1,000-operation
+  updates, and lifecycle thread shutdown.
+- Planner `parametric_eq` remains unsupported in M9.4.
+- Planner `spectral_tilt_shaping` remains unsupported in M9.4.
+- Spectral-tilt execution is deferred and must map into this EQ authority in a
+  later milestone.
+- Known non-blocking debt: final live EQ acceptance is pending; finished
+  production feminine/deep-masculine characters remain future work; automatic
+  target-profile EQ, spectral tilt, de-essing, breathiness, harmonic
+  enhancement, and neural conversion remain deferred.

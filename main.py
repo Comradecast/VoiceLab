@@ -30,6 +30,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Launch the isolated calibrate, lock, and manual trim lab.",
     )
+    parser.add_argument(
+        "--parametric-eq-lab",
+        action="store_true",
+        help="Launch the isolated manual parametric EQ lab.",
+    )
     args = parser.parse_args()
     raise SystemExit(
         run(
@@ -38,5 +43,6 @@ if __name__ == "__main__":
             target_planner_lab=args.target_planner_lab,
             transformation_execution_lab=args.transformation_execution_lab,
             calibrate_lock_lab=args.calibrate_lock_lab,
+            parametric_eq_lab=args.parametric_eq_lab,
         )
     )

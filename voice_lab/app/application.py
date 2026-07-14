@@ -10,6 +10,7 @@ def run(
     target_planner_lab=False,
     transformation_execution_lab=False,
     calibrate_lock_lab=False,
+    parametric_eq_lab=False,
 ):
     from voice_lab.ui.main_window import App
 
@@ -22,6 +23,7 @@ def run(
             target_planner_lab=target_planner_lab,
             transformation_execution_lab=transformation_execution_lab,
             calibrate_lock_lab=calibrate_lock_lab,
+            parametric_eq_lab=parametric_eq_lab,
         )
     )
     service = lifecycle.startup()

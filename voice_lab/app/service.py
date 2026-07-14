@@ -52,6 +52,7 @@ from voice_lab.execution import (
 from voice_lab.io import AudioIO, Router
 from voice_lab.io.device_errors import DeviceFailure, DeviceFailureError
 from voice_lab.mixer import Mixer
+from voice_lab.parametric_eq import ParametricEqController
 from voice_lab.planner import (
     DEFAULT_TARGET_PROFILE,
     HIGHER_BRIGHTER_REFERENCE,
@@ -134,18 +135,20 @@ class ApplicationService(QObject):
         target_planner_lab=False,
         transformation_execution_lab=False,
         calibrate_lock_lab=False,
+        parametric_eq_lab=False,
     ):
         super().__init__()
         self.telemetry = telemetry or TelemetryService()
         self.level_monitor = AudioLevelMonitor()
         self.engine = engine or AudioEngine()
         self.plugins = plugins or PluginManager()
-        self.calibrate_lock_lab_enabled = bool(calibrate_lock_lab)
-        self.transformation_execution_lab_enabled = bool(transformation_execution_lab or calibrate_lock_lab)
-        self.formant_lab_enabled = bool(formant_lab or transformation_execution_lab or calibrate_lock_lab)
-        self.target_planner_lab_enabled = bool(target_planner_lab or transformation_execution_lab or calibrate_lock_lab)
+        self.parametric_eq_lab_enabled = bool(parametric_eq_lab)
+        self.calibrate_lock_lab_enabled = bool(calibrate_lock_lab or parametric_eq_lab)
+        self.transformation_execution_lab_enabled = bool(transformation_execution_lab or calibrate_lock_lab or parametric_eq_lab)
+        self.formant_lab_enabled = bool(formant_lab or transformation_execution_lab or calibrate_lock_lab or parametric_eq_lab)
+        self.target_planner_lab_enabled = bool(target_planner_lab or transformation_execution_lab or calibrate_lock_lab or parametric_eq_lab)
         self.voice_analysis_lab_enabled = bool(
-            voice_analysis_lab or target_planner_lab or transformation_execution_lab or calibrate_lock_lab
+            voice_analysis_lab or target_planner_lab or transformation_execution_lab or calibrate_lock_lab or parametric_eq_lab
         )
         self.target_planner = TransformationPlanner() if self.target_planner_lab_enabled else None
         self.current_target_profile = DEFAULT_TARGET_PROFILE
@@ -161,6 +164,8 @@ class ApplicationService(QObject):
         self._current_suggestion = None
         self._locked_transformation = None
         self._manual_trim = manual_trim()
+        self.parametric_eq_controller = ParametricEqController() if self.parametric_eq_lab_enabled else None
+        self.engine.parametric_eq_controller = self.parametric_eq_controller
         self.transformation_executor = TransformationExecutor() if self.transformation_execution_lab_enabled else None
         self.transformation_execution_runtime = (
             TransformationExecutionRuntime(self.engine.input_processing)
@@ -180,6 +185,7 @@ class ApplicationService(QObject):
                 self.engine,
                 runtime_failure_handler=runtime_failure_handler,
                 formant_lab=self.formant_lab_enabled,
+                parametric_eq_lab=self.parametric_eq_lab_enabled,
             )
         )
         self._refresh_effect_chain_status()
@@ -394,6 +400,107 @@ class ApplicationService(QObject):
         if not self.calibrate_lock_lab_enabled:
             return None
         return self.stable_control_snapshot()
+
+    def parametric_eq_state(self):
+        if not self.parametric_eq_lab_enabled:
+            return None
+        return self.parametric_eq_snapshot()
+
+    def parametric_eq_snapshot(self):
+        if not self.parametric_eq_lab_enabled:
+            return None
+        snapshot = self.parametric_eq_controller.snapshot(global_bypass=self.effects_bypassed)
+        self.telemetry.set_metadata("parametric_eq", snapshot.asdict())
+        return snapshot
+
+    def set_parametric_eq_enabled(self, enabled):
+        if not self.parametric_eq_lab_enabled:
+            result = CommandResult.fail("Parametric EQ Lab is not enabled.")
+            self.telemetry.record_command_result("set_parametric_eq_enabled", result)
+            return result
+        self.parametric_eq_controller.set_enabled(bool(enabled))
+        snapshot = self.parametric_eq_snapshot()
+        result = CommandResult.ok(
+            "Parametric EQ enabled." if enabled else "Parametric EQ disabled.",
+            parametric_eq=snapshot,
+        )
+        self.telemetry.record_command_result("set_parametric_eq_enabled", result)
+        return result
+
+    def set_parametric_eq_bypassed(self, bypassed):
+        if not self.parametric_eq_lab_enabled:
+            result = CommandResult.fail("Parametric EQ Lab is not enabled.")
+            self.telemetry.record_command_result("set_parametric_eq_bypassed", result)
+            return result
+        self.parametric_eq_controller.set_bypassed(bool(bypassed))
+        snapshot = self.parametric_eq_snapshot()
+        result = CommandResult.ok(
+            "Parametric EQ bypassed." if bypassed else "Parametric EQ active.",
+            parametric_eq=snapshot,
+        )
+        self.telemetry.record_command_result("set_parametric_eq_bypassed", result)
+        return result
+
+    def set_parametric_eq_band_frequency(self, band_id, frequency_hz):
+        return self._set_parametric_eq_band_value(
+            "set_parametric_eq_band_frequency",
+            lambda: self.parametric_eq_controller.set_band_frequency(band_id, frequency_hz),
+        )
+
+    def set_parametric_eq_band_gain(self, band_id, gain_db):
+        return self._set_parametric_eq_band_value(
+            "set_parametric_eq_band_gain",
+            lambda: self.parametric_eq_controller.set_band_gain(band_id, gain_db),
+        )
+
+    def set_parametric_eq_band_q(self, band_id, q):
+        return self._set_parametric_eq_band_value(
+            "set_parametric_eq_band_q",
+            lambda: self.parametric_eq_controller.set_band_q(band_id, q),
+        )
+
+    def set_parametric_eq_plan(self, bands, enabled=None, bypassed=None):
+        return self._set_parametric_eq_band_value(
+            "set_parametric_eq_plan",
+            lambda: self.parametric_eq_controller.set_complete_plan(bands, enabled=enabled, bypassed=bypassed),
+        )
+
+    def reset_parametric_eq_band(self, band_id):
+        return self._set_parametric_eq_band_value(
+            "reset_parametric_eq_band",
+            lambda: self.parametric_eq_controller.reset_band(band_id),
+        )
+
+    def reset_parametric_eq_to_flat(self):
+        return self._set_parametric_eq_band_value(
+            "reset_parametric_eq_to_flat",
+            self.parametric_eq_controller.reset_flat if self.parametric_eq_lab_enabled else None,
+        )
+
+    def restore_parametric_eq_defaults(self):
+        return self._set_parametric_eq_band_value(
+            "restore_parametric_eq_defaults",
+            self.parametric_eq_controller.restore_default_positions if self.parametric_eq_lab_enabled else None,
+        )
+
+    def _set_parametric_eq_band_value(self, command_name, update):
+        if not self.parametric_eq_lab_enabled:
+            result = CommandResult.fail("Parametric EQ Lab is not enabled.")
+            self.telemetry.record_command_result(command_name, result)
+            return result
+        before = self.parametric_eq_controller.snapshot(global_bypass=self.effects_bypassed)
+        try:
+            if update is None:
+                raise ValueError("Parametric EQ Lab is not enabled.")
+            update()
+        except ValueError as exc:
+            result = CommandResult.fail(str(exc), parametric_eq=before)
+            self.telemetry.record_command_result(command_name, result)
+            return result
+        snapshot = self.parametric_eq_snapshot()
+        result = CommandResult.ok("Parametric EQ updated.", parametric_eq=snapshot)
+        self.telemetry.record_command_result(command_name, result)
+        return result
 
     def stable_control_snapshot(self):
         if not self.calibrate_lock_lab_enabled:

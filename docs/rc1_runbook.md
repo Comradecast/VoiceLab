@@ -2337,3 +2337,126 @@ Known non-blocking debt:
 - No persistence of calibration/lock/trim is currently intended.
 
 These are future milestones, not M9.3 failures.
+
+## M9.4 Parametric EQ Foundation Pre-Live Acceptance
+
+Status: PROVISIONAL.
+
+M9.4 is ready for controlled live EQ acceptance, but final hardware PASS has
+not been recorded. Launch with:
+
+```powershell
+.\.venv\Scripts\python.exe main.py --parametric-eq-lab
+```
+
+Expected launch and isolation behavior:
+
+- Parametric EQ Lab launches stopped.
+- Source Analysis, Target Planner, Plan Execution, Calibrate & Lock, and
+  Parametric EQ tabs are present.
+- Transformation execution launches disabled.
+- Adaptive Updating defaults Off.
+- EQ starts disabled or flat-neutral.
+- All band gains start at 0 dB.
+- No EQ persistence is restored.
+- Normal mode, Formant Lab, Voice Analysis Lab, Target Planner Lab,
+  Transformation Execution Lab, and Calibrate/Lock Lab remain unchanged.
+
+Expected Parametric EQ chain:
+
+```text
+High-Pass
+-> Noise Gate
+-> Compressor
+-> Experimental Pitch/Formant
+-> Parametric EQ
+-> Robot
+-> Lowpass
+-> Gain
+-> Limiter
+-> Mixer
+```
+
+- Exactly one Parametric EQ stage is present.
+- Exactly one combined Experimental Pitch/Formant stage is present.
+- No production Pitch Shift is present in the same chain.
+- Parametric EQ is after pitch/formant transformation and before Robot.
+- Limiter remains downstream of EQ.
+- Parametric EQ reports zero added algorithmic-latency frames.
+- Overall lab latency remains inherited from the pitch/formant stage,
+  approximately 4800 frames / 100 ms at 48 kHz.
+
+Manual EQ controls:
+
+- Low Shelf: body/chest weight, 60-250 Hz, +/-6 dB.
+- Low-Mid Peak: mud/boxiness, 150-800 Hz, +/-6 dB, Q 0.3-6.0.
+- Mid Peak: nasal/central color, 500-2500 Hz, +/-6 dB, Q 0.3-6.0.
+- Presence Peak: intelligibility/upper-mid clarity, 1500-6000 Hz, +/-6 dB,
+  Q 0.3-6.0.
+- High Shelf: brightness/air, 4000-12000 Hz, +/-6 dB, capped safely below
+  Nyquist.
+
+Expected flat and bypass behavior:
+
+- EQ disabled sounds identical to the prior stable lab chain.
+- Enabling flat EQ causes no audible change.
+- Local EQ bypass passes audio through EQ unchanged while retaining values.
+- Global Bypass Effects remains the top-level bypass authority.
+- Reset EQ to Flat restores neutrality.
+
+Expected band-audibility checks:
+
+- Low Shelf +6 dB adds body.
+- Low Shelf -6 dB thins low end.
+- Low-Mid cut reduces mud/boxiness.
+- Mid adjustment changes central/nasal color.
+- Presence boost adds forward clarity.
+- Presence cut softens harshness.
+- High Shelf boost adds brightness.
+- High Shelf cut darkens/softens.
+- Frequency controls move the affected region.
+- Higher Q narrows peak-band effect; lower Q broadens it.
+
+Expected dynamic stability checks while speaking continuously:
+
+- Move gain, frequency, and Q controls.
+- Toggle EQ.
+- Reset individual bands.
+- Reset EQ to Flat.
+- Confirm no crackle, zipper noise, pop, unstable ringing, sudden volume
+  explosion, stream restart, or growing delay.
+- Transitions should settle promptly.
+
+Expected M9.3 interaction:
+
+- Lock a stable transformation and enable execution.
+- Apply EQ without changing locked pitch/formant values.
+- Re-lock without losing EQ values.
+- Return to Suggested without losing EQ values.
+- Return to Neutral follows the documented EQ session policy.
+- Continuous and Off mode switching does not corrupt EQ.
+
+Suggested five-band voice test:
+
+- Low Shelf +2 dB.
+- Low-Mid -2 dB at 300 Hz, Q 1.0.
+- Mid -1 dB at 1000 Hz, Q 1.2.
+- Presence +2 dB at 3000 Hz, Q 1.0.
+- High Shelf +1.5 dB.
+
+Expected result: voice remains intelligible, finite, stable, free of metallic
+tail/flutter/crackle, and more deliberately shaped. Limiter remains downstream
+for peak handling.
+
+Lifecycle and persistence checks:
+
+- Repeated Start/Stop.
+- Close while active.
+- Relaunch restores defaults.
+- No EQ file is created.
+- `settings.json` and `presets.json` schemas are unchanged.
+- No worker leak and no UI freeze.
+
+M9.4 intentionally does not mark planner `parametric_eq` or
+`spectral_tilt_shaping` supported. Future spectral-tilt execution must map into
+the same EQ authority.

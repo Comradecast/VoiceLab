@@ -12,6 +12,7 @@ __all__ = [
     "HighPassFilterEffect",
     "LowpassEffect",
     "NoiseGateEffect",
+    "ParametricEqEffect",
     "PitchShiftEffect",
     "RobotEffect",
     "VoiceLimiterEffect",
@@ -47,6 +48,10 @@ def __getattr__(name):
         from .pitch_shift import PitchShiftEffect
 
         return PitchShiftEffect
+    if name == "ParametricEqEffect":
+        from voice_lab.parametric_eq import ParametricEqEffect
+
+        return ParametricEqEffect
     if name == "RobotEffect":
         from .robot import RobotEffect
 
