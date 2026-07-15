@@ -1208,6 +1208,10 @@ class App(QWidget):
         stable = self.service.stable_control_snapshot() if getattr(self, "calibrate_lock_enabled", False) else None
         suggestion = stable.get("suggestion") if stable is not None else None
         locked = stable.get("locked") if stable is not None else None
+        if stable is not None and hasattr(self, "execution_enable"):
+            available = bool(stable.get("execution_available"))
+            self.execution_enable.setEnabled(available)
+            self.execution_enable.setToolTip("" if available else stable.get("execution_unavailable_reason", ""))
         self.execution_suggested_state.setText(
             "Suggested Plan: unavailable"
             if suggestion is None
@@ -1312,15 +1316,15 @@ class App(QWidget):
         workflow.setWordWrap(True)
         layout.addWidget(workflow)
         buttons = QHBoxLayout()
-        calibrate = QPushButton("Calibrate Source")
-        calibrate.clicked.connect(self.calibrate_source)
-        recalibrate = QPushButton("Recalibrate")
-        recalibrate.clicked.connect(self.recalibrate_source)
-        lock = QPushButton("Lock Suggested Transformation")
-        lock.clicked.connect(self.lock_suggested_transformation)
-        buttons.addWidget(calibrate)
-        buttons.addWidget(recalibrate)
-        buttons.addWidget(lock)
+        self.calibrate_source_button = QPushButton("Calibrate Source")
+        self.calibrate_source_button.clicked.connect(self.calibrate_source)
+        self.recalibrate_source_button = QPushButton("Recalibrate")
+        self.recalibrate_source_button.clicked.connect(self.recalibrate_source)
+        self.lock_suggested_button = QPushButton("Lock Suggested Transformation")
+        self.lock_suggested_button.clicked.connect(self.lock_suggested_transformation)
+        buttons.addWidget(self.calibrate_source_button)
+        buttons.addWidget(self.recalibrate_source_button)
+        buttons.addWidget(self.lock_suggested_button)
         layout.addLayout(buttons)
 
         self.adaptive_mode = QComboBox()
@@ -1364,6 +1368,8 @@ class App(QWidget):
         self.workflow_state = QLabel("Workflow: waiting for source analysis")
         self.workflow_state.setWordWrap(True)
         layout.addWidget(self.workflow_state)
+        self.calibrate_lock_source_state = QLabel("Source Readiness: unavailable")
+        self.command_availability_state = QLabel("Commands: unavailable")
         self.calibration_state = QLabel("Calibration: none")
         self.suggestion_state = QLabel("Suggestion: unavailable")
         self.locked_state = QLabel("Locked Transformation: none")
@@ -1371,6 +1377,8 @@ class App(QWidget):
         self.adaptation_state = QLabel("Adaptation: Off")
         for label in (
             self.calibration_state,
+            self.calibrate_lock_source_state,
+            self.command_availability_state,
             self.suggestion_state,
             self.locked_state,
             self.trim_state,
@@ -1442,17 +1450,54 @@ class App(QWidget):
         calibration = state.get("calibration")
         suggestion = state.get("suggestion")
         locked = state.get("locked")
+        source_ready = bool(state.get("source_ready"))
+        source_valid = bool(state.get("source_valid"))
+        source_reason = state.get("source_reason") or "ready"
+        calibrate_available = bool(state.get("calibrate_available"))
+        recalibrate_available = bool(state.get("recalibrate_available"))
+        lock_available = bool(state.get("lock_available"))
+        if hasattr(self, "calibrate_source_button"):
+            self.calibrate_source_button.setEnabled(calibrate_available)
+            self.calibrate_source_button.setToolTip("" if calibrate_available else state.get("calibrate_unavailable_reason", ""))
+            self.recalibrate_source_button.setEnabled(recalibrate_available)
+            self.recalibrate_source_button.setToolTip("" if recalibrate_available else state.get("recalibrate_unavailable_reason", ""))
+            self.lock_suggested_button.setEnabled(lock_available)
+            self.lock_suggested_button.setToolTip("" if lock_available else state.get("lock_unavailable_reason", ""))
         if calibration is None:
-            workflow = "Workflow: step 2/3 - wait for Source Analysis Ready, then Calibrate Source."
+            workflow = (
+                "Workflow: Step 3 of 8 - Press Calibrate Source."
+                if source_valid
+                else f"Workflow: Step 2 of 8 - Speak until Source Analysis is ready. Missing prerequisite: {source_reason}"
+            )
         elif suggestion is None:
-            workflow = "Workflow: step 4 - choose target and strength to create a suggestion."
+            workflow = f"Workflow: Step 4 of 8 - Choose target and strength. {state.get('lock_unavailable_reason') or ''}"
         elif locked is None:
-            workflow = "Workflow: step 5 - Lock Suggested Transformation. No stored transformation."
+            workflow = "Workflow: Step 5 of 8 - Lock Suggested Transformation. No stored transformation."
         elif not state.get("execution_enabled"):
-            workflow = "Workflow: step 6 - Enable Execution. Audio is neutral while execution is disabled."
+            workflow = "Workflow: Step 6 of 8 - Enable Execution. Audio is neutral while execution is disabled."
         else:
-            workflow = "Workflow: step 7/8 - tune trims and shape with Parametric EQ where available."
+            workflow = "Workflow: Step 7 of 8 - Tune trims. Step 8 is Parametric EQ where available."
         self.workflow_state.setText(workflow)
+        self.calibrate_lock_source_state.setText(
+            f"Source Readiness: {'ready' if source_ready else 'not ready'} | "
+            f"valid for calibration {source_valid} | "
+            f"processing {state.get('processing_state')} | "
+            f"generation {state.get('source_generation')} | "
+            f"voiced frames {state.get('source_voiced_frame_count')} | "
+            f"confidence {self._fmt_ratio(state.get('source_confidence'))} | "
+            f"age {self._fmt_seconds(state.get('source_snapshot_age_seconds'))} | "
+            f"reason {source_reason}"
+        )
+        self.command_availability_state.setText(
+            f"Commands: Calibrate {'available' if calibrate_available else 'blocked'}"
+            f"{' - ' + state.get('calibrate_unavailable_reason') if not calibrate_available else ''} | "
+            f"Recalibrate {'available' if recalibrate_available else 'blocked'}"
+            f"{' - ' + state.get('recalibrate_unavailable_reason') if not recalibrate_available else ''} | "
+            f"Lock {'available' if lock_available else 'blocked'}"
+            f"{' - ' + state.get('lock_unavailable_reason') if not lock_available else ''} | "
+            f"Enable Execution {'available' if state.get('execution_available') else 'blocked'}"
+            f"{' - ' + state.get('execution_unavailable_reason') if not state.get('execution_available') else ''}"
+        )
         self.calibration_state.setText(
             "Calibration: none"
             if calibration is None

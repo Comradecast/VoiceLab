@@ -19,7 +19,13 @@ from voice_lab.calibrate_lock import (
 from voice_lab.config.service import ConfigurationService
 from voice_lab.engine.audio_engine import AudioEngine
 from voice_lab.mixer import Mixer
-from voice_lab.planner import DEFAULT_TARGET_PROFILE, HIGHER_BRIGHTER_REFERENCE, LOWER_WEIGHTIER_REFERENCE
+from voice_lab.planner import (
+    DEFAULT_TARGET_PROFILE,
+    HIGHER_BRIGHTER_REFERENCE,
+    LARGE_CAVERNOUS_REFERENCE,
+    LOWER_WEIGHTIER_REFERENCE,
+    NATURAL_DEEP_REFERENCE,
+)
 from voice_lab.plugins import PluginManager
 from voice_lab.tests.test_m6_3_device_failure_recovery import FakeHotkeys, FakeRouter, FakeSoundboard
 from voice_lab.tests.test_m6_5_operator_settings import SettingsAudioIO
@@ -43,7 +49,7 @@ def make_service(**modes):
         settings_load_func=SettingsStore().load,
         settings_save_func=SettingsStore().save,
     )
-    return ApplicationService(
+    service = ApplicationService(
         config=config,
         plugins=PluginManager(),
         engine=AudioEngine(),
@@ -54,6 +60,9 @@ def make_service(**modes):
         soundboard=FakeSoundboard(),
         **modes,
     )
+    if any(modes.values()):
+        service._processing_state = "running"
+    return service
 
 
 def ready_source(**changes):
@@ -248,11 +257,116 @@ class M93ContractAndCalibrationTests(unittest.TestCase):
             return ready_source(median_f0_hz=85.0)
 
         service.source_analysis_snapshot = source
-        self.assertTrue(service.capture_calibration().success)
-        state = service.stable_control_snapshot()
+        result = service.capture_calibration()
+        self.assertTrue(result.success)
+        self.assertEqual(len(calls), 1)
+        state = result.metadata["stable_control"]
         self.assertEqual(len(calls), 1)
         self.assertEqual(state.calibration.median_f0_hz, 120.0)
         self.assertEqual(state.suggestion.plan.pitch.source_median_f0_hz, 120.0)
+
+    def test_ready_source_calibration_publishes_availability_and_generation(self):
+        service = make_service(calibrate_lock_lab=True)
+        service.source_analysis_snapshot = lambda: ready_source(median_f0_hz=121.0)
+
+        before = service.stable_control_snapshot()
+        self.assertTrue(before.calibrate_available)
+        self.assertTrue(before.source_ready)
+        self.assertTrue(before.source_valid)
+        self.assertEqual(before.source_voiced_frame_count, 120)
+
+        result = service.capture_calibration()
+
+        self.assertTrue(result.success)
+        state = service.stable_control_snapshot()
+        self.assertIsNotNone(state.calibration)
+        self.assertEqual(state.calibration_generation, 1)
+        self.assertEqual(state.calibration.calibration_id, 1)
+        self.assertIsNotNone(state.suggestion)
+        self.assertEqual(state.suggestion.calibration_id, state.calibration.calibration_id)
+        self.assertTrue(state.lock_available)
+
+    def test_unready_stopped_stale_and_invalid_sources_report_visible_reasons(self):
+        service = make_service(calibrate_lock_lab=True)
+        service._processing_state = "stopped"
+        service.source_analysis_snapshot = lambda: ready_source()
+
+        stopped = service.stable_control_snapshot()
+        self.assertFalse(stopped.calibrate_available)
+        self.assertEqual(stopped.calibrate_unavailable_reason, "Processing is not running.")
+        result = service.capture_calibration()
+        self.assertFalse(result.success)
+        self.assertIn("Processing is not running.", result.message)
+        self.assertIsNone(service.stable_control_snapshot().calibration)
+
+        service._processing_state = "running"
+        cases = (
+            (ready_source(ready=False, reliability="collecting"), "Source profile is still collecting."),
+            ({**ready_source(), "status": {"active": True, "latest_snapshot_age_seconds": 99.0, "last_failure": ""}}, "Source profile is stale."),
+            (ready_source(median_f0_hz=math.nan), "calibration median F0 is not finite."),
+            (ready_source(voiced_frame_count=0), "calibration voiced frame count is out of range."),
+        )
+        for snapshot, reason in cases:
+            with self.subTest(reason=reason):
+                service.source_analysis_snapshot = lambda snapshot=snapshot: snapshot
+                state = service.stable_control_snapshot()
+                self.assertFalse(state.calibrate_available)
+                self.assertEqual(state.calibrate_unavailable_reason, reason)
+                result = service.capture_calibration()
+                self.assertFalse(result.success)
+                self.assertIn(reason, result.message)
+                self.assertIsNone(service.stable_control_snapshot().calibration)
+
+    def test_failed_recalibration_preserves_existing_calibration_suggestion_and_lock(self):
+        service = make_service(calibrate_lock_lab=True)
+        calibrate_and_lock(service, source=ready_source(median_f0_hz=120.0))
+        preserved = calibration_state_tuple(service)
+        service.source_analysis_snapshot = lambda: ready_source(median_f0_hz=math.inf)
+
+        result = service.recalibrate()
+
+        self.assertFalse(result.success)
+        self.assertIn("calibration median F0 is not finite.", result.message)
+        self.assertEqual(calibration_state_tuple(service), preserved)
+
+    def test_all_visible_targets_produce_lockable_suggestions_after_calibration(self):
+        service = make_service(calibrate_lock_lab=True)
+        service.source_analysis_snapshot = lambda: ready_source(median_f0_hz=120.0)
+        self.assertTrue(service.capture_calibration().success)
+        targets = (
+            ("neutral", DEFAULT_TARGET_PROFILE.target_id),
+            ("higher_brighter", HIGHER_BRIGHTER_REFERENCE.target_id),
+            ("natural_deep", NATURAL_DEEP_REFERENCE.target_id),
+            ("large_cavernous", LARGE_CAVERNOUS_REFERENCE.target_id),
+        )
+        for reference, target_id in targets:
+            with self.subTest(reference=reference):
+                self.assertTrue(service.load_target_reference(reference).success)
+                state = service.stable_control_snapshot()
+                self.assertIsNotNone(state.suggestion)
+                self.assertTrue(state.suggestion.valid)
+                self.assertTrue(state.lock_available, state.lock_unavailable_reason)
+                self.assertEqual(state.suggestion.target_id, target_id)
+
+    def test_lock_contract_and_no_suggestion_failure_reason(self):
+        service = make_service(calibrate_lock_lab=True)
+        empty = service.stable_control_snapshot()
+        self.assertFalse(empty.lock_available)
+        self.assertIn("Calibrate Source", empty.lock_unavailable_reason)
+        failed = service.lock_suggested_transformation()
+        self.assertFalse(failed.success)
+        self.assertIn("Calibrate Source", failed.message)
+
+        service.source_analysis_snapshot = lambda: ready_source(median_f0_hz=120.0)
+        self.assertTrue(service.capture_calibration().success)
+        suggested = service.stable_control_snapshot().suggestion
+        result = service.lock_suggested_transformation()
+        self.assertTrue(result.success)
+        state = service.stable_control_snapshot()
+        self.assertEqual(state.lock_generation, 1)
+        self.assertEqual(state.locked.suggestion_id, suggested.suggestion_id)
+        self.assertEqual(state.locked.target_id, suggested.target_id)
+        self.assertEqual(state.locked.plan, suggested.plan)
 
     def test_suggestion_uses_frozen_calibration_and_target_strength_dirty_state(self):
         service = make_service(calibrate_lock_lab=True)

@@ -622,10 +622,20 @@ class ApplicationService(QObject):
         self.telemetry.record_command_result(command_name, result)
         return result
 
-    def stable_control_snapshot(self):
+    def stable_control_snapshot(self, source_snapshot=None):
         if not self.calibrate_lock_lab_enabled:
             return None
         self._refresh_stable_suggestion()
+        source_snapshot = self.source_analysis_snapshot() if source_snapshot is None else source_snapshot
+        source_state = self._calibration_source_state(source_snapshot)
+        suggestion = self._current_suggestion
+        lock_available, lock_reason = self._lock_availability(suggestion)
+        execution_available = self._locked_transformation is not None and self.transformation_execution_runtime is not None
+        execution_reason = "" if execution_available else (
+            "Stored transformation required before execution can be enabled."
+            if self._locked_transformation is None
+            else "Transformation execution backend is unavailable."
+        )
         projection_plan = self._locked_transformation.plan if self._locked_transformation is not None else None
         _, projection = apply_manual_trim(projection_plan, self._manual_trim)
         target_name = getattr(self.current_target_profile, "display_name", self.current_target_profile.target_id)
@@ -642,8 +652,32 @@ class ApplicationService(QObject):
             lab="Experimental - Calibrate, Lock, and Manual Trim",
             adaptive_mode=self.stable_adaptive_mode,
             execution_authority=authority,
+            processing_state=self._processing_state,
+            source_ready=source_state["ready"],
+            source_valid=source_state["valid"],
+            source_generation=source_state["generation"],
+            source_voiced_frame_count=source_state["voiced_frame_count"],
+            source_confidence=source_state["confidence"],
+            source_snapshot_age_seconds=source_state["age"],
+            source_reason=source_state["reason"],
+            calibrate_available=source_state["valid"],
+            calibrate_unavailable_reason="" if source_state["valid"] else source_state["reason"],
+            recalibrate_available=self._current_calibration is not None and source_state["valid"],
+            recalibrate_unavailable_reason=(
+                ""
+                if self._current_calibration is not None and source_state["valid"]
+                else (
+                    source_state["reason"]
+                    if self._current_calibration is not None
+                    else "Capture an initial calibration before recalibrating."
+                )
+            ),
+            lock_available=lock_available,
+            lock_unavailable_reason=lock_reason,
+            execution_available=execution_available,
+            execution_unavailable_reason=execution_reason,
             calibration=self._current_calibration,
-            suggestion=self._current_suggestion,
+            suggestion=suggestion,
             locked=self._locked_snapshot(newer_suggestion_available=newer),
             trim=self._manual_trim,
             execution_enabled=self.execution_enabled,
@@ -679,12 +713,9 @@ class ApplicationService(QObject):
             return result
         self._refresh_stable_suggestion()
         suggestion = self._current_suggestion
-        if suggestion is None or not suggestion.valid or suggestion.plan is None:
-            result = CommandResult.fail("No valid suggested transformation is available.")
-            self.telemetry.record_command_result("lock_suggested_transformation", result)
-            return result
-        if suggestion.planner_status in {"planner_failure", "invalid_target"}:
-            result = CommandResult.fail("Suggested transformation is not lockable.")
+        lock_available, lock_reason = self._lock_availability(suggestion)
+        if not lock_available:
+            result = CommandResult.fail(lock_reason, stable_control=self.stable_control_snapshot())
             self.telemetry.record_command_result("lock_suggested_transformation", result)
             return result
         self._lock_generation += 1
@@ -760,6 +791,13 @@ class ApplicationService(QObject):
             result = CommandResult.fail("Transformation Execution Lab is not enabled.")
             self.telemetry.record_command_result("set_plan_execution_enabled", result)
             return result
+        if bool(enabled) and self.calibrate_lock_lab_enabled and self._locked_transformation is None:
+            result = CommandResult.fail(
+                "Stored transformation required before execution can be enabled.",
+                stable_control=self.stable_control_snapshot(),
+            )
+            self.telemetry.record_command_result("set_plan_execution_enabled", result)
+            return result
         self.execution_enabled = bool(enabled)
         state = self.transformation_execution_snapshot()
         result = CommandResult.ok(
@@ -830,7 +868,7 @@ class ApplicationService(QObject):
         snapshot = self.source_analysis_snapshot()
         ok, reason = self._validate_calibration_source(snapshot)
         if not ok:
-            result = CommandResult.fail(reason, stable_control=self.stable_control_snapshot())
+            result = CommandResult.fail(reason, stable_control=self.stable_control_snapshot(source_snapshot=snapshot))
             self.telemetry.record_command_result(command_name, result)
             return result
         profile = snapshot["profile"]
@@ -865,12 +903,14 @@ class ApplicationService(QObject):
             warnings=tuple(warnings),
         )
         self._refresh_stable_suggestion(force=True)
-        state = self.stable_control_snapshot()
+        state = self.stable_control_snapshot(source_snapshot=snapshot)
         result = CommandResult.ok("Source calibration captured.", stable_control=state)
         self.telemetry.record_command_result(command_name, result)
         return result
 
     def _validate_calibration_source(self, snapshot):
+        if self._processing_state != "running":
+            return False, "Processing is not running."
         if not snapshot:
             return False, "Source analysis is unavailable."
         status = dict(snapshot.get("status") or {})
@@ -932,6 +972,52 @@ class ApplicationService(QObject):
             ok, reason = _optional_calibration_number(profile.get(key), label)
             if not ok:
                 return False, reason
+        return True, ""
+
+    def _calibration_source_state(self, snapshot=None):
+        snapshot = self.source_analysis_snapshot() if snapshot is None else snapshot
+        ok, reason = self._validate_calibration_source(snapshot)
+        status = dict((snapshot or {}).get("status") or {})
+        profile = dict((snapshot or {}).get("profile") or {})
+        generation = status.get("analyzed_frame_count")
+        if generation is None:
+            generation = status.get("retained_reading_count")
+        try:
+            generation = int(generation or 0)
+        except (TypeError, ValueError):
+            generation = 0
+        confidence = profile.get("aggregate_confidence")
+        if confidence is None:
+            confidence = profile.get("f0_confidence")
+        try:
+            confidence = float(confidence or 0.0)
+        except (TypeError, ValueError):
+            confidence = 0.0
+        try:
+            voiced_frame_count = int(profile.get("voiced_frame_count") or 0)
+        except (TypeError, ValueError):
+            voiced_frame_count = 0
+        return {
+            "ready": bool(profile.get("ready")),
+            "valid": bool(ok),
+            "generation": generation,
+            "voiced_frame_count": voiced_frame_count,
+            "confidence": confidence if math.isfinite(confidence) else 0.0,
+            "age": status.get("latest_snapshot_age_seconds"),
+            "reason": "" if ok else reason,
+        }
+
+    def _lock_availability(self, suggestion):
+        if suggestion is None:
+            if self._current_calibration is None:
+                return False, "Calibrate Source before locking a suggested transformation."
+            return False, "Planner could not produce a suggestion."
+        if not suggestion.valid:
+            return False, f"Suggested transformation is not lockable: planner status {suggestion.planner_status}."
+        if suggestion.plan is None:
+            return False, "Suggested transformation is not lockable: planner did not return a plan."
+        if suggestion.planner_status in {"planner_failure", "invalid_target"}:
+            return False, f"Suggested transformation is not lockable: planner status {suggestion.planner_status}."
         return True, ""
 
     def _refresh_stable_suggestion(self, force=False):

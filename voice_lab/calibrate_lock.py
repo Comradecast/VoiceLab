@@ -164,6 +164,22 @@ class StableTransformationControlSnapshot:
     lab: str
     adaptive_mode: str
     execution_authority: str
+    processing_state: str
+    source_ready: bool
+    source_valid: bool
+    source_generation: int
+    source_voiced_frame_count: int
+    source_confidence: float
+    source_snapshot_age_seconds: float | None
+    source_reason: str
+    calibrate_available: bool
+    calibrate_unavailable_reason: str
+    recalibrate_available: bool
+    recalibrate_unavailable_reason: str
+    lock_available: bool
+    lock_unavailable_reason: str
+    execution_available: bool
+    execution_unavailable_reason: str
     calibration: CalibrationSourceProfile | None
     suggestion: SuggestedTransformationSnapshot | None
     locked: LockedTransformationSnapshot | None

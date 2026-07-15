@@ -160,6 +160,76 @@ class LaboratoryWorkflowTruthfulnessTests(unittest.TestCase):
             window.close()
             app.processEvents()
 
+    def test_calibrate_lock_buttons_and_workflow_show_exact_prerequisites(self):
+        app = qt_application()
+        service = make_service(calibrate_lock_lab=True)
+        service._processing_state = "stopped"
+        service.source_analysis_snapshot = lambda: ready_source()
+        window = App(service)
+        try:
+            window.refresh_calibrate_lock()
+            self.assertFalse(window.calibrate_source_button.isEnabled())
+            self.assertFalse(window.recalibrate_source_button.isEnabled())
+            self.assertFalse(window.lock_suggested_button.isEnabled())
+            self.assertIn("Processing is not running.", window.command_availability_state.text())
+            self.assertIn("Step 2 of 8", window.workflow_state.text())
+
+            service._processing_state = "running"
+            window.refresh_calibrate_lock()
+            self.assertTrue(window.calibrate_source_button.isEnabled())
+            self.assertFalse(window.recalibrate_source_button.isEnabled())
+            self.assertFalse(window.lock_suggested_button.isEnabled())
+            self.assertIn("Step 3 of 8", window.workflow_state.text())
+
+            service.capture_calibration()
+            window.refresh_calibrate_lock()
+            self.assertTrue(window.recalibrate_source_button.isEnabled())
+            self.assertTrue(window.lock_suggested_button.isEnabled())
+            self.assertIn("Step 5 of 8", window.workflow_state.text())
+        finally:
+            window.close()
+            app.processEvents()
+
+    def test_cross_tab_snapshots_share_service_state_without_construction_order_dependency(self):
+        service = make_service(parametric_eq_lab=True)
+        service.source_analysis_snapshot = lambda: ready_source(median_f0_hz=118.0)
+        self.assertTrue(service.capture_calibration().success)
+        self.assertTrue(service.load_target_reference("large_cavernous").success)
+        self.assertTrue(service.lock_suggested_transformation().success)
+
+        source = service.source_analysis_snapshot()
+        target = service.target_planner_state()
+        execution = service.transformation_execution_snapshot()
+        stable = service.stable_control_snapshot()
+
+        self.assertEqual(source["profile"]["ready"], stable.source_ready)
+        self.assertEqual(target["plan"]["target_id"], stable.suggestion.target_id)
+        self.assertEqual(target["plan"]["status"], stable.suggestion.planner_status)
+        self.assertEqual(
+            target["plan"]["pitch"]["applied_pitch_shift_st"],
+            stable.suggestion.plan.pitch.applied_pitch_shift_st,
+        )
+        self.assertEqual(
+            target["plan"]["formant"]["applied_formant_shift_st"],
+            stable.suggestion.plan.formant.applied_formant_shift_st,
+        )
+        self.assertEqual(execution.target_id, stable.locked.target_id)
+        self.assertEqual(stable.current_target_id, stable.suggestion.target_id)
+        self.assertEqual(stable.locked.plan, stable.suggestion.plan)
+
+        app = qt_application()
+        first = App(service)
+        second = App(service)
+        try:
+            second.refresh_execution_lab()
+            first.refresh_calibrate_lock()
+            self.assertIn(stable.locked.target_id, first.locked_state.text())
+            self.assertIn(stable.suggestion.target_id, second.execution_suggested_state.text())
+        finally:
+            first.close()
+            second.close()
+            app.processEvents()
+
     def test_soundboard_disabled_in_labs_and_normal_mode_unchanged(self):
         app = qt_application()
         normal = make_service()
