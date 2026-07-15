@@ -2051,8 +2051,7 @@ Neutral Target, Return Audio to Neutral, and Clear Stored Transformation.
 
 ## M9.5 - Pitch/Formant Naturalness
 
-Status: PROVISIONAL. Automated implementation and regression verification are
-complete; practical live acceptance is still required before PASS.
+Status: PASS. Luke completed live Pitch/Formant Naturalness acceptance.
 
 M9.5 corrects diagnostic target planning so pitch depth and formant movement
 are no longer treated as the same acoustic direction. It keeps the existing
@@ -2103,12 +2102,77 @@ authority, and laboratory reset semantics unchanged.
   replacement, persistence, second pitch/formant stage, Signalsmith buffering
   change, or EQ concealment was added.
 
-### Live Acceptance Required
+### Live Acceptance
 
-- Natural Deep should sound deeper without the nasal/vowel exaggeration caused
-  by negative formant movement.
-- Large / Cavernous should be clearly understood as stylized and may exaggerate
-  vowels or nasal resonance.
-- Luke's practical positive-formant preference around pitch `-3` to `-4` st
-  remains provisional live evidence; the runtime formant limit remains the
-  existing `+/-2` st until a later accepted change.
+- Natural Deep at approximately `-3.5 st` pitch and `+1.505 st` formant was
+  judged substantially more natural than the prior lower-voice behavior. Luke
+  reported that it "sounds pretty dang good", is clearly good and usable, and
+  materially improves problematic W/R/vowel phrases such as "words", "wrong",
+  "why", and "what". The result no longer primarily resembles someone
+  deliberately forcing their throat lower.
+- Positive formant compensation is the accepted natural-deep policy. Lowering
+  pitch for a natural deep voice must not automatically lower formants.
+- Large / Cavernous at approximately `-4.5 st` pitch and `-1.5 st` formant was
+  judged ridiculous and exaggerated, which is the intended stylized
+  large-vocal-tract behavior. It remains useful as a deliberate creative effect
+  and must not be presented as the natural deep-voice default.
+- Natural Deep sounds natural enough for continued product development,
+  improves the old W/R/vowel resonance behavior, is clearly preferable to the
+  prior negative-formant lower voice, and remains distinct from pitch-only
+  behavior.
+- Large / Cavernous is clearly stylized and exaggerated. Its vowel and
+  resonance exaggeration is expected rather than considered a defect.
+- Target strength scales predictably. Manual trim can reach formant zero and
+  can produce deliberate negative final formant with truthful warnings.
+- Calibration creates suggestions reliably, locking works reliably, execution
+  applies the stored plan, Return Audio to Neutral remains correct, and Clear
+  Stored Transformation remains correct.
+- No new crackle, flutter, metallic tail, stream restart, growing delay, or
+  M9.4 Parametric EQ regression was reported.
+
+### Accepted Architecture
+
+- Natural Deep uses explicit relative downward pitch strategy and positive
+  natural-compensation formant strategy.
+- Large / Cavernous uses explicit downward pitch plus size-coupled negative
+  formant strategy.
+- Pitch direction and formant direction are decoupled, target strength is
+  applied once, planner values remain deterministic, and Natural Deep does not
+  planner-generate negative formant.
+- The naturalness guard applies to invalid negative natural-compensation intent
+  regardless of pitch sign.
+- Manual trim remains additive operator authority. Manual formant trim range is
+  `+/-2.0 st`, while the runtime formant safety limit remains `+/-2.0 st`.
+  Negative final formant through manual trim remains allowed and truthfully
+  warned.
+- One combined Signalsmith Pitch/Formant stage remains. Inherited active
+  latency remains approximately 4800 frames / 100 ms at 48 kHz. No additional
+  pitch or formant stage was introduced.
+- Parametric EQ remains independent, and no static EQ compensation is used to
+  conceal pitch/formant artifacts.
+- Continuous remains Off by default, explicit lock authority remains required,
+  and no persistence or schema changes were introduced.
+- `lower_weightier` remains a lookup compatibility alias that resolves to
+  canonical Natural Deep semantics, does not appear as a fifth visible target,
+  stores plans with the canonical target identity, and no longer creates
+  alias-driven dirty state.
+- Neutral produces zero pitch and zero formant at every strength, Neutral
+  dynamics remain neutral, Neutral active capabilities remain empty, and
+  unsupported planner capabilities do not escape as applied capabilities.
+- Protected Deep Voice preset behavior now restores its intended full default
+  strength. Production Pitch Shift works in normal production mode, remains
+  absent from experimental pitch/formant lab chains, and no duplicate pitch
+  stage was introduced.
+
+### Known Non-Blocking Debt
+
+- Natural Deep values are accepted diagnostic defaults, not finished universal
+  character presets.
+- More source voices should eventually be tested.
+- Higher / Brighter still requires separate final-character development.
+- Finished feminine and masculine character profiles remain future work.
+- De-essing, breathiness, harmonic enhancement, spectral-tilt execution,
+  planner-driven Parametric EQ, and neural voice conversion remain unsupported
+  or optional future work.
+- Additional articulation-sensitive phrase testing may continue as tuning
+  evidence, but does not block M9.5.

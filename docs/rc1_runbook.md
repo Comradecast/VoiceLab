@@ -2605,22 +2605,24 @@ Parametric EQ acceptance note:
 
 Known non-blocking post-M9.5 debt:
 
-- M9.5 pitch/formant naturalness requires practical live acceptance before
-  PASS.
-- Diagnostic target profiles remain provisional.
+- Natural Deep values are accepted diagnostic defaults, not finished universal
+  character presets.
+- More source voices should eventually be tested.
+- Higher / Brighter still requires separate final-character development.
 - Planner Parametric EQ remains unsupported.
 - Spectral-tilt execution remains unsupported.
 - De-essing remains unsupported.
 - Breathiness synthesis remains unsupported.
 - Harmonic enhancement remains unsupported.
-- Finished production feminine and deep-masculine characters do not yet exist.
+- Finished feminine and masculine character profiles remain future work.
 - Input/Output/Both spectrum modes remain deferred; Post-EQ is implemented.
 - Neural conversion remains an optional future plugin.
+- Additional articulation-sensitive phrase testing may continue as tuning
+  evidence, but does not block M9.5.
 
 ## M9.5 Pitch/Formant Naturalness Acceptance
 
-Status: PROVISIONAL. Automated implementation and regression verification are
-complete; live acceptance remains open.
+Status: PASS. Luke completed live Pitch/Formant Naturalness acceptance.
 
 M9.5 decouples depth from vocal-tract size in the diagnostic planner. Natural
 Deep lowers pitch and applies moderate positive formant compensation. Large /
@@ -2629,7 +2631,7 @@ large-vocal-tract reference. The existing combined Signalsmith pitch/formant
 stage, latency, Parametric EQ authority, reset semantics, settings, presets,
 and production characters remain unchanged.
 
-Automated acceptance already verified:
+Automated and live acceptance verified:
 
 - Neutral, Higher / Brighter, Natural Deep, and Large / Cavernous are exposed
   in that order.
@@ -2662,28 +2664,65 @@ Automated acceptance already verified:
   model, de-essing, breathiness, harmonic enhancement, spectral tilt, or neural
   conversion was added.
 
-Live acceptance checklist:
+Natural Deep live PASS:
 
-- Launch `main.py --parametric-eq-lab`; confirm the app starts stopped,
-  Adaptive Updating is Off, and no stored transformation is silently applied.
-- Confirm Target Planner shows Neutral, Higher / Brighter, Natural Deep, and
-  Large / Cavernous in order.
-- At `0%`, confirm all four targets remain audibly neutral and report zero
-  effective pitch/formant movement.
-- Calibrate source, select Natural Deep, set `100%`, lock explicitly, enable
-  execution, and confirm lower pitch with improved vowel naturalness compared
-  with the old negative-formant Lower / Weightier behavior.
-- Confirm Natural Deep does not sound like EQ concealment and does not depend
-  on Parametric EQ.
-- Select Large / Cavernous, lock explicitly, enable execution, and confirm the
-  negative pitch plus negative formant result is clearly stylized, with warning
-  text visible and understandable.
-- Use manual formant trim to force a negative final formant with negative
-  pitch; confirm the warning appears, final values remain bounded, and the
-  locked base plan is unchanged.
-- Return Audio to Neutral; confirm runtime pitch/formant neutralize while the
-  stored transformation remains available.
-- Clear Stored Transformation; confirm the lock and trims are cleared and
-  authority returns to `none`.
-- Confirm Parametric EQ remains independent and planner EQ capabilities remain
-  unsupported.
+- Natural Deep at approximately `-3.5 st` pitch and `+1.505 st` formant was
+  judged substantially more natural than the prior lower-voice behavior.
+- Luke's live assessment was that it "sounds pretty dang good", sounds clearly
+  good and usable, and materially improves problematic W/R/vowel phrases.
+- Words such as "words", "wrong", "why", and "what" no longer exhibit the
+  same unacceptable exaggerated resonance.
+- The result no longer primarily resembles someone deliberately forcing their
+  throat lower.
+- Positive formant compensation is preferred over negative formant movement for
+  natural deepening.
+- This confirms the central M9.5 product decision: lowering pitch for a
+  natural deep voice must not automatically lower formants.
+
+Large / Cavernous live PASS:
+
+- Large / Cavernous at approximately `-4.5 st` pitch and `-1.5 st` formant was
+  judged ridiculous and exaggerated, which is the intended behavior.
+- It is clearly distinct from Natural Deep.
+- It successfully represents a stylized large-vocal-tract effect.
+- Negative pitch plus negative formant remains useful as a deliberate creative
+  effect.
+- It must not be presented as the natural deep-voice default.
+- Its vowel and resonance exaggeration is expected rather than considered a
+  defect.
+
+Workflow acceptance PASS:
+
+- Source Analysis readiness is published consistently.
+- Calibrate Source clearly reflects prerequisites.
+- Successful calibration immediately creates a suggestion.
+- Lock Suggested Transformation becomes available only when a valid suggestion
+  exists.
+- Lock command creates a stored transformation.
+- Execution applies the stored transformation.
+- Exact blocker reasons are visible.
+- Workflow banner uses truthful 8-step status.
+- No silent calibration or lock failure remains.
+- Cross-tab state is service-owned; no tab-owned planner or calibration state
+  exists.
+
+Live acceptance classification:
+
+- Natural Deep sounds natural enough for continued product development: PASS.
+- Natural Deep improves the old W/R/vowel resonance behavior: PASS.
+- Natural Deep is clearly preferable to the prior negative-formant lower voice:
+  PASS.
+- Natural Deep remains distinct from pitch-only behavior: PASS.
+- Large / Cavernous is clearly stylized and exaggerated: PASS.
+- Target strength scales predictably: PASS.
+- Manual trim can reach formant zero: PASS.
+- Manual trim can produce deliberate negative final formant: PASS.
+- Final-value warnings behave truthfully: PASS.
+- Calibration creates suggestions reliably: PASS.
+- Locking works reliably: PASS.
+- Execution applies the stored plan: PASS.
+- Return Audio to Neutral remains correct: PASS.
+- Clear Stored Transformation remains correct: PASS.
+- No new crackle, flutter, metallic tail, stream restart, or growing delay was
+  reported: PASS.
+- M9.4 Parametric EQ remains unaffected: PASS.

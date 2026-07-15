@@ -73,6 +73,15 @@ When target or strength changes after a lock, the UI reports:
 New suggestion available - stored transformation unchanged. Press Lock Suggested Transformation to apply it.
 ```
 
+Final M9.5 live acceptance confirmed that Source Analysis readiness is
+published consistently, Calibrate Source clearly reflects prerequisites,
+successful calibration immediately creates a suggestion, Lock Suggested
+Transformation becomes available only when a valid suggestion exists, locking
+creates a stored transformation, execution applies that stored transformation,
+exact blocker reasons are visible, and no silent calibration or lock failure
+remains. Cross-tab workflow state is service-owned; no tab-owned planner or
+calibration state exists.
+
 ## Capability Presentation
 
 Primary execution capability presentation is limited to what can affect audio
@@ -114,16 +123,28 @@ laboratory isolation, and Suggested/Stored/Applied state model were accepted.
 
 ## Pitch/Formant Artifact Boundary
 
-The nasal/vowel artifact is outside this correction. Luke continues to notice
-odd resonance or articulation on words such as "words", "wrong", "why", and
-"what". It occurs with transformation active and EQ bypassed. Rounded W onsets,
-R resonance, and vowel transitions can become exaggerated. Negative formant
-movement worsens it substantially. Luke commonly prefers pitch around -3 to -4
-st with positive formant compensation around +1 to +2.5 st. The artifact may
-interact with source articulation, but the transformation appears to magnify it.
-Pitch/formant naturalness and Lower/Weightier pitch/formant direction
-decoupling are later milestones. Static EQ must not be used to conceal this
-artifact.
+M9.5 live acceptance resolved the prior blocking pitch/formant naturalness
+question. Natural Deep at approximately `-3.5 st` pitch and `+1.505 st`
+formant was judged clearly good and usable, with material improvement on
+problematic W/R/vowel phrases such as "words", "wrong", "why", and "what".
+Positive formant compensation is the accepted natural-deep policy; lowering
+pitch for a natural deep voice must not automatically lower formants.
+
+Large / Cavernous at approximately `-4.5 st` pitch and `-1.5 st` formant was
+accepted as intentionally exaggerated. Negative pitch plus negative formant
+remains useful as a deliberate stylized large-vocal-tract effect, but must not
+be presented as the natural deep-voice default.
+
+Static EQ must not be used to conceal pitch/formant artifacts. Parametric EQ
+remains independent, planner `parametric_eq` and `spectral_tilt_shaping` remain
+unsupported, and M9.4 Parametric EQ behavior remains unaffected.
 
 No M9.1 formulas, target profiles, Parametric EQ DSP, settings schema, or
 preset schema are changed by this correction.
+
+## Production Pitch Shift Regression
+
+Protected Deep Voice preset behavior now restores its intended full default
+strength. Production Pitch Shift works in normal production mode, remains
+absent from experimental pitch/formant lab chains, and no duplicate pitch stage
+was introduced.

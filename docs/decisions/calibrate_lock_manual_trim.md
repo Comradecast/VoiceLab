@@ -83,6 +83,30 @@ While Adaptive Updating is Off, live source changes, target edits, strength
 edits, recalibration, and suggestion changes do not alter audio. Only explicit
 re-lock or manual trim changes the selected transformation.
 
+## M9.5 Workflow Acceptance
+
+Final M9.5 live acceptance confirmed the corrected workflow remains reliable:
+
+- Source Analysis readiness is published consistently.
+- Calibrate Source clearly reflects prerequisites.
+- Successful calibration immediately creates a suggestion.
+- Lock Suggested Transformation becomes available only when a valid suggestion
+  exists.
+- Lock command creates a stored transformation.
+- Execution applies the stored transformation.
+- Exact blocker reasons are visible.
+- The workflow banner uses truthful 8-step status.
+- No silent calibration or lock failure remains.
+- Cross-tab state is service-owned.
+- No tab-owned planner or calibration state exists.
+
+M9.5 also confirmed the manual trim and runtime-limit distinction: manual
+formant trim is an additive operator authority with a `+/-2.0 st` range, while
+the runtime formant safety limit remains `+/-2.0 st`. Manual trim can reach
+formant zero and can deliberately produce negative final formant; those final
+values remain bounded and are truthfully warned without mutating the locked
+base plan.
+
 ## Live Acceptance Notes
 
 Luke operated the Calibrate/Lock Lab for approximately 30 minutes with no

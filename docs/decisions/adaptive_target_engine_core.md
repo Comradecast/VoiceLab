@@ -231,7 +231,9 @@ regression.
 - Pitch-center planning is accepted.
 - Pitch-range planning is accepted as a future processor requirement.
 - Restrained target-intent formant planning is accepted.
-- M9.5 natural formant compensation is provisional pending live acceptance.
+- M9.5 natural formant compensation is accepted after live Natural Deep
+  acceptance: lowering pitch for a natural deep voice must not automatically
+  lower formants.
 - Spectral band and tilt-index planning are accepted as diagnostic EQ
   requirements.
 - De-essing planning is accepted as a future processor requirement.
