@@ -1,7 +1,7 @@
 # Laboratory Workflow Truthfulness
 
-Status: Accepted correction. M9.4 remains PROVISIONAL pending a brief live
-workflow retest.
+Status: PASS. The corrected laboratory workflow was accepted during final M9.4
+live acceptance.
 
 ## Decision
 
@@ -105,19 +105,25 @@ configuration or schema is changed.
 
 ## Parametric EQ Finding
 
-Live inspection confirmed Parametric EQ processing, the graph UI, Input
-Processing, Routing, Diagnostics, and Source Analysis. No pops, buzz, bad
-delay, or obvious EQ transition instability were observed. The graph UI was
-accepted. M9.4 final PASS remains pending this workflow-truthfulness correction
-and brief retest.
+Final M9.4 live acceptance confirmed Parametric EQ processing, the graph UI,
+Input Processing, Routing, Diagnostics, Source Analysis, and the corrected
+workflow. No pops, buzz, crackle, bad/growing delay, or obvious EQ transition
+instability were observed. Transition telemetry settled truthfully. The graph
+UI, coarse/fine interaction accessibility, whole-EQ A/B workflow, Soundboard
+laboratory isolation, and Suggested/Stored/Applied state model were accepted.
 
 ## Pitch/Formant Artifact Boundary
 
-The nasal/vowel artifact is outside this correction. It exists with
-transformation active and EQ bypassed. Negative formant movement worsens it.
-Luke commonly prefers pitch around -3 to -4 st with positive formant
-compensation around +1 to +2.5 st. Planner pitch/formant-direction correction
-is a later milestone. Static EQ must not be used to conceal this artifact.
+The nasal/vowel artifact is outside this correction. Luke continues to notice
+odd resonance or articulation on words such as "words", "wrong", "why", and
+"what". It occurs with transformation active and EQ bypassed. Rounded W onsets,
+R resonance, and vowel transitions can become exaggerated. Negative formant
+movement worsens it substantially. Luke commonly prefers pitch around -3 to -4
+st with positive formant compensation around +1 to +2.5 st. The artifact may
+interact with source articulation, but the transformation appears to magnify it.
+Pitch/formant naturalness and Lower/Weightier pitch/formant direction
+decoupling are later milestones. Static EQ must not be used to conceal this
+artifact.
 
 No M9.1 formulas, target profiles, Parametric EQ DSP, settings schema, or
 preset schema are changed by this correction.

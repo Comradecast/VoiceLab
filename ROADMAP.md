@@ -1929,9 +1929,8 @@ or the audio effect chain.
 
 ## M9.4 - Parametric EQ Foundation
 
-Status: PROVISIONAL. Automated contract coverage is in place; live EQ graph and
-processing inspection passed, but final M9.4 PASS remains pending the
-workflow-truthfulness correction and brief retest.
+Status: PASS. Luke completed practical live acceptance of the Parametric EQ
+Foundation and the corrected laboratory workflow.
 
 M9.4 adds one manual five-band Parametric EQ authority in an isolated lab mode.
 It does not change normal production mode, prior lab chains, production
@@ -1951,18 +1950,14 @@ shows compact Coarse/Fine value feedback during interaction, the inspector
 offers explicit fine stepping, and whole-EQ A/B is prominent through the
 existing local bypass authority. DSP ranges and behavior are unchanged.
 
-Live workflow inspection confirmed Parametric EQ processing, the accepted graph
-UI, Input Processing, Routing, Diagnostics, and Source Analysis. No pops, buzz,
-bad delay, or obvious EQ transition instability were observed. Workflow
-truthfulness defects were found around lab Voice-tab Pitch Shift visibility,
-ambiguous Plan State wording, Return to Neutral semantics, target/lock
-isolation explanation, Calibrate & Lock guidance, unsupported planner
-capabilities, and Soundboard availability in laboratory modes.
+Final live acceptance confirmed Parametric EQ processing, the graph-first UI,
+Input Processing, Routing, Diagnostics, Source Analysis, and the corrected
+workflow. No pop, buzz, crackle, bad/growing delay, or obvious transition
+instability was observed. Transition telemetry settles truthfully.
 
-The correction preserves accepted DSP behavior and distinguishes Suggested
-Plan, Stored/Locked Plan, and Applied Runtime. It also distinguishes Neutral
-Target, Return Audio to Neutral, and Clear Stored Transformation. M9.4 remains
-PROVISIONAL until the corrected workflow receives brief live retest.
+The workflow correction preserves accepted DSP behavior and distinguishes
+Suggested Plan, Stored/Locked Plan, and Applied Runtime. It also distinguishes
+Neutral Target, Return Audio to Neutral, and Clear Stored Transformation.
 
 ### Scope
 
@@ -2025,11 +2020,31 @@ PROVISIONAL until the corrected workflow receives brief live retest.
 - Soundboard is disabled in experimental voice laboratories and normal
   production Soundboard behavior remains unchanged.
 - The nasal/vowel artifact is separate pitch/formant work: it occurs with
-  transformation active and EQ bypassed, worsens with negative formant
-  movement, and should not be concealed with static EQ. Luke commonly prefers
-  pitch around -3 to -4 st with positive formant compensation around +1 to
-  +2.5 st.
-- Known non-blocking debt: final live EQ acceptance is pending; finished
-  production feminine/deep-masculine characters remain future work; automatic
-  target-profile EQ, spectral tilt, de-essing, breathiness, harmonic
-  enhancement, and neural conversion remain deferred.
+  transformation active and EQ bypassed, worsens substantially with negative
+  formant movement, and should not be concealed with static EQ. Luke commonly
+  prefers pitch around -3 to -4 st with positive formant compensation around
+  +1 to +2.5 st. Rounded W onsets, R resonance, and vowel transitions can be
+  exaggerated on words such as "words", "wrong", "why", and "what".
+- Final live UI PASS: graph-first interface, primary graph workspace, five
+  understandable fixed draggable nodes, usable selected-band inspector,
+  secondary/collapsed diagnostics, understandable response curve, working
+  Post-EQ spectrum, and usable resizing.
+- Final live accessibility PASS: coarse graph movement, Shift fine adjustment,
+  understandable frequency snapping, Q coarse/fine adjustment, value/mode
+  overlay, prominent EQ ON/BYPASS comparison, and stored EQ returning after
+  bypass. Coarse interaction was added because Luke is partially deaf and
+  ordinary EQ changes were initially difficult to audition; this was not a DSP
+  defect.
+- Final live DSP PASS: EQ reaches the active audio path; individual and
+  combined EQ plans operate; flat EQ and Reset EQ to Flat are neutral; local
+  bypass and global bypass remain distinct; zero added EQ algorithmic latency.
+- Final workflow PASS: lab production Pitch Shift is not editable when absent;
+  Gain, Robot, and Lowpass remain available when present; target/strength edits
+  update suggestions only; explicit re-lock is required; Clear Stored
+  Transformation clears lock and trims; Soundboard is disabled in experimental
+  labs; Parametric EQ remains independent from transformation lock authority.
+- Known non-blocking debt: pitch/formant naturalness, Lower/Weightier pitch and
+  formant direction decoupling, provisional diagnostic target profiles, planner
+  EQ, spectral-tilt execution, de-essing, breathiness synthesis, harmonic
+  enhancement, finished production feminine/deep-masculine characters,
+  Input/Output/Both spectrum modes, and optional future neural conversion.

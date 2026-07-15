@@ -2338,33 +2338,40 @@ Known non-blocking debt:
 
 These are future milestones, not M9.3 failures.
 
-## M9.4 Parametric EQ Foundation Pre-Live Acceptance
+## M9.4 Parametric EQ Foundation Live Acceptance
 
-Status: PROVISIONAL.
+Status: PASS.
 
-M9.4 is ready for controlled live EQ acceptance, but final hardware PASS has
-not been recorded. Launch with:
+Luke completed practical live acceptance of the Parametric EQ Foundation and
+the corrected laboratory workflow. Launch with:
 
 ```powershell
 .\.venv\Scripts\python.exe main.py --parametric-eq-lab
 ```
 
-Expected launch and isolation behavior:
+Launch and isolation PASS results:
 
-- Parametric EQ Lab launches stopped.
+- Parametric EQ Lab launches stopped: PASS.
 - Source Analysis, Target Planner, Plan Execution, Calibrate & Lock, and
-  Parametric EQ tabs are present.
-- Transformation execution launches disabled.
-- Adaptive Updating defaults Off.
-- EQ starts disabled or flat-neutral.
-- All band gains start at 0 dB.
-- No EQ persistence is restored.
-- The Parametric EQ tab is graph-first: compact toolbar, large frequency
-  response graph, selected-band inspector, and collapsed Diagnostics panel.
-- The rejected form-style five-row primary editor should not be used for live
-  acceptance.
+  Parametric EQ tabs are present: PASS.
+- Transformation execution launches disabled: PASS.
+- Adaptive Updating defaults Off: PASS.
+- EQ starts disabled or flat-neutral: PASS.
+- All band gains start at 0 dB: PASS.
+- No EQ persistence is restored: PASS.
 - Normal mode, Formant Lab, Voice Analysis Lab, Target Planner Lab,
-  Transformation Execution Lab, and Calibrate/Lock Lab remain unchanged.
+  Transformation Execution Lab, and Calibrate/Lock Lab remain unchanged: PASS.
+
+Parametric EQ UI PASS results:
+
+- Graph-first interface is accepted: PASS.
+- Graph occupies the primary workspace: PASS.
+- Five fixed draggable nodes are understandable: PASS.
+- Selected-band inspector is usable: PASS.
+- Diagnostics remain secondary/collapsed: PASS.
+- Response curve is understandable: PASS.
+- Post-EQ spectrum operates: PASS.
+- Resizing remains usable: PASS.
 
 Expected Parametric EQ chain:
 
@@ -2390,7 +2397,23 @@ High-Pass
 - Overall lab latency remains inherited from the pitch/formant stage,
   approximately 4800 frames / 100 ms at 48 kHz.
 
-Manual EQ controls:
+Interaction accessibility PASS results:
+
+- Coarse graph movement is visible and usable: PASS.
+- Shift fine-adjustment is available: PASS.
+- Frequency snapping is understandable: PASS.
+- Q coarse/fine adjustment works: PASS.
+- Interaction overlay reports values and mode: PASS.
+- Whole-EQ EQ ON/BYPASS comparison is prominent: PASS.
+- Stored EQ returns after bypass: PASS.
+
+Luke is partially deaf and initially found ordinary EQ changes difficult to
+hear. Coarse interaction was added to improve audition accessibility; direct
+numeric precision remains available; whole-EQ A/B remains the primary
+comparison tool. This was an interaction/accessibility consideration, not a DSP
+defect.
+
+Accepted manual EQ controls:
 
 - Drag one of the five fixed graph nodes to adjust frequency and gain.
 - Normal graph drag uses coarse audible steps: gain snaps to 0.5 dB,
@@ -2413,31 +2436,34 @@ Manual EQ controls:
 - High Shelf: brightness/air, 4000-12000 Hz, +/-6 dB, capped safely below
   Nyquist.
 
-Visualization expectations:
+Visualization PASS results:
 
 - The response curve is derived from a bounded immutable ApplicationService
-  visualization snapshot based on the applied coefficient bank.
-- The UI does not calculate EQ coefficients and does not import the EQ effect.
+  visualization snapshot based on the applied coefficient bank: PASS.
+- The UI does not calculate EQ coefficients and does not import the EQ effect:
+  PASS.
 - Optional spectrum display is Post-EQ only in M9.4. Input, Output, and Both
   analyzer modes remain deferred.
 - Spectrum analysis uses a bounded one-slot latest-frame mailbox and worker-side
-  FFT; it is visualization-only and does not affect audio or source analysis.
-- Diagnostics are available but collapsed by default.
+  FFT; it is visualization-only and does not affect audio or source analysis:
+  PASS.
+- Diagnostics are available but collapsed by default: PASS.
 
-Expected flat and bypass behavior:
+Audio and DSP PASS results:
 
-- EQ disabled sounds identical to the prior stable lab chain.
-- Enabling flat EQ causes no audible change.
-- Local EQ bypass passes audio through EQ unchanged while retaining values.
-- Global Bypass Effects remains the top-level bypass authority.
-- Reset EQ to Flat restores neutrality.
-- Active-to-flat, active-to-local-bypass, flat-to-active, disable, and re-enable
-  changes settle through a bounded dry/wet transition. After the transition,
-  `transition_active` is false, `transition_progress` is settled, and flat,
-  local-bypass, and processing-active states are truthful.
-- While Global Bypass Effects is active, EQ audio is bypassed immediately and
-  EQ transitions are reported as pending rather than audibly progressing. After
-  global bypass is released, the latest requested EQ state resumes and settles.
+- EQ reaches the active audio path: PASS.
+- Individual and combined EQ plans operate: PASS.
+- Flat EQ remains neutral: PASS.
+- Reset EQ to Flat restores neutrality: PASS.
+- Local bypass operates: PASS.
+- Global bypass remains distinct: PASS.
+- No pop observed: PASS.
+- No buzz observed: PASS.
+- No crackle observed: PASS.
+- No bad or growing delay observed: PASS.
+- No obvious transition instability observed: PASS.
+- Transition telemetry settles truthfully: PASS.
+- Added EQ algorithmic latency remains zero frames: PASS.
 
 Expected band-audibility checks:
 
@@ -2452,34 +2478,33 @@ Expected band-audibility checks:
 - Frequency controls move the affected region.
 - Higher Q narrows peak-band effect; lower Q broadens it.
 
-Expected dynamic stability checks while speaking continuously:
+Workflow-truthfulness PASS results:
 
-- Move gain, frequency, and Q controls.
-- Toggle EQ.
-- Toggle local EQ bypass and global Bypass Effects.
-- Reset individual bands.
-- Reset EQ to Flat.
-- Confirm no crackle, zipper noise, pop, unstable ringing, sudden volume
-  explosion, stream restart, or growing delay.
-- Transitions should settle promptly.
-- Reset Flat or local bypass during a transition should supersede the previous
-  destination and leave no stale transition telemetry.
+- Production Pitch Shift no longer appears editable in chains where it is
+  absent: PASS.
+- Gain, Robot, and Lowpass controls remain available where actually present:
+  PASS.
+- Suggested Plan is distinguished from Stored Plan: PASS.
+- Stored Plan is distinguished from Applied Runtime: PASS.
+- Return Audio to Neutral actually neutralizes runtime: PASS.
+- Stored transformation remains available after neutralization: PASS.
+- Clear Stored Transformation clears lock and trims: PASS.
+- Target edits update suggestion only: PASS.
+- Strength edits update suggestion only: PASS.
+- Explicit re-lock is required to change locked execution: PASS.
+- Calibrate & Lock workflow is understandable: PASS.
+- Soundboard is disabled in experimental laboratory modes: PASS.
+- Parametric EQ remains independent from transformation lock authority: PASS.
 
-Focused accessibility check:
-
-1. Set one band to 0 dB.
-2. Drag normally upward and confirm visible 0.5 dB gain steps.
-3. Hold Shift and confirm visible 0.1 dB gain steps.
-4. Use whole-EQ A/B to compare processed versus bypassed sound.
-5. Confirm normal adjustment produces an audible tonal change within a few
-   movements.
-6. Confirm fine mode permits precise finishing.
-7. Confirm no pops, buzz, zipper noise, stream restart, or growing delay.
-
-Known separate live finding: the nasal/vowel resonance artifact heard on words
-such as "weird" is attributed to upstream pitch/formant transformation behavior
-with transformation execution active and EQ bypassed. It is not an M9.4
-Parametric EQ defect and should not be hidden with static EQ.
+Known separate live finding: odd resonance or articulation remains on words
+such as "words", "wrong", "why", and "what". The issue occurs with
+transformation execution active and EQ bypassed; Parametric EQ is not the
+cause. Rounded W onsets, R resonance, and vowel transitions can become
+exaggerated. Negative formant movement makes the problem substantially worse.
+Luke commonly prefers pitch around -3 to -4 semitones with positive formant
+compensation around +1 to +2.5 semitones. The artifact may interact with source
+articulation, but the transformation appears to magnify it. Do not conceal it
+with static EQ.
 
 Expected M9.3 interaction:
 
@@ -2512,12 +2537,13 @@ Lifecycle and persistence checks:
 - No worker leak and no UI freeze.
 
 M9.4 intentionally does not mark planner `parametric_eq` or
-`spectral_tilt_shaping` supported. Future spectral-tilt execution must map into
-the same EQ authority.
+`spectral_tilt_shaping` supported. M9.4 supplies the manual EQ foundation only.
+Future spectral-tilt execution must map into the same one-EQ authority.
 
-## Laboratory Workflow Truthfulness Retest
+## Laboratory Workflow Truthfulness Acceptance
 
-Status: required before final M9.4 PASS.
+Status: PASS. The corrected laboratory workflow was accepted during final
+M9.4 live acceptance.
 
 The laboratory UI distinguishes three neutral concepts:
 
@@ -2530,7 +2556,7 @@ The laboratory UI distinguishes three neutral concepts:
   the locked transformation, clears manual pitch/formant trims, clears retained
   latest execution state, and leaves authority as `none`.
 
-During retest, confirm Plan Execution shows separate sections:
+Accepted Plan Execution presentation:
 
 - Suggested Plan: preview-only Target Planner output.
 - Stored Plan: present or absent locked transformation.
@@ -2541,7 +2567,7 @@ Parametric EQ Lab, the Voice tab must not expose an editable production Pitch
 Shift control. It should show the actual active chain and explain that pitch
 and formant are controlled through Plan Execution / Calibrate & Lock. Gain,
 Robot, and Lowpass remain available only because those stages are in the active
-lab chain.
+lab chain. This behavior passed final M9.4 live acceptance.
 
 In experimental laboratory modes, Soundboard is disabled and playback commands
 fail safely with:
@@ -2553,7 +2579,7 @@ Soundboard is disabled in experimental voice laboratories.
 Normal production mode keeps existing production Pitch Shift and Soundboard
 behavior.
 
-Target Planner retest notes:
+Accepted Target Planner notes:
 
 - Neutral target does not clear an existing lock.
 - Higher / Brighter currently executes adaptive pitch center, restrained
@@ -2566,11 +2592,25 @@ Target Planner retest notes:
   available and the stored transformation is unchanged until Lock Suggested
   Transformation is pressed.
 
-Parametric EQ retest note:
+Parametric EQ acceptance note:
 
-- Live EQ processing and the graph UI were already accepted during inspection.
-  No pops, buzz, bad delay, or obvious EQ transition instability were observed.
+- Live EQ processing and the graph UI were accepted. No pops, buzz, crackle,
+  bad/growing delay, or obvious EQ transition instability were observed.
 - The nasal/vowel artifact is separate pitch/formant work. It appears with
   transformation active and EQ bypassed, worsens with negative formant
   movement, and must not be hidden with static EQ. Luke commonly prefers pitch
   around -3 to -4 st with positive formant compensation around +1 to +2.5 st.
+
+Known non-blocking M9.4 debt:
+
+- Pitch/formant naturalness requires correction.
+- Lower/Weightier pitch and formant directions need decoupling.
+- Diagnostic target profiles remain provisional.
+- Planner Parametric EQ remains unsupported.
+- Spectral-tilt execution remains unsupported.
+- De-essing remains unsupported.
+- Breathiness synthesis remains unsupported.
+- Harmonic enhancement remains unsupported.
+- Finished production feminine and deep-masculine characters do not yet exist.
+- Input/Output/Both spectrum modes remain deferred; Post-EQ is implemented.
+- Neural conversion remains an optional future plugin.

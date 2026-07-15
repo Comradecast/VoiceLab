@@ -1,6 +1,7 @@
 # Parametric EQ Foundation
 
-Status: Accepted for M9.4 provisional lab implementation.
+Status: PASS. Luke completed practical live acceptance of the Parametric EQ
+Foundation and corrected laboratory workflow.
 
 Parametric EQ is the single audio-processing authority for manual voice-shaping
 EQ. It precedes spectral-tilt execution so future spectral-tilt, character EQ,
@@ -105,26 +106,74 @@ enable. M9.4 owns only manual EQ values, EQ local enable/bypass, and final
 applied EQ plan. EQ changes do not mutate calibration, suggestion, lock, trims,
 or adaptive mode.
 
-## Live Workflow Finding
+## Live Acceptance
 
-Live inspection confirmed Parametric EQ processing, the graph UI, Input
-Processing, Routing, Diagnostics, and Source Analysis. No pops, buzz, bad
-delay, or obvious EQ transition instability were observed. The graph UI was
-accepted.
+Luke completed practical live acceptance after the workflow-truthfulness
+correction. M9.4 is PASS.
 
-Final M9.4 PASS remains pending the workflow-truthfulness correction and a
-brief retest. This correction does not change Parametric EQ DSP, graph
-behavior, one-EQ authority, RBJ coefficients, bounded transitions, spectrum
-worker, zero added latency, or session-only EQ policy.
+Accepted UI results:
+
+- Graph-first interface: PASS.
+- Graph occupies the primary workspace: PASS.
+- Five fixed draggable nodes are understandable: PASS.
+- Selected-band inspector is usable: PASS.
+- Diagnostics remain secondary/collapsed: PASS.
+- Response curve is understandable: PASS.
+- Post-EQ spectrum operates: PASS.
+- Resizing remains usable: PASS.
+
+Accepted accessibility results:
+
+- Coarse graph movement is visible and usable: PASS.
+- Shift fine-adjustment is available: PASS.
+- Frequency snapping is understandable: PASS.
+- Q coarse/fine adjustment works: PASS.
+- Interaction overlay reports values and mode: PASS.
+- Whole-EQ EQ ON/BYPASS comparison is prominent: PASS.
+- Stored EQ returns after bypass: PASS.
+
+Luke is partially deaf and initially found ordinary EQ changes difficult to
+hear. Coarse interaction was added to improve audition accessibility; direct
+numeric precision remains available; whole-EQ A/B remains the primary
+comparison tool. This was an interaction/accessibility correction, not a DSP
+defect.
+
+Accepted DSP results:
+
+- EQ reaches the active audio path: PASS.
+- Individual and combined EQ plans operate: PASS.
+- Flat EQ remains neutral: PASS.
+- Reset EQ to Flat restores neutrality: PASS.
+- Local bypass operates: PASS.
+- Global bypass remains distinct: PASS.
+- No pop, buzz, crackle, bad/growing delay, or obvious transition instability
+  was observed: PASS.
+- Transition telemetry settles truthfully: PASS.
+- Added EQ algorithmic latency remains zero frames: PASS.
+
+Workflow-truthfulness retest passed: production Pitch Shift is no longer
+editable in chains where absent; Gain, Robot, and Lowpass remain available
+where present; Suggested Plan, Stored Plan, and Applied Runtime are distinct;
+Return Audio to Neutral neutralizes runtime while retaining the stored
+transformation; Clear Stored Transformation clears lock and trims; target and
+strength edits update suggestion only; explicit re-lock is required; Calibrate
+& Lock is understandable; Soundboard is disabled in experimental labs; and
+Parametric EQ remains independent from transformation lock authority.
 
 The nasal/vowel artifact remains outside Parametric EQ. It occurs with
 transformation active and EQ bypassed, worsens with negative formant movement,
-and should be addressed by later pitch/formant planner direction work rather
-than hidden with static EQ.
+and should be addressed by later pitch/formant naturalness work rather than
+hidden with static EQ.
 
 ## Deferred Work
 
 Planner `parametric_eq` remains unsupported in M9.4. Planner
 `spectral_tilt_shaping` remains unsupported in M9.4. Future spectral-tilt
 execution must map into this same EQ authority rather than adding a separate
-audio effect. Live acceptance is pending, so M9.4 remains PROVISIONAL.
+audio effect.
+
+Known non-blocking debt remains for pitch/formant naturalness, Lower/Weightier
+pitch and formant direction decoupling, provisional diagnostic target profiles,
+planner EQ, spectral-tilt execution, de-essing, breathiness synthesis, harmonic
+enhancement, finished production feminine/deep-masculine characters,
+Input/Output/Both spectrum modes, and optional future neural conversion.
