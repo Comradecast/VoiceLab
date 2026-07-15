@@ -362,6 +362,22 @@ def _pitch_plan(profile, target, strength, source_confidence):
         return PitchPlan(None, target.target_median_f0_hz, 0.0, 0.0, False, source_span,
                          target.target_pitch_span_st, 1.0, 1.0, False, 0.0,
                          "Missing reliable source median F0.", target.pitch_strategy.strategy_id, "missing_source_median_f0")
+    if _is_neutral_target(target):
+        return PitchPlan(
+            source_f0,
+            target.target_median_f0_hz,
+            0.0,
+            0.0,
+            False,
+            source_span,
+            target.target_pitch_span_st,
+            1.0,
+            1.0,
+            False,
+            source_confidence,
+            "Neutral target; no pitch movement or pitch-range mapping.",
+            target.pitch_strategy.strategy_id,
+        )
     if target.pitch_strategy.strategy_id == PITCH_STRATEGY_RELATIVE_SHIFT:
         requested = target.pitch_strategy.relative_shift_st
         pitch_basis = "Pitch center uses explicit relative semitone target scaled by strength."
@@ -398,8 +414,12 @@ def _formant_plan(target, strength, pitch):
         requested = 0.0
         basis = "Formant strategy is neutral; no planner formant movement requested."
     elif strategy.strategy_id == FORMANT_STRATEGY_NATURAL_COMPENSATION:
-        requested = max(0.0, -pitch.applied_pitch_shift_st) * strategy.compensation_ratio
-        basis = "Natural compensation derives moderate positive formant movement from applied downward pitch."
+        if strategy.fixed_shift_st < 0.0:
+            requested = strategy.fixed_shift_st * strength
+            basis = "Natural compensation target contains inconsistent negative formant intent."
+        else:
+            requested = max(0.0, -pitch.applied_pitch_shift_st) * strategy.compensation_ratio
+            basis = "Natural compensation derives moderate positive formant movement from applied downward pitch."
     else:
         requested = strategy.fixed_shift_st * strength
         if strategy.strategy_id == FORMANT_STRATEGY_SIZE_COUPLED:
@@ -407,11 +427,12 @@ def _formant_plan(target, strength, pitch):
             basis = "Size-coupled stylization intentionally lowers pitch and formants for a large-vocal-tract effect."
         else:
             basis = "Restrained fixed formant shift from explicit target strategy."
-    if strategy.natural and pitch.applied_pitch_shift_st < 0.0 and requested < 0.0:
-        requested = 0.0
+    applied_request = requested
+    if strategy.strategy_id == FORMANT_STRATEGY_NATURAL_COMPENSATION and requested < 0.0:
+        applied_request = 0.0
         guard_active = True
-        warning = "naturalness guard blocked negative formant for downward-pitch natural target"
-    applied, clamped = _clamp_signed(requested, target.max_abs_formant_shift_st)
+        warning = "naturalness guard blocked negative natural-compensation formant"
+    applied, clamped = _clamp_signed(applied_request, target.max_abs_formant_shift_st)
     if clamped:
         warning = "formant movement clamped" if not warning else f"{warning}; formant movement clamped"
     if strategy.strategy_id == FORMANT_STRATEGY_SIZE_COUPLED and stylized:
@@ -437,6 +458,18 @@ def _formant_plan(target, strength, pitch):
 
 
 def _spectral_plan(profile, target, strength, source_confidence):
+    if _is_neutral_target(target):
+        neutral = BandAdjustment(0.0, 0.0, False, 1.0)
+        return SpectralPlan(
+            chest_db=neutral,
+            low_mid_db=neutral,
+            presence_db=neutral,
+            brightness_db=neutral,
+            sibilance_db=neutral,
+            spectral_tilt_db=neutral,
+            de_essing_amount=0.0,
+            de_essing_basis="neutral target",
+        )
     bands = (
         ("chest_energy_ratio", target.chest_energy_ratio, target.max_band_adjustment_db),
         ("low_mid_energy_ratio", target.low_mid_energy_ratio, target.max_band_adjustment_db),
@@ -469,6 +502,15 @@ def _spectral_plan(profile, target, strength, source_confidence):
 
 
 def _texture_plan(target, strength):
+    if _is_neutral_target(target):
+        return TexturePlan(
+            breathiness=0.0,
+            harmonic_weight=0.0,
+            breathiness_required=False,
+            harmonic_enhancement_required=False,
+            confidence=1.0,
+            basis="Neutral target; no texture movement.",
+        )
     strength_active = strength > SPECTRAL_EPSILON
     breathiness = _clamp01(target.breathiness * strength)
     harmonic = _clamp01(target.harmonic_weight * strength)
@@ -485,6 +527,15 @@ def _texture_plan(target, strength):
 
 
 def _dynamics_plan(target, strength):
+    if _is_neutral_target(target):
+        return DynamicsPlan(
+            compressor=DynamicsTarget(),
+            limiter=DynamicsTarget(),
+            compressor_differs_from_neutral=False,
+            limiter_differs_from_neutral=False,
+            confidence=1.0,
+            basis="Neutral target; no dynamics movement.",
+        )
     c = target.dynamics
     compressor = DynamicsTarget(
         compressor_enabled=c.compressor_enabled and strength > 0.0,
@@ -547,6 +598,19 @@ def _de_essing_amount(profile, target, brightness_adjustment, strength):
 
 def _materially_nonzero(value):
     return value is not None and abs(float(value)) > SPECTRAL_EPSILON
+
+
+def _is_neutral_target(target):
+    return (
+        target.pitch_strategy.strategy_id == PITCH_STRATEGY_RELATIVE_SHIFT
+        and abs(target.pitch_strategy.relative_shift_st) <= SPECTRAL_EPSILON
+        and target.formant_strategy.strategy_id == FORMANT_STRATEGY_NEUTRAL
+        and not target.requires_pitch_range
+        and not target.requires_eq
+        and not target.requires_breathiness
+        and not target.requires_harmonic_enhancement
+        and not target.expect_de_essing
+    )
 
 
 def _capabilities(pitch, formant, spectral, texture, dynamics, target, strength):

@@ -79,9 +79,11 @@ size_coupled_stylization: fixed_shift_st * strength
 ```
 
 It is clamped to the target maximum and does not use F1/F2/F3 as an automatic
-control source. Natural downward-pitch targets are guarded from negative
-formant movement; negative pitch plus negative formant is reserved for an
-explicit stylized large-vocal-tract target.
+control source. Natural-compensation targets are guarded from negative formant
+intent regardless of pitch sign: requested negative intent remains inspectable,
+but applied planner formant is clamped to `0` and the plan is degraded.
+Negative pitch plus negative planner formant is reserved for an explicit
+stylized large-vocal-tract target.
 
 Spectral recommendations use:
 
@@ -237,6 +239,7 @@ regression.
   capability requirements.
 - Dynamics recommendations are accepted as plans only and do not modify M8.0.
 - Capabilities describe the current applied plan.
+- Neutral has no active planner capabilities at any strength.
 - `0%` character strength produces a fully neutral applied plan.
 - Requested and applied values remain separately inspectable.
 - Planner output remains diagnostic and does not alter audio.

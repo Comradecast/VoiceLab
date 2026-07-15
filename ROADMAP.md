@@ -2076,8 +2076,16 @@ authority, and laboratory reset semantics unchanged.
 - Adds a naturalness guard that blocks negative formant movement for natural
   downward-pitch targets and reports degraded planning instead of silently
   creating an inconsistent target.
+- Expands manual formant trim authority to `+/-2.0` st so Natural Deep can be
+  compared against final formant `0` and a modest deliberate negative final
+  formant. Runtime formant safety remains the existing `+/-2.0` st clamp.
 - Adds a warning when manual trim or a stylized target produces negative pitch
-  plus negative formant. The warning does not mutate the locked plan or trims.
+  plus negative final formant. The warning is based on final applied runtime
+  values and does not mutate the locked plan or trims.
+- Corrects Neutral so it has no active planner capabilities at any strength.
+- Restores protected production preset selection so normal production Pitch
+  Shift updates remain truthful while running; experimental pitch/formant lab
+  chains still do not expose production Pitch Shift.
 
 ### Verification Notes
 

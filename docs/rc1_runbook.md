@@ -2642,6 +2642,17 @@ Automated acceptance already verified:
   and negative formant, and it carries a stylized warning.
 - Manual trim can deliberately create negative pitch plus negative formant, but
   receives a warning and does not mutate the locked base plan.
+- Manual formant trim range is `+/-2.0 st`. The runtime formant safety clamp
+  remains unchanged at `+/-2.0 st`.
+- Natural Deep can be compared against final formant `0` using manual trim, and
+  deliberate negative final formant remains an operator override.
+- Naturalness guard blocks negative natural-compensation formant intent
+  regardless of pitch sign. Requested negative intent remains inspectable, but
+  applied planner formant is clamped to `0`.
+- Neutral has no active planner capabilities at any strength.
+- Protected production preset selection was corrected so normal production
+  Pitch Shift changes remain truthful while running; experimental lab chains
+  still use only Experimental Pitch/Formant.
 - Target and strength changes update suggestions only while Adaptive Updating
   is Off; locked execution changes only through explicit re-lock or trim.
 - Continuous mode remains explicit and Off remains the default.

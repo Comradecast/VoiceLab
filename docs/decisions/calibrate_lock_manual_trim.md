@@ -35,11 +35,14 @@ stable manual pitch/formant trims.
   execution authority.
 - Preserve Continuous as optional explicit experimental behavior that follows
   the M9.2 live replanning behavior. Slow adaptation remains deferred.
-- Apply manual pitch and formant trim as bounded deltas over the locked plan,
-  with final runtime values still clamped by the M9.2 executor.
+- Apply manual pitch and formant trim as bounded deltas over the locked plan.
+  Manual pitch trim is `+/-4.0` st and manual formant trim is `+/-2.0` st.
+  Final runtime values still respect the M9.2 executor safety clamps.
 - M9.5 adds a warning when manual trim creates negative pitch plus negative
-  formant, because that combination is stylized and can exaggerate vowels or
-  nasal resonance. The warning does not mutate the locked base plan or trim.
+  final applied formant, because that combination is stylized and can
+  exaggerate vowels or nasal resonance. The warning is based on base plan plus
+  applied trim after final clamp, and does not mutate the locked base plan or
+  trim.
 
 ## Consequences
 

@@ -1600,7 +1600,11 @@ class ApplicationService(QObject):
     def select_preset(self, name, persist=True):
         character = character_by_compatibility_preset(name)
         if character is not None:
-            return self.select_voice_character(character.id, persist=persist)
+            return self.select_voice_character(
+                character.id,
+                strength=DEFAULT_CHARACTER_STRENGTH,
+                persist=persist,
+            )
         selection = self.config.select_preset(name)
         if not selection.success:
             result = CommandResult.fail(

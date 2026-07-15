@@ -1336,7 +1336,7 @@ class App(QWidget):
         self.pitch_trim.setDecimals(2)
         self.pitch_trim.valueChanged.connect(lambda _value: self.set_pitch_trim())
         self.formant_trim = QDoubleSpinBox()
-        self.formant_trim.setRange(-1.0, 1.0)
+        self.formant_trim.setRange(-2.0, 2.0)
         self.formant_trim.setSingleStep(0.05)
         self.formant_trim.setDecimals(2)
         self.formant_trim.valueChanged.connect(lambda _value: self.set_formant_trim())

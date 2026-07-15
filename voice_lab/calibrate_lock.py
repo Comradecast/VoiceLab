@@ -12,7 +12,7 @@ from voice_lab.execution import (
 
 
 PITCH_TRIM_RANGE_ST = (-4.0, 4.0)
-FORMANT_TRIM_RANGE_ST = (-1.0, 1.0)
+FORMANT_TRIM_RANGE_ST = (-2.0, 2.0)
 ADAPTIVE_OFF = "off"
 ADAPTIVE_CONTINUOUS = "continuous"
 ADAPTIVE_MODES = (ADAPTIVE_OFF, ADAPTIVE_CONTINUOUS)
@@ -311,6 +311,12 @@ def _trim_projection(plan, trim):
         "requested_final_formant_st": requested_formant,
         "final_formant_target_st": final_formant,
         "final_formant_clamped": final_formant_clamped,
+        "warnings": tuple(
+            dict.fromkeys(
+                _trim_warnings(trim, final_pitch_clamped, final_formant_clamped)
+                + _stylized_final_warning(final_pitch, final_formant)
+            )
+        ),
     }
 
 
