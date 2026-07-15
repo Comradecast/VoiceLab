@@ -56,7 +56,10 @@ from voice_lab.parametric_eq import ParametricEqController
 from voice_lab.planner import (
     DEFAULT_TARGET_PROFILE,
     HIGHER_BRIGHTER_REFERENCE,
+    LARGE_CAVERNOUS_REFERENCE,
     LOWER_WEIGHTIER_REFERENCE,
+    NATURAL_DEEP_REFERENCE,
+    TARGET_REFERENCE_ORDER,
     TransformationPlanner,
     replace_target,
 )
@@ -385,8 +388,10 @@ class ApplicationService(QObject):
             "references": {
                 "neutral": DEFAULT_TARGET_PROFILE.asdict(),
                 "higher_brighter": HIGHER_BRIGHTER_REFERENCE.asdict(),
-                "lower_weightier": LOWER_WEIGHTIER_REFERENCE.asdict(),
+                "natural_deep": NATURAL_DEEP_REFERENCE.asdict(),
+                "large_cavernous": LARGE_CAVERNOUS_REFERENCE.asdict(),
             },
+            "target_order": tuple(profile.target_id for profile in TARGET_REFERENCE_ORDER),
             "guidance": self.target_planner_guidance(),
         }
         self.telemetry.set_metadata("target_planner", state)
@@ -400,9 +405,17 @@ class ApplicationService(QObject):
                 "compressor, and limiter recommendations."
             ),
             "lower_weightier": (
-                "Lower / Weightier currently executes lower pitch center, restrained formant movement, "
-                "compressor, and limiter recommendations. Lower/Weightier formant behavior remains "
-                "experimental. Lower pitch does not necessarily require lower formants."
+                "Natural Deep lowers pitch while preserving vowel shape through moderate positive "
+                "formant compensation. It currently executes pitch center, formant shift, compressor, "
+                "and limiter recommendations."
+            ),
+            "natural_deep": (
+                "Natural Deep lowers pitch while preserving vowel shape through moderate positive "
+                "formant compensation. Approximate full-strength intent: pitch -3.5 st, formant +1.5 st."
+            ),
+            "large_cavernous": (
+                "Large / Cavernous lowers both pitch and formants to simulate a larger vocal tract. "
+                "This is stylized and may exaggerate vowels, W/R sounds, or nasal resonance."
             ),
             "strength": (
                 "0% is a neutral suggested plan. Increasing strength scales the suggestion. Changes do "
@@ -1077,7 +1090,9 @@ class ApplicationService(QObject):
         references = {
             "neutral": DEFAULT_TARGET_PROFILE,
             "higher_brighter": HIGHER_BRIGHTER_REFERENCE,
+            "natural_deep": NATURAL_DEEP_REFERENCE,
             "lower_weightier": LOWER_WEIGHTIER_REFERENCE,
+            "large_cavernous": LARGE_CAVERNOUS_REFERENCE,
         }
         target = references.get(reference)
         if target is None:

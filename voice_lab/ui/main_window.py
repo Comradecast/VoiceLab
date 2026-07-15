@@ -945,13 +945,16 @@ class App(QWidget):
         refs = QHBoxLayout()
         neutral = QPushButton("Neutral")
         higher = QPushButton("Higher / Brighter")
-        lower = QPushButton("Lower / Weightier")
+        natural_deep = QPushButton("Natural Deep")
+        large = QPushButton("Large / Cavernous")
         neutral.clicked.connect(lambda: self.load_target_reference("neutral"))
         higher.clicked.connect(lambda: self.load_target_reference("higher_brighter"))
-        lower.clicked.connect(lambda: self.load_target_reference("lower_weightier"))
+        natural_deep.clicked.connect(lambda: self.load_target_reference("natural_deep"))
+        large.clicked.connect(lambda: self.load_target_reference("large_cavernous"))
         refs.addWidget(neutral)
         refs.addWidget(higher)
-        refs.addWidget(lower)
+        refs.addWidget(natural_deep)
+        refs.addWidget(large)
         layout.addLayout(refs)
 
         self.target_strength_label = QLabel("Character Strength: 100%")
@@ -999,6 +1002,9 @@ class App(QWidget):
         self.target_plan_details = QLabel("")
         self.target_plan_details.setWordWrap(True)
         layout.addWidget(self.target_plan_details)
+        self.target_strategy_details = QLabel("")
+        self.target_strategy_details.setWordWrap(True)
+        layout.addWidget(self.target_strategy_details)
         self.target_execution_details = QLabel("")
         self.target_execution_details.setWordWrap(True)
         layout.addWidget(self.target_execution_details)
@@ -1088,14 +1094,25 @@ class App(QWidget):
             f"tilt {self._fmt_db(tilt.get('applied_db'))}"
         )
         guidance = state.get("guidance", {})
-        lower_warning = (
-            " " + guidance.get("lower_weightier", "")
-            if profile.get("target_id") == "diagnostic-lower-weightier"
-            else ""
-        )
+        target_id = profile.get("target_id")
+        target_guidance = guidance.get("neutral", "")
+        if target_id == "diagnostic-higher-brighter":
+            target_guidance = guidance.get("higher_brighter", target_guidance)
+        elif target_id == "diagnostic-lower-weightier":
+            target_guidance = guidance.get("natural_deep", guidance.get("lower_weightier", target_guidance))
+        elif target_id == "diagnostic-large-cavernous":
+            target_guidance = guidance.get("large_cavernous", target_guidance)
         self.target_plan_details.setText(
-            f"Target Guidance: {guidance.get('neutral', '')}{lower_warning} "
+            f"Target Guidance: {target_guidance} {guidance.get('strength', '')} "
             f"Warnings: {', '.join(plan.get('warnings') or ('none',))}"
+        )
+        self.target_strategy_details.setText(
+            f"Strategy: pitch {pitch.get('strategy', 'unavailable')} requested/applied "
+            f"{self._fmt_st(pitch.get('requested_pitch_shift_st'))}/{self._fmt_st(pitch.get('applied_pitch_shift_st'))} | "
+            f"formant {formant.get('strategy', 'unavailable')} requested/applied "
+            f"{self._fmt_st(formant.get('requested_formant_shift_st'))}/{self._fmt_st(formant.get('applied_formant_shift_st'))} | "
+            f"naturalness guard {formant.get('naturalness_guard_active', False)} | "
+            f"stylized formant combination {formant.get('stylized_formant_combination_active', False)}"
         )
         executed = ("adaptive_pitch_center", "formant_shift", "compressor", "limiter")
         requested = tuple(plan.get("required_capabilities") or ())
@@ -1196,7 +1213,9 @@ class App(QWidget):
             if suggestion is None
             else (
                 f"Suggested Plan: target {suggestion.target_id} | strength {suggestion.character_strength * 100.0:.0f}% | "
-                f"status {suggestion.planner_status} | preview only, not necessarily audible"
+                f"status {suggestion.planner_status} | formant strategy "
+                f"{getattr(suggestion.plan.formant, 'strategy', 'unavailable') if suggestion.plan else 'unavailable'} | "
+                f"preview only, not necessarily audible"
             )
         )
         self.execution_stored_state.setText(
@@ -1204,6 +1223,7 @@ class App(QWidget):
             if locked is None
             else (
                 f"Stored Plan: Present | target {locked.target_id} | strength {locked.character_strength * 100.0:.0f}% | "
+                f"formant strategy {getattr(locked.plan.formant, 'strategy', 'unavailable') if locked.plan else 'unavailable'} | "
                 f"new suggestion available {locked.newer_suggestion_available} | retained after Return Audio to Neutral"
             )
         )
@@ -1216,7 +1236,9 @@ class App(QWidget):
             f"source age {self._fmt_seconds(state.get('source_age_seconds'))} | "
             f"execution generation {state.get('execution_generation')} | "
             f"{'partial' if state.get('partial_execution') else 'full/neutral'} | "
-            f"authority {authority} | blocked {state.get('blocked_reason') or 'none'}"
+            f"authority {authority} | "
+            f"{'Negative pitch plus negative formant is stylized and may exaggerate vowels or nasal resonance. | ' if state.get('target_pitch_semitones', 0.0) < 0.0 and state.get('target_formant_semitones', 0.0) < 0.0 else ''}"
+            f"blocked {state.get('blocked_reason') or 'none'}"
         )
         baseline_c = state.get("baseline_compressor", {})
         plan_c = state.get("plan_compressor", {})
@@ -1451,6 +1473,7 @@ class App(QWidget):
                 f"status {suggestion.planner_status} | confidence {self._fmt_ratio(suggestion.planner_confidence)} | "
                 f"pitch {self._fmt_st(suggestion.plan.pitch.applied_pitch_shift_st if suggestion.plan else None)} | "
                 f"formant {self._fmt_st(suggestion.plan.formant.applied_formant_shift_st if suggestion.plan else None)} | "
+                f"formant strategy {getattr(suggestion.plan.formant, 'strategy', 'unavailable') if suggestion.plan else 'unavailable'} | "
                 f"differs from lock {suggestion.differs_from_lock} | "
                 "Target or strength changes update the suggestion only. Press Lock to change stable execution."
             )
@@ -1462,7 +1485,8 @@ class App(QWidget):
                 f"Locked Transformation: #{locked.lock_id} | calibration {locked.source_calibration_id} | "
                 f"target {locked.target_id} | strength {locked.character_strength * 100.0:.0f}% | "
                 f"base pitch {self._fmt_st(locked.plan.pitch.applied_pitch_shift_st if locked.plan else None)} | "
-                f"base formant {self._fmt_st(locked.plan.formant.applied_formant_shift_st if locked.plan else None)} | "
+                f"base formant compensation {self._fmt_st(locked.plan.formant.applied_formant_shift_st if locked.plan else None)} | "
+                f"formant strategy {getattr(locked.plan.formant, 'strategy', 'unavailable') if locked.plan else 'unavailable'} | "
                 f"supported {', '.join(locked.supported_capabilities or ('none',))} | "
                 f"unsupported {', '.join(locked.unsupported_capabilities or ('none',))} | "
                 f"new suggestion {locked.newer_suggestion_available}"
@@ -1484,6 +1508,7 @@ class App(QWidget):
             f"{self._fmt_st(state.get('final_formant_target_st'))}/"
             f"{self._fmt_st(self.service.transformation_execution_snapshot().get('current_formant_semitones'))} | "
             f"formant clamp {state.get('final_formant_clamped')}"
+            f"{' | Negative pitch plus negative formant is a stylized large-vocal-tract effect and may exaggerate vowels or nasal resonance.' if state.get('final_pitch_target_st', 0.0) < 0.0 and state.get('final_formant_target_st', 0.0) < 0.0 else ''}"
         )
         self.adaptation_state.setText(
             f"Adaptation: {state.get('adaptive_mode')} | authority {state.get('execution_authority')} | "

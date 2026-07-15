@@ -14,7 +14,9 @@ from voice_lab.mixer import Mixer
 from voice_lab.planner import (
     DEFAULT_TARGET_PROFILE,
     HIGHER_BRIGHTER_REFERENCE,
+    LARGE_CAVERNOUS_REFERENCE,
     LOWER_WEIGHTIER_REFERENCE,
+    TARGET_REFERENCE_ORDER,
     TargetVoiceProfile,
     TransformationPlan,
     TransformationPlanner,
@@ -150,7 +152,7 @@ class M91PlannerContractTests(unittest.TestCase):
 
 class M91PlannerMathTests(unittest.TestCase):
     def test_zero_strength_is_fully_neutral_for_all_diagnostic_targets(self):
-        for target in (DEFAULT_TARGET_PROFILE, HIGHER_BRIGHTER_REFERENCE, LOWER_WEIGHTIER_REFERENCE):
+        for target in TARGET_REFERENCE_ORDER:
             with self.subTest(target=target.target_id):
                 plan = TransformationPlanner().plan(source_snapshot(), target, 0.0)
                 spectral = plan.spectral
@@ -246,7 +248,10 @@ class M91PlannerMathTests(unittest.TestCase):
             for target in (HIGHER_BRIGHTER_REFERENCE, LOWER_WEIGHTIER_REFERENCE):
                 with self.subTest(f0=f0, target=target.target_id):
                     plan = planner.plan(source_snapshot(median_f0_hz=f0, pitch_span_semitones=8.0), target, 0.5)
-                    expected_shift = 12.0 * math.log2(target.target_median_f0_hz / f0) * 0.5
+                    if target is LOWER_WEIGHTIER_REFERENCE:
+                        expected_shift = target.pitch_strategy.relative_shift_st * 0.5
+                    else:
+                        expected_shift = 12.0 * math.log2(target.target_median_f0_hz / f0) * 0.5
                     expected_shift = max(-target.max_pitch_shift_st, min(target.max_pitch_shift_st, expected_shift))
                     expected_scale = 1.0 + (((target.target_pitch_span_st / 8.0) - 1.0) * 0.5)
                     self.assertAlmostEqual(plan.pitch.applied_pitch_shift_st, expected_shift, places=6)

@@ -37,6 +37,9 @@ stable manual pitch/formant trims.
   the M9.2 live replanning behavior. Slow adaptation remains deferred.
 - Apply manual pitch and formant trim as bounded deltas over the locked plan,
   with final runtime values still clamped by the M9.2 executor.
+- M9.5 adds a warning when manual trim creates negative pitch plus negative
+  formant, because that combination is stylized and can exaggerate vowels or
+  nasal resonance. The warning does not mutate the locked base plan or trim.
 
 ## Consequences
 
@@ -57,6 +60,9 @@ stable manual pitch/formant trims.
   execution, clears retained latest execution state, and leaves authority
   `none`.
 - M9.3 remains a lab workflow and does not replace production characters.
+- Manual trim remains an explicit operator override. It may intentionally move
+  outside Natural Deep's positive formant compensation, but the UI must label
+  negative pitch plus negative formant as stylized rather than natural.
 
 ## Accepted Authority Model
 

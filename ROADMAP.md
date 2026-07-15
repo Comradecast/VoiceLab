@@ -2043,8 +2043,64 @@ Neutral Target, Return Audio to Neutral, and Clear Stored Transformation.
   update suggestions only; explicit re-lock is required; Clear Stored
   Transformation clears lock and trims; Soundboard is disabled in experimental
   labs; Parametric EQ remains independent from transformation lock authority.
-- Known non-blocking debt: pitch/formant naturalness, Lower/Weightier pitch and
-  formant direction decoupling, provisional diagnostic target profiles, planner
-  EQ, spectral-tilt execution, de-essing, breathiness synthesis, harmonic
-  enhancement, finished production feminine/deep-masculine characters,
-  Input/Output/Both spectrum modes, and optional future neural conversion.
+- Known non-blocking debt: pitch/formant naturalness live acceptance,
+  provisional diagnostic target profiles, planner EQ, spectral-tilt execution,
+  de-essing, breathiness synthesis, harmonic enhancement, finished production
+  feminine/deep-masculine characters, Input/Output/Both spectrum modes, and
+  optional future neural conversion.
+
+## M9.5 - Pitch/Formant Naturalness
+
+Status: PROVISIONAL. Automated implementation and regression verification are
+complete; practical live acceptance is still required before PASS.
+
+M9.5 corrects diagnostic target planning so pitch depth and formant movement
+are no longer treated as the same acoustic direction. It keeps the existing
+combined Signalsmith pitch/formant execution path, runtime limits, latency,
+settings schema, presets schema, production characters, Parametric EQ
+authority, and laboratory reset semantics unchanged.
+
+### Scope
+
+- Adds explicit pitch and formant strategy metadata to immutable target
+  profiles and transformation plans.
+- Keeps Neutral fully neutral at all strengths.
+- Keeps Higher / Brighter as an absolute-F0 diagnostic reference with
+  restrained positive formant movement.
+- Replaces the old Lower / Weightier diagnostic direction with Natural Deep:
+  relative pitch down, moderate positive formant compensation, compressor, and
+  limiter recommendations.
+- Adds Large / Cavernous as the explicit stylized large-vocal-tract reference:
+  relative pitch down plus restrained negative formant movement.
+- Keeps `lower_weightier` as a compatibility alias for Natural Deep only.
+- Adds a naturalness guard that blocks negative formant movement for natural
+  downward-pitch targets and reports degraded planning instead of silently
+  creating an inconsistent target.
+- Adds a warning when manual trim or a stylized target produces negative pitch
+  plus negative formant. The warning does not mutate the locked plan or trims.
+
+### Verification Notes
+
+- Focused M9.5 tests cover immutable strategy contracts, invalid strategies,
+  all-target zero-strength neutrality, target ordering, Natural Deep positive
+  formant compensation, Large / Cavernous stylized negative formant movement,
+  naturalness guard behavior, Higher / Brighter regression, deterministic
+  planning, lock isolation, Clear Stored Transformation, manual-trim warning,
+  Off and Continuous adaptive modes, UI target exposure, and deterministic
+  finite audio through the inherited one-stage pitch/formant path.
+- M9.1 through M9.4 regressions remain green.
+- Planner `parametric_eq` and `spectral_tilt_shaping` remain unsupported.
+- No pitch-range mapping, phoneme model, speech model, de-essing, breathiness,
+  harmonic enhancement, spectral tilt, neural conversion, production character
+  replacement, persistence, second pitch/formant stage, Signalsmith buffering
+  change, or EQ concealment was added.
+
+### Live Acceptance Required
+
+- Natural Deep should sound deeper without the nasal/vowel exaggeration caused
+  by negative formant movement.
+- Large / Cavernous should be clearly understood as stylized and may exaggerate
+  vowels or nasal resonance.
+- Luke's practical positive-formant preference around pitch `-3` to `-4` st
+  remains provisional live evidence; the runtime formant limit remains the
+  existing `+/-2` st until a later accepted change.

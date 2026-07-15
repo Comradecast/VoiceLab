@@ -1,7 +1,12 @@
 from .target_planner import (
     DEFAULT_TARGET_PROFILE,
-    LOWER_WEIGHTIER_REFERENCE,
     HIGHER_BRIGHTER_REFERENCE,
+    LARGE_CAVERNOUS_REFERENCE,
+    LOWER_WEIGHTIER_REFERENCE,
+    NATURAL_DEEP_REFERENCE,
+    TARGET_REFERENCE_ORDER,
+    FormantStrategy,
+    PitchStrategy,
     TargetVoiceProfile,
     TransformationPlan,
     TransformationPlanner,
@@ -11,8 +16,13 @@ from .target_planner import (
 
 __all__ = [
     "DEFAULT_TARGET_PROFILE",
-    "LOWER_WEIGHTIER_REFERENCE",
     "HIGHER_BRIGHTER_REFERENCE",
+    "LARGE_CAVERNOUS_REFERENCE",
+    "LOWER_WEIGHTIER_REFERENCE",
+    "NATURAL_DEEP_REFERENCE",
+    "TARGET_REFERENCE_ORDER",
+    "FormantStrategy",
+    "PitchStrategy",
     "TargetVoiceProfile",
     "TransformationPlan",
     "TransformationPlanner",

@@ -271,7 +271,13 @@ def apply_manual_trim(plan, trim):
         formant_clamped=bool(plan.formant.formant_clamped or final_formant_clamped),
         basis=f"{plan.formant.basis} Manual trim overlay applied after locked/adaptive base.",
     )
-    warnings = tuple(dict.fromkeys(tuple(plan.warnings) + _trim_warnings(trim, final_pitch_clamped, final_formant_clamped)))
+    warnings = tuple(
+        dict.fromkeys(
+            tuple(plan.warnings)
+            + _trim_warnings(trim, final_pitch_clamped, final_formant_clamped)
+            + _stylized_final_warning(final_pitch, final_formant)
+        )
+    )
     adjusted = replace(
         plan,
         pitch=pitch,
@@ -323,6 +329,15 @@ def _trim_warnings(trim, pitch_clamped, formant_clamped):
     if trim.formant_trim_clamped or formant_clamped:
         warnings.append("manual formant trim clamped")
     return tuple(warnings)
+
+
+def _stylized_final_warning(final_pitch, final_formant):
+    if final_pitch < -EXECUTION_DEADBAND_ST and final_formant < -EXECUTION_DEADBAND_ST:
+        return (
+            "Negative pitch plus negative formant is a stylized large-vocal-tract effect "
+            "and may exaggerate vowels or nasal resonance.",
+        )
+    return ()
 
 
 def _finite(value, name):

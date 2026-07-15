@@ -20,6 +20,13 @@ from voice_lab.config.input_processing import (
 PLAN_VERSION = "m9.1"
 TARGET_SCHEMA_VERSION = "target_voice_profile.v1"
 MAX_NATURAL_FORMANT_SHIFT_ST = 2.0
+PITCH_STRATEGY_ABSOLUTE_F0 = "absolute_f0"
+PITCH_STRATEGY_RELATIVE_SHIFT = "relative_shift"
+FORMANT_STRATEGY_NEUTRAL = "neutral"
+FORMANT_STRATEGY_FIXED_SHIFT = "restrained_fixed_shift"
+FORMANT_STRATEGY_NATURAL_COMPENSATION = "natural_compensation"
+FORMANT_STRATEGY_SIZE_COUPLED = "size_coupled_stylization"
+NATURAL_FORMANT_COMPENSATION_RATIO = 0.43
 SPECTRAL_EPSILON = 1e-6
 NEAR_ZERO_PITCH_SPAN_ST = 0.25
 CAPABILITY_ORDER = (
@@ -53,6 +60,27 @@ class DynamicsTarget:
 
 
 @dataclass(frozen=True)
+class PitchStrategy:
+    strategy_id: str = PITCH_STRATEGY_ABSOLUTE_F0
+    relative_shift_st: float = 0.0
+
+    def asdict(self):
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class FormantStrategy:
+    strategy_id: str = FORMANT_STRATEGY_FIXED_SHIFT
+    fixed_shift_st: float = 0.0
+    compensation_ratio: float = NATURAL_FORMANT_COMPENSATION_RATIO
+    natural: bool = False
+    stylized: bool = False
+
+    def asdict(self):
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class TargetVoiceProfile:
     target_id: str
     display_name: str
@@ -60,10 +88,12 @@ class TargetVoiceProfile:
     schema_version: str = TARGET_SCHEMA_VERSION
     target_median_f0_hz: float = 140.0
     target_pitch_span_st: float = 6.0
+    pitch_strategy: PitchStrategy = PitchStrategy()
     max_pitch_shift_st: float = 8.0
     min_pitch_range_scale: float = 0.5
     max_pitch_range_scale: float = 2.0
     nominal_formant_shift_st: float = 0.0
+    formant_strategy: FormantStrategy = FormantStrategy()
     max_abs_formant_shift_st: float = MAX_NATURAL_FORMANT_SHIFT_ST
     chest_energy_ratio: float = 0.20
     low_mid_energy_ratio: float = 0.35
@@ -103,6 +133,7 @@ class PitchPlan:
     pitch_range_clamped: bool
     confidence: float
     basis: str
+    strategy: str = PITCH_STRATEGY_ABSOLUTE_F0
     unavailable_reason: str = ""
 
     def asdict(self):
@@ -116,6 +147,10 @@ class FormantPlan:
     formant_clamped: bool
     confidence: float
     basis: str
+    strategy: str = FORMANT_STRATEGY_FIXED_SHIFT
+    naturalness_guard_active: bool = False
+    stylized_formant_combination_active: bool = False
+    capability_source: str = "target_profile"
     warning: str = ""
 
     def asdict(self):
@@ -245,6 +280,12 @@ def target_voice_profile(**kwargs):
     dynamics = kwargs.get("dynamics")
     if isinstance(dynamics, dict):
         kwargs["dynamics"] = DynamicsTarget(**dynamics)
+    pitch_strategy = kwargs.get("pitch_strategy")
+    if isinstance(pitch_strategy, dict):
+        kwargs["pitch_strategy"] = PitchStrategy(**pitch_strategy)
+    formant_strategy = kwargs.get("formant_strategy")
+    if isinstance(formant_strategy, dict):
+        kwargs["formant_strategy"] = FormantStrategy(**formant_strategy)
     profile = TargetVoiceProfile(**kwargs)
     _validate_profile(profile)
     return profile
@@ -269,14 +310,14 @@ class TransformationPlanner:
             source_reliability = _source_reliability(profile, current, status)
             source_confidence = _source_confidence(profile, stale, source_reliability)
             pitch = _pitch_plan(profile, target_profile, strength, source_confidence)
-            formant = _formant_plan(target_profile, strength)
+            formant = _formant_plan(target_profile, strength, pitch)
             spectral = _spectral_plan(profile, target_profile, strength, source_confidence)
             texture = _texture_plan(target_profile, strength)
             dynamics = _dynamics_plan(target_profile, strength)
             warnings = _warnings(profile, stale, source_reliability, pitch, formant, spectral, target_profile)
             capabilities = _capabilities(pitch, formant, spectral, texture, dynamics, target_profile, strength)
             status_name, ready, degraded, unavailable = _plan_state(
-                profile, status, stale, source_reliability, pitch, spectral
+                profile, status, stale, source_reliability, pitch, formant, spectral
             )
             aggregate = 0.0 if not ready and status_name not in {"degraded", "stale_source"} else min(
                 source_confidence,
@@ -320,15 +361,20 @@ def _pitch_plan(profile, target, strength, source_confidence):
     if source_f0 is None:
         return PitchPlan(None, target.target_median_f0_hz, 0.0, 0.0, False, source_span,
                          target.target_pitch_span_st, 1.0, 1.0, False, 0.0,
-                         "Missing reliable source median F0.", "missing_source_median_f0")
-    requested = 12.0 * math.log2(target.target_median_f0_hz / source_f0)
+                         "Missing reliable source median F0.", target.pitch_strategy.strategy_id, "missing_source_median_f0")
+    if target.pitch_strategy.strategy_id == PITCH_STRATEGY_RELATIVE_SHIFT:
+        requested = target.pitch_strategy.relative_shift_st
+        pitch_basis = "Pitch center uses explicit relative semitone target scaled by strength."
+    else:
+        requested = 12.0 * math.log2(target.target_median_f0_hz / source_f0)
+        pitch_basis = "Pitch center uses 12*log2(target/source)."
     strength_adjusted = requested * strength
     applied, clamped = _clamp_signed(strength_adjusted, target.max_pitch_shift_st)
     if source_span is None or source_span <= NEAR_ZERO_PITCH_SPAN_ST:
         requested_scale = 1.0
         applied_scale = 1.0
         range_clamped = False
-        basis = "Pitch center from source/target median F0; range neutral because source span is unavailable."
+        basis = f"{pitch_basis} Range neutral because source span is unavailable."
         confidence = min(source_confidence, 0.65)
     else:
         requested_scale = target.target_pitch_span_st / source_span
@@ -336,25 +382,56 @@ def _pitch_plan(profile, target, strength, source_confidence):
         applied_scale, range_clamped = _clamp_range(
             interpolated, target.min_pitch_range_scale, target.max_pitch_range_scale
         )
-        basis = "Pitch center uses 12*log2(target/source); range maps target/source span with strength interpolation."
+        basis = f"{pitch_basis} Range maps target/source span with strength interpolation."
         confidence = source_confidence
     return PitchPlan(source_f0, target.target_median_f0_hz, requested, applied, clamped,
                      source_span, target.target_pitch_span_st, requested_scale, applied_scale,
-                     range_clamped, _clamp01(confidence), basis)
+                     range_clamped, _clamp01(confidence), basis, target.pitch_strategy.strategy_id)
 
 
-def _formant_plan(target, strength):
-    requested = target.nominal_formant_shift_st * strength
+def _formant_plan(target, strength, pitch):
+    strategy = target.formant_strategy
+    warning = ""
+    guard_active = False
+    stylized = False
+    if strategy.strategy_id == FORMANT_STRATEGY_NEUTRAL:
+        requested = 0.0
+        basis = "Formant strategy is neutral; no planner formant movement requested."
+    elif strategy.strategy_id == FORMANT_STRATEGY_NATURAL_COMPENSATION:
+        requested = max(0.0, -pitch.applied_pitch_shift_st) * strategy.compensation_ratio
+        basis = "Natural compensation derives moderate positive formant movement from applied downward pitch."
+    else:
+        requested = strategy.fixed_shift_st * strength
+        if strategy.strategy_id == FORMANT_STRATEGY_SIZE_COUPLED:
+            stylized = requested < 0.0 and pitch.applied_pitch_shift_st < 0.0
+            basis = "Size-coupled stylization intentionally lowers pitch and formants for a large-vocal-tract effect."
+        else:
+            basis = "Restrained fixed formant shift from explicit target strategy."
+    if strategy.natural and pitch.applied_pitch_shift_st < 0.0 and requested < 0.0:
+        requested = 0.0
+        guard_active = True
+        warning = "naturalness guard blocked negative formant for downward-pitch natural target"
     applied, clamped = _clamp_signed(requested, target.max_abs_formant_shift_st)
-    warning = "formant movement clamped" if clamped else ""
-    if abs(target.nominal_formant_shift_st) > MAX_NATURAL_FORMANT_SHIFT_ST:
+    if clamped:
+        warning = "formant movement clamped" if not warning else f"{warning}; formant movement clamped"
+    if strategy.strategy_id == FORMANT_STRATEGY_SIZE_COUPLED and stylized:
+        warning = (
+            "stylized negative pitch plus negative formant may exaggerate vowels, W/R transitions, or nasal resonance"
+            if not warning
+            else warning
+        )
+    if abs(strategy.fixed_shift_st) > MAX_NATURAL_FORMANT_SHIFT_ST:
         warning = "target asks for extreme formant movement"
     return FormantPlan(
         requested,
         applied,
         clamped,
         0.55 if abs(applied) > 0.0 else 1.0,
-        "Target-profile intent only; approximate F1/F2/F3 are weak context and do not drive this value.",
+        basis + " Approximate F1/F2/F3 are weak context and do not drive this value.",
+        strategy.strategy_id,
+        guard_active,
+        stylized,
+        "target_profile_strategy",
         warning,
     )
 
@@ -514,6 +591,10 @@ def _warnings(profile, stale, source_reliability, pitch, formant, spectral, targ
         warnings.append("requested pitch-range scale clamped")
     if formant.formant_clamped:
         warnings.append("formant movement clamped")
+    if formant.naturalness_guard_active:
+        warnings.append("naturalness guard blocked inconsistent negative formant")
+    if formant.stylized_formant_combination_active:
+        warnings.append("stylized negative pitch plus negative formant may exaggerate vowels, W/R transitions, or nasal resonance")
     for label, adjustment in (
         ("chest", spectral.chest_db),
         ("low-mid", spectral.low_mid_db),
@@ -532,7 +613,7 @@ def _warnings(profile, stale, source_reliability, pitch, formant, spectral, targ
     return tuple(dict.fromkeys(warnings))
 
 
-def _plan_state(profile, status, stale, source_reliability, pitch, spectral):
+def _plan_state(profile, status, stale, source_reliability, pitch, formant, spectral):
     if status.get("last_failure"):
         return "planner_failure", False, False, str(status.get("last_failure"))
     if stale:
@@ -543,6 +624,8 @@ def _plan_state(profile, status, stale, source_reliability, pitch, spectral):
         return "collecting_source", False, False, "source profile is still collecting"
     if pitch.unavailable_reason:
         return "degraded", False, True, pitch.unavailable_reason
+    if formant.naturalness_guard_active:
+        return "degraded", False, True, "naturalness guard blocked inconsistent formant target"
     if _spectral_confidence(spectral) <= 0.0:
         return "degraded", False, True, "source spectral descriptors unavailable"
     if any(getattr(spectral, name).unavailable_reason for name in (
@@ -589,8 +672,8 @@ def _spectral_confidence(spectral):
 def _failure_plan(target, strength, reason, created_at):
     target_id = getattr(target, "target_id", "invalid")
     target_version = getattr(target, "schema_version", TARGET_SCHEMA_VERSION)
-    neutral_pitch = PitchPlan(None, 0.0, 0.0, 0.0, False, None, 0.0, 1.0, 1.0, False, 0.0, "", reason)
-    neutral_formant = FormantPlan(0.0, 0.0, False, 0.0, "planner failure")
+    neutral_pitch = PitchPlan(None, 0.0, 0.0, 0.0, False, None, 0.0, 1.0, 1.0, False, 0.0, "", PITCH_STRATEGY_RELATIVE_SHIFT, reason)
+    neutral_formant = FormantPlan(0.0, 0.0, False, 0.0, "planner failure", FORMANT_STRATEGY_NEUTRAL)
     unavailable = BandAdjustment(None, None, False, 0.0, "planner_failure")
     spectral = SpectralPlan(unavailable, unavailable, unavailable, unavailable, unavailable, unavailable, 0.0, "")
     texture = TexturePlan(0.0, 0.0, False, False, 0.0, "")
@@ -605,6 +688,12 @@ def _validate_profile(profile):
         raise ValueError("target_id must be a nonempty string")
     if not isinstance(profile.display_name, str) or not profile.display_name.strip():
         raise ValueError("display_name must be a nonempty string")
+    if not isinstance(profile.pitch_strategy, PitchStrategy):
+        raise ValueError("pitch_strategy must be a PitchStrategy")
+    if not isinstance(profile.formant_strategy, FormantStrategy):
+        raise ValueError("formant_strategy must be a FormantStrategy")
+    _validate_pitch_strategy(profile.pitch_strategy)
+    _validate_formant_strategy(profile.formant_strategy)
     for field in (
         "target_median_f0_hz", "target_pitch_span_st", "max_pitch_shift_st",
         "min_pitch_range_scale", "max_pitch_range_scale", "nominal_formant_shift_st",
@@ -635,6 +724,33 @@ def _validate_profile(profile):
     if not (0.0 <= profile.breathiness <= 1.0 and 0.0 <= profile.harmonic_weight <= 1.0):
         raise ValueError("texture targets must be normalized 0..1")
     _validate_dynamics(profile.dynamics)
+
+
+def _validate_pitch_strategy(strategy):
+    if strategy.strategy_id not in {PITCH_STRATEGY_ABSOLUTE_F0, PITCH_STRATEGY_RELATIVE_SHIFT}:
+        raise ValueError("unsupported pitch strategy")
+    if not _finite(strategy.relative_shift_st):
+        raise ValueError("pitch strategy relative_shift_st must be finite")
+    if abs(strategy.relative_shift_st) > 24.0:
+        raise ValueError("pitch strategy relative_shift_st must be between -24 and 24")
+
+
+def _validate_formant_strategy(strategy):
+    if strategy.strategy_id not in {
+        FORMANT_STRATEGY_NEUTRAL,
+        FORMANT_STRATEGY_FIXED_SHIFT,
+        FORMANT_STRATEGY_NATURAL_COMPENSATION,
+        FORMANT_STRATEGY_SIZE_COUPLED,
+    }:
+        raise ValueError("unsupported formant strategy")
+    if not _finite(strategy.fixed_shift_st):
+        raise ValueError("formant strategy fixed_shift_st must be finite")
+    if not _finite(strategy.compensation_ratio) or strategy.compensation_ratio < 0.0:
+        raise ValueError("formant strategy compensation_ratio must be finite and nonnegative")
+    if abs(strategy.fixed_shift_st) > MAX_NATURAL_FORMANT_SHIFT_ST:
+        raise ValueError("formant strategy fixed shift is restrained to +/-2 semitones")
+    if not isinstance(strategy.natural, bool) or not isinstance(strategy.stylized, bool):
+        raise ValueError("formant strategy flags must be boolean")
 
 
 def _validate_dynamics(d):
@@ -695,6 +811,18 @@ def _clamp01(value):
 def replace_target(profile, **changes):
     data = profile.asdict()
     data["dynamics"] = profile.dynamics
+    data["pitch_strategy"] = profile.pitch_strategy
+    data["formant_strategy"] = profile.formant_strategy
+    if "nominal_formant_shift_st" in changes and "formant_strategy" not in changes:
+        strategy = profile.formant_strategy
+        if strategy.strategy_id in {FORMANT_STRATEGY_FIXED_SHIFT, FORMANT_STRATEGY_SIZE_COUPLED}:
+            data["formant_strategy"] = FormantStrategy(
+                strategy.strategy_id,
+                fixed_shift_st=changes["nominal_formant_shift_st"],
+                compensation_ratio=strategy.compensation_ratio,
+                natural=strategy.natural,
+                stylized=strategy.stylized,
+            )
     data.update(changes)
     return target_voice_profile(**data)
 
@@ -703,6 +831,13 @@ DEFAULT_TARGET_PROFILE = target_voice_profile(
     target_id="diagnostic-neutral",
     display_name="Diagnostic Neutral",
     description="Session-only neutral target for planner inspection.",
+    target_median_f0_hz=140.0,
+    target_pitch_span_st=6.0,
+    pitch_strategy=PitchStrategy(PITCH_STRATEGY_RELATIVE_SHIFT, 0.0),
+    nominal_formant_shift_st=0.0,
+    formant_strategy=FormantStrategy(FORMANT_STRATEGY_NEUTRAL, natural=True),
+    requires_pitch_range=False,
+    requires_eq=False,
 )
 
 HIGHER_BRIGHTER_REFERENCE = target_voice_profile(
@@ -711,8 +846,10 @@ HIGHER_BRIGHTER_REFERENCE = target_voice_profile(
     description="Diagnostic higher/brighter planning reference, not a production character.",
     target_median_f0_hz=220.0,
     target_pitch_span_st=7.5,
+    pitch_strategy=PitchStrategy(PITCH_STRATEGY_ABSOLUTE_F0),
     max_pitch_shift_st=8.0,
     nominal_formant_shift_st=1.2,
+    formant_strategy=FormantStrategy(FORMANT_STRATEGY_FIXED_SHIFT, fixed_shift_st=1.2),
     chest_energy_ratio=0.12,
     low_mid_energy_ratio=0.28,
     presence_energy_ratio=0.28,
@@ -727,14 +864,21 @@ HIGHER_BRIGHTER_REFERENCE = target_voice_profile(
     warnings=("Diagnostic values are provisional.",),
 )
 
-LOWER_WEIGHTIER_REFERENCE = target_voice_profile(
+NATURAL_DEEP_REFERENCE = target_voice_profile(
     target_id="diagnostic-lower-weightier",
-    display_name="Lower / Weightier Reference",
-    description="Diagnostic lower/weightier planning reference, not a production character.",
-    target_median_f0_hz=90.0,
+    display_name="Natural Deep Reference",
+    description="Diagnostic natural deep planning reference: lowers pitch while preserving vowel shape with positive formant compensation.",
+    target_median_f0_hz=110.0,
     target_pitch_span_st=4.0,
+    pitch_strategy=PitchStrategy(PITCH_STRATEGY_RELATIVE_SHIFT, -3.5),
     max_pitch_shift_st=8.0,
-    nominal_formant_shift_st=-1.5,
+    nominal_formant_shift_st=1.5,
+    formant_strategy=FormantStrategy(
+        FORMANT_STRATEGY_NATURAL_COMPENSATION,
+        fixed_shift_st=1.5,
+        compensation_ratio=NATURAL_FORMANT_COMPENSATION_RATIO,
+        natural=True,
+    ),
     chest_energy_ratio=0.34,
     low_mid_energy_ratio=0.42,
     presence_energy_ratio=0.15,
@@ -754,5 +898,56 @@ LOWER_WEIGHTIER_REFERENCE = target_voice_profile(
         limiter_release_ms=80.0,
     ),
     requires_harmonic_enhancement=True,
-    warnings=("Diagnostic values are provisional.",),
+    warnings=(
+        "Diagnostic values are provisional.",
+        "Natural Deep lowers pitch while using positive formant compensation; it is not a large-vocal-tract effect.",
+    ),
+)
+
+LARGE_CAVERNOUS_REFERENCE = target_voice_profile(
+    target_id="diagnostic-large-cavernous",
+    display_name="Large / Cavernous Reference",
+    description="Diagnostic stylized large-vocal-tract effect; not a natural deep voice.",
+    target_median_f0_hz=100.0,
+    target_pitch_span_st=3.5,
+    pitch_strategy=PitchStrategy(PITCH_STRATEGY_RELATIVE_SHIFT, -4.5),
+    max_pitch_shift_st=8.0,
+    nominal_formant_shift_st=-1.5,
+    formant_strategy=FormantStrategy(
+        FORMANT_STRATEGY_SIZE_COUPLED,
+        fixed_shift_st=-1.5,
+        stylized=True,
+    ),
+    chest_energy_ratio=0.38,
+    low_mid_energy_ratio=0.45,
+    presence_energy_ratio=0.12,
+    brightness_energy_ratio=0.05,
+    sibilance_energy_ratio=0.04,
+    spectral_tilt_db=-14.0,
+    harmonic_weight=0.25,
+    dynamics=DynamicsTarget(
+        compressor_enabled=True,
+        compressor_threshold_dbfs=-18.0,
+        compressor_ratio=3.0,
+        compressor_attack_ms=10.0,
+        compressor_release_ms=150.0,
+        compressor_makeup_gain_db=1.0,
+        limiter_enabled=True,
+        limiter_ceiling_dbfs=-1.0,
+        limiter_release_ms=80.0,
+    ),
+    requires_harmonic_enhancement=True,
+    warnings=(
+        "Diagnostic values are provisional.",
+        "Large / Cavernous is stylized and may exaggerate vowels, W/R transitions, or nasal resonance.",
+    ),
+)
+
+LOWER_WEIGHTIER_REFERENCE = NATURAL_DEEP_REFERENCE
+
+TARGET_REFERENCE_ORDER = (
+    DEFAULT_TARGET_PROFILE,
+    HIGHER_BRIGHTER_REFERENCE,
+    NATURAL_DEEP_REFERENCE,
+    LARGE_CAVERNOUS_REFERENCE,
 )

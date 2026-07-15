@@ -2584,9 +2584,11 @@ Accepted Target Planner notes:
 - Neutral target does not clear an existing lock.
 - Higher / Brighter currently executes adaptive pitch center, restrained
   formant shift, compressor, and limiter recommendations.
-- Lower / Weightier currently executes lower pitch center, restrained formant
-  movement, compressor, and limiter recommendations; lower formant behavior is
-  experimental and lower pitch does not necessarily require lower formants.
+- Natural Deep currently executes lower pitch center, moderate positive formant
+  compensation, compressor, and limiter recommendations.
+- Large / Cavernous currently executes lower pitch center with restrained
+  negative formant movement as a stylized large-vocal-tract reference.
+- `lower_weightier` is retained only as a compatibility alias for Natural Deep.
 - Unsupported future capabilities are separated under Planned but Not Executed.
 - Target or strength changes after lock must show that a new suggestion is
   available and the stored transformation is unchanged until Lock Suggested
@@ -2601,10 +2603,10 @@ Parametric EQ acceptance note:
   movement, and must not be hidden with static EQ. Luke commonly prefers pitch
   around -3 to -4 st with positive formant compensation around +1 to +2.5 st.
 
-Known non-blocking M9.4 debt:
+Known non-blocking post-M9.5 debt:
 
-- Pitch/formant naturalness requires correction.
-- Lower/Weightier pitch and formant directions need decoupling.
+- M9.5 pitch/formant naturalness requires practical live acceptance before
+  PASS.
 - Diagnostic target profiles remain provisional.
 - Planner Parametric EQ remains unsupported.
 - Spectral-tilt execution remains unsupported.
@@ -2614,3 +2616,63 @@ Known non-blocking M9.4 debt:
 - Finished production feminine and deep-masculine characters do not yet exist.
 - Input/Output/Both spectrum modes remain deferred; Post-EQ is implemented.
 - Neural conversion remains an optional future plugin.
+
+## M9.5 Pitch/Formant Naturalness Acceptance
+
+Status: PROVISIONAL. Automated implementation and regression verification are
+complete; live acceptance remains open.
+
+M9.5 decouples depth from vocal-tract size in the diagnostic planner. Natural
+Deep lowers pitch and applies moderate positive formant compensation. Large /
+Cavernous lowers both pitch and formants only as an explicitly stylized
+large-vocal-tract reference. The existing combined Signalsmith pitch/formant
+stage, latency, Parametric EQ authority, reset semantics, settings, presets,
+and production characters remain unchanged.
+
+Automated acceptance already verified:
+
+- Neutral, Higher / Brighter, Natural Deep, and Large / Cavernous are exposed
+  in that order.
+- All targets produce a fully neutral applied plan at `0%`.
+- Natural Deep at full strength requests about `-3.5 st` pitch and applies
+  about `+1.5 st` formant compensation.
+- Natural Deep never plans negative formant movement; the naturalness guard
+  degrades inconsistent natural targets instead of silently accepting them.
+- Large / Cavernous is the only built-in target that combines negative pitch
+  and negative formant, and it carries a stylized warning.
+- Manual trim can deliberately create negative pitch plus negative formant, but
+  receives a warning and does not mutate the locked base plan.
+- Target and strength changes update suggestions only while Adaptive Updating
+  is Off; locked execution changes only through explicit re-lock or trim.
+- Continuous mode remains explicit and Off remains the default.
+- Planner `parametric_eq` and `spectral_tilt_shaping` remain unsupported.
+- No second pitch/formant processor, Signalsmith buffering change, production
+  character replacement, EQ concealment, persistence change, phoneme/speech
+  model, de-essing, breathiness, harmonic enhancement, spectral tilt, or neural
+  conversion was added.
+
+Live acceptance checklist:
+
+- Launch `main.py --parametric-eq-lab`; confirm the app starts stopped,
+  Adaptive Updating is Off, and no stored transformation is silently applied.
+- Confirm Target Planner shows Neutral, Higher / Brighter, Natural Deep, and
+  Large / Cavernous in order.
+- At `0%`, confirm all four targets remain audibly neutral and report zero
+  effective pitch/formant movement.
+- Calibrate source, select Natural Deep, set `100%`, lock explicitly, enable
+  execution, and confirm lower pitch with improved vowel naturalness compared
+  with the old negative-formant Lower / Weightier behavior.
+- Confirm Natural Deep does not sound like EQ concealment and does not depend
+  on Parametric EQ.
+- Select Large / Cavernous, lock explicitly, enable execution, and confirm the
+  negative pitch plus negative formant result is clearly stylized, with warning
+  text visible and understandable.
+- Use manual formant trim to force a negative final formant with negative
+  pitch; confirm the warning appears, final values remain bounded, and the
+  locked base plan is unchanged.
+- Return Audio to Neutral; confirm runtime pitch/formant neutralize while the
+  stored transformation remains available.
+- Clear Stored Transformation; confirm the lock and trims are cleared and
+  authority returns to `none`.
+- Confirm Parametric EQ remains independent and planner EQ capabilities remain
+  unsupported.

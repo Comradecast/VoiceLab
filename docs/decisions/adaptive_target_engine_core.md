@@ -56,26 +56,32 @@ No arrays or mutable collections are exposed as plan fields.
 
 ## Planning Rules
 
-Pitch center:
+Pitch center supports explicit strategies. Absolute-F0 targets use:
 
 ```text
 12 * log2(target_median_f0 / source_median_f0)
 ```
 
-The result is scaled by strength and clamped to the target pitch limit.
+Relative-shift targets use the configured semitone offset directly. The result
+is scaled by strength and clamped to the target pitch limit.
 
 Pitch range uses `target_span / source_span`, interpolated from neutral by
 strength and clamped to target range limits. Missing or near-zero source span
 keeps pitch-range scale neutral without invalidating the entire plan.
 
-Formant recommendation is target-intent based:
+Formant recommendation is target-intent based and strategy-specific:
 
 ```text
-target.nominal_formant_shift_st * strength
+neutral: 0
+restrained_fixed_shift: fixed_shift_st * strength
+natural_compensation: abs(applied_downward_pitch_st) * compensation_ratio
+size_coupled_stylization: fixed_shift_st * strength
 ```
 
 It is clamped to the target maximum and does not use F1/F2/F3 as an automatic
-control source.
+control source. Natural downward-pitch targets are guarded from negative
+formant movement; negative pitch plus negative formant is reserved for an
+explicit stylized large-vocal-tract target.
 
 Spectral recommendations use:
 
@@ -177,10 +183,12 @@ diagnostic references are named by acoustic direction only:
 
 - Diagnostic Neutral;
 - Higher / Brighter Reference;
-- Lower / Weightier Reference.
+- Natural Deep Reference;
+- Large / Cavernous Reference.
 
 They are not production characters and are not feminine, masculine,
-deep-masculine, giant, or identity labels.
+deep-masculine, giant, or identity labels. The previous `lower_weightier`
+reference name is retained only as a compatibility alias for Natural Deep.
 
 ## Verification
 
@@ -201,7 +209,8 @@ Live zero-strength acceptance confirmed that Diagnostic Neutral, Higher /
 Brighter, and Lower / Weightier all produce a fully neutral applied plan at
 `0%`: zero pitch/formant/spectral/tilt/de-essing/texture movement, neutral
 compressor and limiter recommendations, an empty capability tuple, and no
-processor-required warnings. Strength interpolation, active capability
+processor-required warnings. M9.5 extends this automated contract to Natural
+Deep and Large / Cavernous. Strength interpolation, active capability
 requirements, requested/applied separation, clamp/degradation behavior, stale
 source behavior, F1/F2/F3 weak-descriptor status, plan confidence, and warning
 readability all passed.
@@ -220,6 +229,7 @@ regression.
 - Pitch-center planning is accepted.
 - Pitch-range planning is accepted as a future processor requirement.
 - Restrained target-intent formant planning is accepted.
+- M9.5 natural formant compensation is provisional pending live acceptance.
 - Spectral band and tilt-index planning are accepted as diagnostic EQ
   requirements.
 - De-essing planning is accepted as a future processor requirement.
