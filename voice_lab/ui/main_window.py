@@ -486,6 +486,55 @@ class App(QWidget):
         trim_layout.addWidget(self.transform_trim)
         layout.addWidget(trim_box)
 
+        core_box = QGroupBox("Core Voice Shaping")
+        core_layout = QVBoxLayout(core_box)
+        core_layout.addWidget(QLabel("Output Character"))
+        self.transform_gain_label = QLabel("Gain: unavailable")
+        self.transform_gain = QSlider(Qt.Horizontal)
+        self.transform_gain.setRange(0, 50)
+        self.transform_gain.valueChanged.connect(self.set_transform_voice_shaping)
+        self.transform_robot_label = QLabel("Robot: unavailable")
+        self.transform_robot = QSlider(Qt.Horizontal)
+        self.transform_robot.setRange(0, 100)
+        self.transform_robot.valueChanged.connect(self.set_transform_voice_shaping)
+        self.transform_lowpass_label = QLabel("Lowpass: unavailable")
+        self.transform_lowpass = QSlider(Qt.Horizontal)
+        self.transform_lowpass.setRange(300, 8000)
+        self.transform_lowpass.valueChanged.connect(self.set_transform_voice_shaping)
+        for widget in (
+            self.transform_gain_label,
+            self.transform_gain,
+            self.transform_robot_label,
+            self.transform_robot,
+            self.transform_lowpass_label,
+            self.transform_lowpass,
+        ):
+            core_layout.addWidget(widget)
+        reset_voice = QPushButton("Reset Voice Shaping")
+        reset_voice.clicked.connect(self.reset_transform_voice_shaping)
+        core_layout.addWidget(reset_voice)
+
+        core_layout.addWidget(QLabel("Input Cleanup"))
+        self.transform_high_pass_enabled = QCheckBox("High-Pass")
+        self.transform_high_pass_enabled.stateChanged.connect(lambda _state: self.set_transform_high_pass())
+        self.transform_high_pass_label = QLabel("High-Pass: unavailable")
+        self.transform_high_pass = QSlider(Qt.Horizontal)
+        self.transform_high_pass.setRange(40, 200)
+        self.transform_high_pass.valueChanged.connect(lambda _value: self.set_transform_high_pass())
+        open_input = QPushButton("Open Full Input Processing")
+        open_input.clicked.connect(lambda: self._open_tab("Input Processing"))
+        for widget in (
+            self.transform_high_pass_enabled,
+            self.transform_high_pass_label,
+            self.transform_high_pass,
+            open_input,
+        ):
+            core_layout.addWidget(widget)
+        self.transform_core_status = QLabel("Core Voice Shaping: unavailable")
+        self.transform_core_status.setWordWrap(True)
+        core_layout.addWidget(self.transform_core_status)
+        layout.addWidget(core_box)
+
         if getattr(self, "parametric_eq_enabled", False):
             eq_box = QGroupBox("Advanced Tone Shaping - Parametric EQ")
             eq_box.setCheckable(True)
@@ -592,6 +641,38 @@ class App(QWidget):
             return
         self.display_result(self.service.set_formant_trim(self.transform_formant_trim.value()))
         self.refresh_all_transformation_views()
+
+    def set_transform_voice_shaping(self):
+        if self._updating_voice_controls or not hasattr(self, "gain"):
+            return
+        for target, source in (
+            (self.gain, self.transform_gain),
+            (self.robot, self.transform_robot),
+            (self.lowpass, self.transform_lowpass),
+        ):
+            target.blockSignals(True)
+            target.setValue(source.value())
+            target._voice_lab_label.setText(f"{target._voice_lab_label_name}: {target.value()}")
+            target.blockSignals(False)
+        self.display_result(self.apply_current_parameters())
+        self.sync_voice_controls_from_service()
+        self.refresh_transform_workflow()
+
+    def reset_transform_voice_shaping(self):
+        self.reset_voice()
+        self.refresh_transform_workflow()
+
+    def set_transform_high_pass(self):
+        if self._updating_input_processing or not hasattr(self.service, "update_input_processing"):
+            return
+        result = self.service.update_input_processing(
+            "high_pass",
+            enabled=self.transform_high_pass_enabled.isChecked(),
+            cutoff_hz=float(self.transform_high_pass.value()),
+        )
+        self.display_result(result)
+        self.sync_input_processing_from_service()
+        self.refresh_transform_workflow()
 
     def set_transform_parametric_eq_enabled(self):
         if self._updating_parametric_eq:
@@ -700,6 +781,7 @@ class App(QWidget):
             f"{self._fmt_st(getattr(execution, 'current_formant_semitones', None))} | "
             f"warnings {', '.join(stable.warnings or ('none',))}"
         )
+        self.refresh_transform_core_voice_shaping()
         self.transform_resume.setEnabled(bool(locked is not None and not stable.execution_enabled))
         self.transform_neutral.setEnabled(bool(locked is not None and stable.execution_enabled))
         self.transform_clear.setEnabled(bool(locked is not None))
@@ -724,6 +806,66 @@ class App(QWidget):
                 f"flat {plan.flat} | active bands {plan.active_band_count} | "
                 f"one controller authority | added latency {eq.added_latency_frames} frames"
             )
+
+    def refresh_transform_core_voice_shaping(self):
+        if not hasattr(self, "transform_core_status"):
+            return
+        voice_state = self.service.active_voice_state() if hasattr(self.service, "active_voice_state") else {}
+        params = voice_state.get("parameters", {})
+        availability = self.service.voice_control_availability() if hasattr(self.service, "voice_control_availability") else {}
+        controls = availability.get("controls", {})
+        self._updating_voice_controls = True
+        try:
+            gain_value = int(round(float(params.get("gain", self.gain.value() / 10.0)) * 10.0))
+            robot_value = int(round(float(params.get("robot", self.robot.value() / 100.0)) * 100.0))
+            lowpass_value = int(round(float(params.get("lowpass", self.lowpass.value()))))
+            self.transform_gain.setValue(gain_value)
+            self.transform_robot.setValue(robot_value)
+            self.transform_lowpass.setValue(lowpass_value)
+        finally:
+            self._updating_voice_controls = False
+        bypassed = bool(voice_state.get("effects_bypassed", False))
+        self.transform_gain_label.setText(f"Gain: {self.transform_gain.value() / 10.0:.1f}x")
+        self.transform_robot_label.setText(
+            "Robot: Off" if self.transform_robot.value() == 0 else f"Robot: {self.transform_robot.value()}%"
+        )
+        self.transform_lowpass_label.setText(
+            "Lowpass: Off" if self.transform_lowpass.value() >= 8000 else f"Lowpass: {self.transform_lowpass.value()} Hz"
+        )
+        for key, slider in (
+            ("gain", self.transform_gain),
+            ("robot", self.transform_robot),
+            ("lowpass", self.transform_lowpass),
+        ):
+            state = controls.get(key, {})
+            available = bool(state.get("editable", True))
+            slider.setEnabled(available)
+            slider.setToolTip(
+                "Global Bypass Effects is active; edits are retained but not audible."
+                if bypassed and available
+                else state.get("reason", "")
+            )
+        input_state = self.service.input_processing_state() if hasattr(self.service, "input_processing_state") else {}
+        high_pass = input_state.get("high_pass", {})
+        self._updating_input_processing = True
+        try:
+            self.transform_high_pass_enabled.setChecked(bool(high_pass.get("enabled", False)))
+            self.transform_high_pass.setValue(int(round(float(high_pass.get("cutoff_hz", 80.0)))))
+        finally:
+            self._updating_input_processing = False
+        high_pass_enabled = self.transform_high_pass_enabled.isChecked()
+        self.transform_high_pass.setEnabled(high_pass_enabled)
+        self.transform_high_pass_label.setText(
+            f"High-Pass: {'On' if high_pass_enabled else 'Off'} - {self.transform_high_pass.value()} Hz"
+        )
+        bypass_note = " | Global Bypass Effects active; shaping is not audible." if bypassed else ""
+        self.transform_core_status.setText(
+            f"Gain {self.transform_gain.value() / 10.0:.1f}x | "
+            f"Robot {'Off' if self.transform_robot.value() == 0 else str(self.transform_robot.value()) + '%'} | "
+            f"Lowpass {'Off' if self.transform_lowpass.value() >= 8000 else str(self.transform_lowpass.value()) + ' Hz'} | "
+            f"High-Pass {'On' if high_pass_enabled else 'Off'} - {self.transform_high_pass.value()} Hz"
+            f"{bypass_note}"
+        )
 
     def play_sound_by_index(self, index):
         result = self.service.play_sound_by_index(index)
@@ -877,6 +1019,8 @@ class App(QWidget):
         finally:
             self._updating_voice_controls = False
         self.refresh_custom_voice_actions()
+        if hasattr(self, "transform_core_status"):
+            self.refresh_transform_core_voice_shaping()
 
     def set_advanced_visible(self):
         visible = self.advanced_toggle.isChecked()
@@ -1021,6 +1165,8 @@ class App(QWidget):
             self.refresh_input_processing_activity()
         finally:
             self._updating_input_processing = False
+        if hasattr(self, "transform_core_status"):
+            self.refresh_transform_core_voice_shaping()
 
     def update_input_processing(self, processor):
         if self._updating_input_processing or not hasattr(self.service, "update_input_processing"):
@@ -1036,6 +1182,8 @@ class App(QWidget):
             self.refresh_input_processing_activity()
         else:
             self.sync_input_processing_from_service()
+        if hasattr(self, "transform_core_status"):
+            self.refresh_transform_core_voice_shaping()
 
     def _set_input_processing_params_enabled(self, processor):
         controls = self.input_processing_controls[processor]

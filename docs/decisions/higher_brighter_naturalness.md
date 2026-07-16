@@ -105,3 +105,9 @@ M9.6 also requires unified workflow live acceptance. The normal Natural Bright
 test path now starts on the `Transform` page and uses Apply Transformation /
 Apply Changes instead of requiring the user to move across Source Analysis,
 Target Planner, Calibrate & Lock, Plan Execution, and Parametric EQ tabs.
+
+The remaining live UX correction adds Core Voice Shaping to Transform so Gain,
+Robot, Lowpass, and High-Pass can be adjusted during Natural Bright acceptance
+without leaving the primary workflow. These are existing chain/input-processing
+authorities only; Natural Bright pitch/formant values and DSP behavior remain
+unchanged.

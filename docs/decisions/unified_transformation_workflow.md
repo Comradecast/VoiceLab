@@ -84,6 +84,26 @@ section. It reuses the existing ParametricEqController and existing service
 commands. No second EQ owner, duplicate EQ controller, duplicate EQ effect,
 latency change, or planner-driven EQ compensation was added.
 
+## Core Voice Shaping
+
+Live M9.6 unified-workflow testing found that the primary workflow still forced
+ordinary shaping edits back to the Voice and Input Processing tabs. Transform
+now includes `Core Voice Shaping` between Manual Adjustment and Advanced Tone
+Shaping.
+
+Output Character exposes the existing Gain, Robot, and Lowpass authorities from
+the active voice chain. Input Cleanup exposes the existing Input Processing
+High-Pass enabled state and cutoff. These controls call the same service
+commands and synchronize with the original pages through service-owned state.
+
+`Open Full Input Processing` remains the route to Noise Gate, Compressor,
+Limiter, and detailed input cleanup. Global Bypass Effects remains distinct
+from individual effect values; Transform reports when bypass makes shaping
+inaudible without clearing or toggling those values.
+
+No Gain, Robot, Lowpass, High-Pass, Parametric EQ, or Pitch/Formant processor
+was duplicated.
+
 ## Boundaries
 
 This decision does not change DSP behavior, Signalsmith buffering, Signalsmith

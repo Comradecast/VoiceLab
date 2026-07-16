@@ -2895,3 +2895,34 @@ Unified workflow acceptance gate:
 - Parametric EQ can be shaped from the Transform page without creating another
   EQ authority.
 - No DSP, target-value, latency, persistence, or schema regression occurs.
+
+## M9.6 Core Voice Shaping Live Checklist
+
+Status: PROVISIONAL. Automated implementation and regression verification are
+complete; live core-shaping acceptance remains open.
+
+Normal workflow:
+
+1. Launch Parametric EQ Lab.
+2. Use only `Transform`.
+3. Apply `Natural Bright`.
+4. In `Core Voice Shaping`, adjust `Gain` and confirm audible level change.
+5. Adjust `Robot` and confirm the existing robot effect becomes audible.
+6. Adjust `Lowpass` and confirm high-frequency reduction.
+7. Enable and adjust `High-Pass` under `Input Cleanup` and confirm
+   low-frequency reduction.
+8. Press `Open Full Input Processing` and confirm High-Pass values match.
+9. Change High-Pass values on Input Processing and confirm Transform updates.
+10. Enable global `Bypass Effects` and confirm Core Voice Shaping reports that
+    edits are retained but not audible.
+11. Confirm no tab navigation is required for ordinary shaping after applying a
+    transformation.
+
+Acceptance questions:
+
+- Are Gain, Robot, Lowpass, and High-Pass reachable from Transform?
+- Do Transform controls and original pages stay synchronized?
+- Is global bypass clearly separate from individual shaping values?
+- Does Open Full Input Processing remain available for detailed cleanup?
+- Is any core control editable when its effect stage is unavailable?
+- Is there any duplicate processing, added latency, or chain-order change?

@@ -2281,6 +2281,37 @@ Acceptance remains blocked on live confirmation that the unified workflow gives
 one obvious next action, makes audible versus unapplied state obvious, supports
 return/resume/clear without stale-state confusion, and preserves diagnostic
 inspection for advanced users.
+
+### M9.6 UX Correction - Core Voice Shaping on Transform
+
+Status: PROVISIONAL. Implementation and automated verification are complete;
+live core-shaping acceptance is still required before PASS.
+
+Luke's live unified-workflow pass found the remaining practical issue: common
+voice-shaping controls still required leaving `Transform`. The corrected page
+now includes `Core Voice Shaping` between Manual Adjustment and Advanced Tone
+Shaping.
+
+Implemented scope:
+
+- Output Character controls expose existing Gain, Robot, and Lowpass
+  authorities from the active voice chain.
+- Input Cleanup exposes the existing Input Processing High-Pass enabled state
+  and cutoff as a compact quick control.
+- `Open Full Input Processing` remains the path to Noise Gate, Compressor,
+  Limiter, and detailed input cleanup.
+- Transform and the original Voice/Input Processing pages synchronize through
+  ApplicationService-owned state.
+- Global Bypass Effects remains separate and is reported as making the shaping
+  controls inaudible without clearing or toggling their values.
+
+Non-changes:
+
+- No Gain, Robot, Lowpass, High-Pass, Parametric EQ, Pitch/Formant, or
+  controller instance was duplicated.
+- No DSP behavior, chain order, target value, Signalsmith latency, settings
+  schema, presets schema, persistence, production Pitch Shift behavior, or
+  Soundboard laboratory isolation changed.
 - Strength must scale predictably, sibilants must remain usable, vowels must
   remain recognizable, the lock/calibration workflow must remain reliable, and
   no stability regression may occur.

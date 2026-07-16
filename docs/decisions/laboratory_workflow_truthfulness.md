@@ -174,3 +174,9 @@ Changes Not Applied wording so selected target/strength changes cannot be
 mistaken for audible runtime. State is still service-owned; diagnostics and the
 Transform page read the same snapshots. See
 `docs/decisions/unified_transformation_workflow.md`.
+
+The remaining M9.6 correction exposes existing Gain, Robot, Lowpass, and
+Input Processing High-Pass controls on Transform under Core Voice Shaping. The
+Voice and Input Processing pages remain synchronized through ApplicationService
+state; no duplicate effect, controller, chain authority, persistence, or schema
+change was introduced.
