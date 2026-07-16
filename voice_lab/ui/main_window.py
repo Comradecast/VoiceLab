@@ -42,11 +42,12 @@ class App(QWidget):
         root_layout.addLayout(transport_layout)
         self.tabs = QTabWidget()
         root_layout.addWidget(self.tabs)
-        layout = self._create_tab("Voice")
-        input_processing_layout = self._create_tab("Input Processing")
-        routing_layout = self._create_tab("Routing")
-        soundboard_tab_layout = self._create_tab("Soundboard")
-        diagnostics_layout = self._create_tab("Diagnostics")
+        layout = None
+        input_processing_layout = None
+        routing_layout = None
+        soundboard_tab_layout = None
+        diagnostics_layout = None
+        transform_layout = None
         source_analysis_layout = None
         target_planner_layout = None
         execution_layout = None
@@ -83,6 +84,28 @@ class App(QWidget):
             hasattr(self.service, "parametric_eq_state")
             and self.service.parametric_eq_state() is not None
         )
+        self.transform_workflow_enabled = (
+            hasattr(self.service, "transformation_workflow_snapshot")
+            and self.service.transformation_workflow_snapshot() is not None
+        )
+        soundboard_available = (
+            self.service.soundboard_available()
+            if hasattr(self.service, "soundboard_available")
+            else True
+        )
+        if self.transform_workflow_enabled:
+            transform_layout = self._create_tab("Transform")
+            input_processing_layout = self._create_tab("Input Processing")
+            routing_layout = self._create_tab("Routing")
+            diagnostics_layout = self._create_tab("Diagnostics")
+            layout = self._create_tab("Voice")
+            soundboard_tab_layout = self._create_tab("Soundboard") if soundboard_available else None
+        else:
+            layout = self._create_tab("Voice")
+            input_processing_layout = self._create_tab("Input Processing")
+            routing_layout = self._create_tab("Routing")
+            soundboard_tab_layout = self._create_tab("Soundboard") if soundboard_available else None
+            diagnostics_layout = self._create_tab("Diagnostics")
         if self.source_analysis_enabled:
             source_analysis_layout = self._create_tab("Source Analysis")
         if self.target_planner_enabled:
@@ -280,13 +303,16 @@ class App(QWidget):
 
         self.soundboard_policy = QLabel("Soundboard - F1/F2/F3 for first 3 sounds")
         self.soundboard_policy.setWordWrap(True)
-        soundboard_tab_layout.addWidget(self.soundboard_policy)
+        if soundboard_tab_layout is not None:
+            soundboard_tab_layout.addWidget(self.soundboard_policy)
         self.soundboard_layout = QHBoxLayout()
-        soundboard_tab_layout.addLayout(self.soundboard_layout)
+        if soundboard_tab_layout is not None:
+            soundboard_tab_layout.addLayout(self.soundboard_layout)
 
         refresh_sounds = QPushButton("Refresh Sounds")
         refresh_sounds.clicked.connect(self.refresh_soundboard)
-        soundboard_tab_layout.addWidget(refresh_sounds)
+        if soundboard_tab_layout is not None:
+            soundboard_tab_layout.addWidget(refresh_sounds)
 
         btns = QHBoxLayout()
         self.start_button = QPushButton("Start Processing")
@@ -300,6 +326,9 @@ class App(QWidget):
         self.status = QLabel("Stopped")
         diagnostics_layout.addWidget(self.status)
         self.processing_status = QLabel("Processing: Stopped")
+        self.transformation_summary = QLabel("Transformation: unavailable")
+        self.transformation_summary.setWordWrap(True)
+        transport_layout.addWidget(self.transformation_summary)
         self.route_status = QLabel("Routes stopped")
         self.pitch_status = QLabel("Pitch: Off")
         self.latency_status = QLabel("Estimated pitch DSP latency: Not active")
@@ -320,6 +349,8 @@ class App(QWidget):
             diagnostics_layout.addWidget(label)
 
         self.advanced_widgets.append(self.diagnostic_status)
+        if self.transform_workflow_enabled and transform_layout is not None:
+            self._build_transform_workflow_tab(transform_layout)
         self.sync_voice_controls_from_service()
         self.refresh_voice_control_availability()
         self.sync_input_processing_from_service()
@@ -362,6 +393,7 @@ class App(QWidget):
         self.refresh_execution_lab()
         self.refresh_calibrate_lock()
         self.refresh_parametric_eq()
+        self.refresh_transform_workflow()
 
     def _create_tab(self, title):
         scroll_area = QScrollArea()
@@ -378,6 +410,320 @@ class App(QWidget):
             if self.tabs.tabText(index) == title:
                 self.tabs.setCurrentIndex(index)
                 return
+
+    def _build_transform_workflow_tab(self, layout):
+        self.transform_guide = QLabel("Start listening so VoiceLab can analyze your voice.")
+        self.transform_guide.setWordWrap(True)
+        layout.addWidget(self.transform_guide)
+
+        self.transform_primary_action = QPushButton("Start Listening")
+        self.transform_primary_action.clicked.connect(self.run_transform_primary_action)
+        layout.addWidget(self.transform_primary_action)
+
+        self.transform_status = QLabel("Processing: unavailable")
+        self.transform_status.setWordWrap(True)
+        layout.addWidget(self.transform_status)
+
+        self.transform_targets = {}
+        target_box = QGroupBox("Transformation Target")
+        target_layout = QVBoxLayout(target_box)
+        for key, label, purpose, classification, intent in (
+            ("neutral", "Neutral", "Baseline voice with no pitch or formant movement.", "Natural", "Pitch 0 st, Formant 0 st"),
+            ("natural_bright", "Natural Bright", "Brighter, moderately higher voice without a cartoon-like vocal tract.", "Natural", "Pitch +3.5 st, Formant +1.0 st"),
+            ("natural_deep", "Natural Deep", "Lower voice with moderate formant compensation for vowel shape.", "Natural", "Pitch -3.5 st, Formant +1.5 st"),
+            ("small_cartoon", "Small / Cartoon", "Deliberately small, exaggerated bright effect.", "Stylized", "Pitch +6.0 st, Formant +2.0 st"),
+            ("large_cavernous", "Large / Cavernous", "Deliberately larger vocal-tract effect.", "Stylized", "Pitch -4.5 st, Formant -1.5 st"),
+        ):
+            button = QPushButton(f"{label} - {classification} - {intent}")
+            button.setToolTip(purpose)
+            button.clicked.connect(lambda _checked=False, reference=key: self.select_transform_target(reference))
+            target_layout.addWidget(button)
+            self.transform_targets[key] = button
+            if key == "small_cartoon":
+                warning = QLabel("Stylized warning: may sound chipmunk-like, thin, nasal, or sharply sibilant.")
+                warning.setWordWrap(True)
+                target_layout.addWidget(warning)
+        layout.addWidget(target_box)
+
+        self.transform_strength_label = QLabel("Strength: 100%")
+        self.transform_strength = QSlider(Qt.Horizontal)
+        self.transform_strength.setRange(0, 100)
+        self.transform_strength.setValue(100)
+        self.transform_strength.valueChanged.connect(self.set_transform_strength)
+        layout.addWidget(self.transform_strength_label)
+        layout.addWidget(self.transform_strength)
+
+        self.transform_preview = QLabel("Preview: unavailable")
+        self.transform_preview.setWordWrap(True)
+        layout.addWidget(self.transform_preview)
+
+        self.transform_apply = QPushButton("Apply Transformation")
+        self.transform_apply.clicked.connect(self.apply_transform_workflow)
+        layout.addWidget(self.transform_apply)
+
+        self.transform_applied = QLabel("Applied Transformation: none")
+        self.transform_applied.setWordWrap(True)
+        layout.addWidget(self.transform_applied)
+
+        trim_box = QGroupBox("Manual Adjustment")
+        trim_layout = QVBoxLayout(trim_box)
+        self.transform_pitch_trim = QDoubleSpinBox()
+        self.transform_pitch_trim.setRange(-4.0, 4.0)
+        self.transform_pitch_trim.setSingleStep(0.1)
+        self.transform_pitch_trim.setDecimals(2)
+        self.transform_pitch_trim.valueChanged.connect(lambda _value: self.set_transform_pitch_trim())
+        self.transform_formant_trim = QDoubleSpinBox()
+        self.transform_formant_trim.setRange(-2.0, 2.0)
+        self.transform_formant_trim.setSingleStep(0.05)
+        self.transform_formant_trim.setDecimals(2)
+        self.transform_formant_trim.valueChanged.connect(lambda _value: self.set_transform_formant_trim())
+        trim_layout.addWidget(QLabel("Pitch adjustment"))
+        trim_layout.addWidget(self.transform_pitch_trim)
+        trim_layout.addWidget(QLabel("Formant adjustment"))
+        trim_layout.addWidget(self.transform_formant_trim)
+        self.transform_trim = QLabel("Base, trim, and final values unavailable")
+        self.transform_trim.setWordWrap(True)
+        trim_layout.addWidget(self.transform_trim)
+        layout.addWidget(trim_box)
+
+        if getattr(self, "parametric_eq_enabled", False):
+            eq_box = QGroupBox("Advanced Tone Shaping - Parametric EQ")
+            eq_box.setCheckable(True)
+            eq_box.setChecked(False)
+            eq_layout = QVBoxLayout(eq_box)
+            eq_controls = QHBoxLayout()
+            self.transform_eq_enable = QCheckBox("Enable Parametric EQ")
+            self.transform_eq_enable.stateChanged.connect(lambda _state: self.set_transform_parametric_eq_enabled())
+            self.transform_eq_on = QPushButton("EQ ON")
+            self.transform_eq_on.setCheckable(True)
+            self.transform_eq_on.clicked.connect(lambda _checked: self.set_transform_parametric_eq_bypass(False))
+            self.transform_eq_bypass = QPushButton("BYPASS")
+            self.transform_eq_bypass.setCheckable(True)
+            self.transform_eq_bypass.clicked.connect(lambda _checked: self.set_transform_parametric_eq_bypass(True))
+            self.transform_eq_reset = QPushButton("Reset EQ to Flat")
+            self.transform_eq_reset.clicked.connect(self.reset_transform_parametric_eq)
+            eq_controls.addWidget(self.transform_eq_enable)
+            eq_controls.addWidget(self.transform_eq_on)
+            eq_controls.addWidget(self.transform_eq_bypass)
+            eq_controls.addWidget(self.transform_eq_reset)
+            eq_layout.addLayout(eq_controls)
+            self.transform_eq_status = QLabel("Parametric EQ: unavailable")
+            self.transform_eq_status.setWordWrap(True)
+            eq_layout.addWidget(self.transform_eq_status)
+            layout.addWidget(eq_box)
+
+        secondary = QHBoxLayout()
+        self.transform_neutral = QPushButton("Return Audio to Neutral")
+        self.transform_neutral.setToolTip("Disables execution and neutralizes runtime while retaining the stored transformation and trims.")
+        self.transform_neutral.clicked.connect(self.return_transform_to_neutral)
+        self.transform_resume = QPushButton("Resume Stored Transformation")
+        self.transform_resume.setToolTip("Enables the retained stored transformation.")
+        self.transform_resume.clicked.connect(self.resume_transform_workflow)
+        self.transform_clear = QPushButton("Clear Transformation")
+        self.transform_clear.setToolTip("Disables execution, clears the stored plan and trims, and leaves analysis/calibration policy unchanged.")
+        self.transform_clear.clicked.connect(self.clear_transform_workflow)
+        secondary.addWidget(self.transform_neutral)
+        secondary.addWidget(self.transform_resume)
+        secondary.addWidget(self.transform_clear)
+        layout.addLayout(secondary)
+
+        details = QGroupBox("Advanced Details")
+        details.setCheckable(True)
+        details.setChecked(False)
+        details_layout = QVBoxLayout(details)
+        self.transform_advanced = QLabel("Advanced details unavailable")
+        self.transform_advanced.setWordWrap(True)
+        details_layout.addWidget(self.transform_advanced)
+        layout.addWidget(details)
+
+    def run_transform_primary_action(self):
+        snapshot = self.service.transformation_workflow_snapshot()
+        if snapshot is None:
+            return
+        label = snapshot.get("primary_label")
+        if label == "Start Listening":
+            self.start()
+        elif label in {"Calibrate Voice"}:
+            self.calibrate_source()
+        elif label in {"Apply Transformation", "Apply Changes"}:
+            self.apply_transform_workflow()
+        elif label == "Resume Transformation":
+            self.resume_transform_workflow()
+        self.refresh_transform_workflow()
+
+    def select_transform_target(self, reference):
+        self.display_result(self.service.load_target_reference(reference))
+        self.refresh_target_planner()
+        self.refresh_transform_workflow()
+
+    def set_transform_strength(self, value):
+        if self._updating_target_planner:
+            return
+        self.display_result(self.service.set_target_planner_strength(value))
+        self.refresh_target_planner()
+        self.refresh_transform_workflow()
+
+    def apply_transform_workflow(self):
+        self.display_result(self.service.apply_suggested_transformation())
+        self.refresh_all_transformation_views()
+
+    def resume_transform_workflow(self):
+        self.display_result(self.service.set_plan_execution_enabled(True))
+        self.refresh_all_transformation_views()
+
+    def return_transform_to_neutral(self):
+        self.return_execution_to_neutral()
+        self.refresh_transform_workflow()
+
+    def clear_transform_workflow(self):
+        if QMessageBox.question(self, "Clear Transformation", "Clear the stored transformation and trims?") != QMessageBox.Yes:
+            return
+        self.clear_stored_transformation()
+        self.refresh_transform_workflow()
+
+    def set_transform_pitch_trim(self):
+        if self._updating_execution_lab or not getattr(self, "calibrate_lock_enabled", False):
+            return
+        self.display_result(self.service.set_pitch_trim(self.transform_pitch_trim.value()))
+        self.refresh_all_transformation_views()
+
+    def set_transform_formant_trim(self):
+        if self._updating_execution_lab or not getattr(self, "calibrate_lock_enabled", False):
+            return
+        self.display_result(self.service.set_formant_trim(self.transform_formant_trim.value()))
+        self.refresh_all_transformation_views()
+
+    def set_transform_parametric_eq_enabled(self):
+        if self._updating_parametric_eq:
+            return
+        self.display_result(self.service.set_parametric_eq_enabled(self.transform_eq_enable.isChecked()))
+        self.refresh_parametric_eq()
+        self.refresh_transform_workflow()
+
+    def set_transform_parametric_eq_bypass(self, bypassed):
+        self.display_result(self.service.set_parametric_eq_bypassed(bool(bypassed)))
+        self.refresh_parametric_eq()
+        self.refresh_transform_workflow()
+
+    def reset_transform_parametric_eq(self):
+        self.display_result(self.service.reset_parametric_eq_to_flat())
+        self.refresh_parametric_eq()
+        self.refresh_transform_workflow()
+
+    def refresh_all_transformation_views(self):
+        self.refresh_transform_workflow()
+        self.refresh_calibrate_lock()
+        self.refresh_execution_lab()
+
+    def refresh_transform_workflow(self):
+        if not getattr(self, "transform_workflow_enabled", False) or not hasattr(self, "transform_status"):
+            return
+        try:
+            snapshot = self.service.transformation_workflow_snapshot()
+        except Exception:
+            return
+        if snapshot is None:
+            return
+        stable = snapshot["stable"]
+        execution = snapshot.get("execution")
+        suggestion = stable.suggestion
+        locked = stable.locked
+        trim = stable.trim
+        self.transformation_summary.setText(snapshot.get("summary", "Transformation: unavailable"))
+        self.transform_guide.setText(snapshot.get("guide", ""))
+        primary_label = snapshot.get("primary_label", "Apply Transformation")
+        primary_enabled = bool(snapshot.get("primary_enabled"))
+        for button in (self.transform_primary_action, self.transform_apply):
+            button.setText(primary_label if button is self.transform_primary_action else ("Apply Changes" if snapshot.get("dirty") else "Apply Transformation"))
+            button.setEnabled(primary_enabled if button is self.transform_primary_action else primary_label in {"Apply Transformation", "Apply Changes"})
+            button.setToolTip(snapshot.get("primary_reason", ""))
+        self.transform_status.setText(
+            f"Processing {'running' if stable.processing_state == 'running' else 'stopped'} | "
+            f"Analysis {'ready' if stable.source_valid else 'not ready'} ({stable.source_reason}) | "
+            f"voiced frames {stable.source_voiced_frame_count} | confidence {self._fmt_ratio(stable.source_confidence)} | "
+            f"Calibration {'present' if stable.calibration is not None else 'not captured'}"
+        )
+        self._updating_target_planner = True
+        self._updating_execution_lab = True
+        try:
+            self.transform_strength.setValue(int(round(stable.current_strength * 100.0)))
+            self.transform_pitch_trim.setValue(float(getattr(trim, "requested_pitch_trim_st", 0.0)))
+            self.transform_formant_trim.setValue(float(getattr(trim, "requested_formant_trim_st", 0.0)))
+        finally:
+            self._updating_target_planner = False
+            self._updating_execution_lab = False
+        self.transform_strength_label.setText(f"Strength: {stable.current_strength * 100.0:.0f}%")
+        for key, button in self.transform_targets.items():
+            selected = (
+                (key == "natural_bright" and stable.current_target_id == "diagnostic-higher-brighter")
+                or (key == "natural_deep" and stable.current_target_id == "diagnostic-lower-weightier")
+                or (key == "small_cartoon" and stable.current_target_id == "diagnostic-small-cartoon")
+                or (key == "large_cavernous" and stable.current_target_id == "diagnostic-large-cavernous")
+                or (key == "neutral" and stable.current_target_id == "diagnostic-neutral")
+            )
+            applied = locked is not None and locked.target_id == stable.current_target_id and not snapshot.get("dirty")
+            button.setText(("Selected: " if selected else "") + button.text().replace("Selected: ", "").replace("Applied: ", ""))
+            if selected and applied:
+                button.setText("Applied: " + button.text().replace("Selected: ", ""))
+        self.transform_preview.setText(
+            "Preview: unavailable"
+            if suggestion is None or suggestion.plan is None
+            else (
+                f"Preview: {stable.current_target_name.replace(' Reference', '')} at {suggestion.character_strength * 100.0:.0f}% | "
+                f"pitch {self._fmt_st(suggestion.plan.pitch.applied_pitch_shift_st)} | "
+                f"formant {self._fmt_st(suggestion.plan.formant.applied_formant_shift_st)} | "
+                f"pitch strategy {suggestion.plan.pitch.strategy} | formant strategy {suggestion.plan.formant.strategy} | "
+                f"{'Changes Not Applied' if snapshot.get('dirty') else 'ready'} | "
+                f"warnings {', '.join(suggestion.warnings or ('none',))}"
+            )
+        )
+        self.transform_applied.setText(
+            "Applied Transformation: none"
+            if locked is None
+            else (
+                f"Applied Transformation: {snapshot.get('applied_state')} | target {locked.target_id} | "
+                f"strength {locked.character_strength * 100.0:.0f}% | "
+                f"base pitch {self._fmt_st(locked.plan.pitch.applied_pitch_shift_st if locked.plan else None)} | "
+                f"base formant {self._fmt_st(locked.plan.formant.applied_formant_shift_st if locked.plan else None)} | "
+                f"runtime pitch/current {self._fmt_st(getattr(execution, 'target_pitch_semitones', None))}/"
+                f"{self._fmt_st(getattr(execution, 'current_pitch_semitones', None))} | "
+                f"runtime formant/current {self._fmt_st(getattr(execution, 'target_formant_semitones', None))}/"
+                f"{self._fmt_st(getattr(execution, 'current_formant_semitones', None))}"
+            )
+        )
+        self.transform_trim.setText(
+            f"Pitch base/trim/final/current: {self._fmt_st(stable.locked_base_pitch_st)}/"
+            f"{self._fmt_st(stable.applied_pitch_trim_st)}/{self._fmt_st(stable.final_pitch_target_st)}/"
+            f"{self._fmt_st(getattr(execution, 'current_pitch_semitones', None))} | "
+            f"Formant base/trim/final/current: {self._fmt_st(stable.locked_base_formant_st)}/"
+            f"{self._fmt_st(stable.applied_formant_trim_st)}/{self._fmt_st(stable.final_formant_target_st)}/"
+            f"{self._fmt_st(getattr(execution, 'current_formant_semitones', None))} | "
+            f"warnings {', '.join(stable.warnings or ('none',))}"
+        )
+        self.transform_resume.setEnabled(bool(locked is not None and not stable.execution_enabled))
+        self.transform_neutral.setEnabled(bool(locked is not None and stable.execution_enabled))
+        self.transform_clear.setEnabled(bool(locked is not None))
+        self.transform_advanced.setText(
+            f"canonical target {stable.current_target_id} | suggestion generation {stable.suggestion_generation} | "
+            f"lock generation {stable.lock_generation} | authority {stable.execution_authority} | "
+            f"target dirty {stable.target_changed_after_lock} | strength dirty {stable.strength_changed_after_lock} | "
+            f"calibration dirty {stable.calibration_changed_after_lock}"
+        )
+        if getattr(self, "parametric_eq_enabled", False) and hasattr(self, "transform_eq_status"):
+            eq = self.service.parametric_eq_snapshot()
+            plan = eq.applied_plan
+            self._updating_parametric_eq = True
+            try:
+                self.transform_eq_enable.setChecked(bool(plan.applied_enabled and not plan.requested_bypassed))
+                self.transform_eq_on.setChecked(bool(plan.applied_enabled and not plan.requested_bypassed))
+                self.transform_eq_bypass.setChecked(bool(plan.requested_bypassed))
+            finally:
+                self._updating_parametric_eq = False
+            self.transform_eq_status.setText(
+                f"Parametric EQ {'enabled' if plan.applied_enabled and not plan.requested_bypassed else 'disabled'} | "
+                f"flat {plan.flat} | active bands {plan.active_band_count} | "
+                f"one controller authority | added latency {eq.added_latency_frames} frames"
+            )
 
     def play_sound_by_index(self, index):
         result = self.service.play_sound_by_index(index)
@@ -1182,6 +1528,7 @@ class App(QWidget):
         result = self.service.return_transformation_to_neutral()
         self.display_result(result)
         self.refresh_execution_lab()
+        self.refresh_transform_workflow()
 
     def clear_stored_transformation(self):
         if not getattr(self, "calibrate_lock_enabled", False):
@@ -1190,6 +1537,7 @@ class App(QWidget):
         self.display_result(result)
         self.refresh_calibrate_lock()
         self.refresh_execution_lab()
+        self.refresh_transform_workflow()
 
     def refresh_execution_lab(self):
         if not getattr(self, "execution_lab_enabled", False):
@@ -1397,18 +1745,21 @@ class App(QWidget):
             return
         self.display_result(self.service.capture_calibration())
         self.refresh_calibrate_lock()
+        self.refresh_transform_workflow()
 
     def recalibrate_source(self):
         if not getattr(self, "calibrate_lock_enabled", False):
             return
         self.display_result(self.service.recalibrate())
         self.refresh_calibrate_lock()
+        self.refresh_transform_workflow()
 
     def lock_suggested_transformation(self):
         if not getattr(self, "calibrate_lock_enabled", False):
             return
         self.display_result(self.service.lock_suggested_transformation())
         self.refresh_calibrate_lock()
+        self.refresh_transform_workflow()
 
     def set_adaptive_mode(self):
         if self._updating_execution_lab or not getattr(self, "calibrate_lock_enabled", False):
@@ -1416,24 +1767,28 @@ class App(QWidget):
         mode = self.adaptive_mode.currentData()
         self.display_result(self.service.set_adaptive_updating_mode(mode))
         self.refresh_calibrate_lock()
+        self.refresh_transform_workflow()
 
     def set_pitch_trim(self):
         if self._updating_execution_lab or not getattr(self, "calibrate_lock_enabled", False):
             return
         self.display_result(self.service.set_pitch_trim(self.pitch_trim.value()))
         self.refresh_calibrate_lock()
+        self.refresh_transform_workflow()
 
     def set_formant_trim(self):
         if self._updating_execution_lab or not getattr(self, "calibrate_lock_enabled", False):
             return
         self.display_result(self.service.set_formant_trim(self.formant_trim.value()))
         self.refresh_calibrate_lock()
+        self.refresh_transform_workflow()
 
     def return_to_suggested_plan(self):
         if not getattr(self, "calibrate_lock_enabled", False):
             return
         self.display_result(self.service.return_to_suggested_plan())
         self.refresh_calibrate_lock()
+        self.refresh_transform_workflow()
 
     def refresh_calibrate_lock(self):
         if not getattr(self, "calibrate_lock_enabled", False):
@@ -2158,6 +2513,7 @@ class App(QWidget):
         if result.message:
             self.set_status(result.message)
         self.refresh_operator_status()
+        self.refresh_transform_workflow()
 
     def refresh_operator_status(self):
         try:

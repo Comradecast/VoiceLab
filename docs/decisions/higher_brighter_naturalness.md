@@ -100,3 +100,8 @@ sounds more natural than the old absolute-F0 behavior, does not primarily sound
 chipmunk-like or helium-like, remains distinct from Small / Cartoon, preserves
 usable sibilants and recognizable vowels, and does not regress stability or the
 calibration/lock workflow.
+
+M9.6 also requires unified workflow live acceptance. The normal Natural Bright
+test path now starts on the `Transform` page and uses Apply Transformation /
+Apply Changes instead of requiring the user to move across Source Analysis,
+Target Planner, Calibrate & Lock, Plan Execution, and Parametric EQ tabs.

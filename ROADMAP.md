@@ -2240,6 +2240,47 @@ Large / Cavernous behavior from M9.5.
   a better formant value.
 - Natural Bright must not sound primarily chipmunk-like or helium-like and must
   remain clearly distinct from Small / Cartoon.
+
+### M9.6 UX Correction - Unified Transformation Workflow
+
+Status: PROVISIONAL. Implementation and automated verification are complete;
+live unified-workflow acceptance is still required before PASS.
+
+The first M9.6 implementation exposed truthful subsystem tabs as the main user
+path, but that forced repeated movement between Source Analysis, Target Planner,
+Calibrate & Lock, Plan Execution, and Parametric EQ. The corrected workflow adds
+a primary `Transform` page so the normal task is completed in one place.
+
+Accepted implementation scope:
+
+- Top-level laboratory navigation starts with `Transform`, then Input
+  Processing, Routing, and Diagnostics.
+- The Transform page exposes analysis readiness, calibration, five target
+  choices, strength, Preview, Apply Transformation / Apply Changes, Applied
+  Transformation, manual pitch/formant adjustments, Advanced Tone Shaping
+  Parametric EQ, Return Audio to Neutral, Resume Stored Transformation, and
+  Clear Transformation.
+- `ApplicationService.apply_suggested_transformation()` is an explicit atomic
+  user action that locks the current immutable suggestion and enables execution
+  in one coherent command result.
+- Target, strength, and calibration changes update Preview only. Stored and
+  audible runtime remain unchanged until Apply Transformation / Apply Changes.
+- A compact persistent transformation summary is visible above all tabs and is
+  derived from ApplicationService snapshots.
+- Source Analysis, Target Planner, Plan Execution, Calibrate & Lock, and
+  Parametric EQ diagnostics remain available and read the same service state.
+
+Non-changes:
+
+- No DSP behavior, target value, planner formula, Signalsmith configuration,
+  Signalsmith latency, Parametric EQ DSP, persistence, settings schema, presets
+  schema, production character, explicit-lock authority, or Continuous default
+  was changed.
+
+Acceptance remains blocked on live confirmation that the unified workflow gives
+one obvious next action, makes audible versus unapplied state obvious, supports
+return/resume/clear without stale-state confusion, and preserves diagnostic
+inspection for advanced users.
 - Strength must scale predictably, sibilants must remain usable, vowels must
   remain recognizable, the lock/calibration workflow must remain reliable, and
   no stability regression may occur.

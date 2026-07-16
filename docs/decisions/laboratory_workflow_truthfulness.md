@@ -161,3 +161,16 @@ Protected Deep Voice preset behavior now restores its intended full default
 strength. Production Pitch Shift works in normal production mode, remains
 absent from experimental pitch/formant lab chains, and no duplicate pitch stage
 was introduced.
+
+## M9.6 Unified Workflow Correction
+
+The normal laboratory transformation workflow now lives on the `Transform`
+page. Source Analysis, Target Planner, Plan Execution, Calibrate & Lock, and
+Parametric EQ remain available as diagnostics, but the user no longer has to
+visit those tabs to complete one transformation.
+
+The page and persistent summary use Preview, Applied Transformation, and
+Changes Not Applied wording so selected target/strength changes cannot be
+mistaken for audible runtime. State is still service-owned; diagnostics and the
+Transform page read the same snapshots. See
+`docs/decisions/unified_transformation_workflow.md`.

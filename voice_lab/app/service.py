@@ -491,6 +491,97 @@ class ApplicationService(QObject):
             return None
         return self.parametric_eq_snapshot()
 
+    def transformation_workflow_snapshot(self):
+        if not self.calibrate_lock_lab_enabled:
+            return None
+        stable = self.stable_control_snapshot()
+        execution = self.transformation_execution_snapshot() if self.transformation_execution_runtime is not None else None
+        suggestion = stable.suggestion
+        locked = stable.locked
+        target_state = self.target_planner_state() if self.target_planner is not None else None
+        references = target_state.get("references", {}) if target_state else {}
+        dirty = bool(stable.suggestion_differs_from_lock or stable.newer_suggestion_available)
+        applied = bool(stable.execution_enabled and locked is not None and not dirty)
+        neutralized = bool(locked is not None and not stable.execution_enabled)
+        if self._processing_state != "running":
+            primary_label = "Start Listening"
+            primary_enabled = True
+            primary_reason = ""
+            guide = "Start listening so VoiceLab can analyze your voice."
+        elif not stable.source_valid:
+            primary_label = "Analyzing Voice..."
+            primary_enabled = False
+            primary_reason = stable.source_reason
+            guide = "Speak normally for a few seconds so VoiceLab can analyze your voice."
+        elif stable.calibration is None:
+            primary_label = "Calibrate Voice"
+            primary_enabled = bool(stable.calibrate_available)
+            primary_reason = stable.calibrate_unavailable_reason
+            guide = "Voice analysis is ready. Calibrate your source voice."
+        elif locked is not None and not stable.execution_enabled and not dirty:
+            primary_label = "Resume Transformation"
+            primary_enabled = bool(stable.execution_available)
+            primary_reason = stable.execution_unavailable_reason
+            guide = "A stored transformation is retained. Resume it or change the preview first."
+        elif locked is not None and stable.execution_enabled and not dirty:
+            primary_label = "Transformation Applied"
+            primary_enabled = False
+            primary_reason = ""
+            guide = "The transformation is active. Adjust it below."
+        elif suggestion is not None and locked is not None and dirty:
+            primary_label = "Apply Changes"
+            primary_enabled = bool(stable.lock_available)
+            primary_reason = stable.lock_unavailable_reason
+            guide = "Your selection changed. Apply Changes to hear the new version."
+        elif suggestion is not None:
+            primary_label = "Apply Transformation"
+            primary_enabled = bool(stable.lock_available)
+            primary_reason = stable.lock_unavailable_reason
+            guide = "Review the preview, then apply it."
+        else:
+            primary_label = "Choose Transformation"
+            primary_enabled = False
+            primary_reason = stable.lock_unavailable_reason or "Choose a target and strength."
+            guide = "Choose a transformation and strength."
+
+        if locked is None:
+            applied_state = "No Stored Transformation"
+        elif dirty:
+            applied_state = "Changes Not Applied"
+        elif neutralized:
+            applied_state = "Stored, Audio Neutral"
+        elif applied:
+            applied_state = "Applied"
+        else:
+            applied_state = "Stored"
+
+        summary_lines = (
+            f"{'Processing' if self._processing_state == 'running' else 'Stopped'} - "
+            f"{'Analysis Ready' if stable.source_valid else 'Analysis Not Ready'} - "
+            f"{'Calibrated' if stable.calibration is not None else 'Not Calibrated'}",
+            f"{stable.current_target_name.replace(' Reference', '')} - "
+            f"{stable.current_strength * 100.0:.0f}% - {applied_state}",
+        )
+        snapshot = {
+            "stable": stable,
+            "execution": execution,
+            "target_planner": target_state,
+            "references": references,
+            "target_order": target_state.get("target_order", ()) if target_state else (),
+            "primary_label": primary_label,
+            "primary_enabled": primary_enabled,
+            "primary_reason": primary_reason,
+            "guide": guide,
+            "dirty": dirty,
+            "applied_state": applied_state,
+            "summary": " | ".join(summary_lines),
+            "summary_lines": summary_lines,
+            "suggestion_target_id": suggestion.target_id if suggestion is not None else "",
+            "locked_target_id": locked.target_id if locked is not None else "",
+        }
+        self.telemetry.set_metadata("transformation_workflow", snapshot)
+        return snapshot
+
     def parametric_eq_snapshot(self):
         if not self.parametric_eq_lab_enabled:
             return None
@@ -749,6 +840,78 @@ class ApplicationService(QObject):
         state = self.stable_control_snapshot()
         result = CommandResult.ok("Suggested transformation locked.", stable_control=state)
         self.telemetry.record_command_result("lock_suggested_transformation", result)
+        return result
+
+    def apply_suggested_transformation(self):
+        if not self.calibrate_lock_lab_enabled:
+            result = CommandResult.fail("Calibrate/Lock Lab is not enabled.")
+            self.telemetry.record_command_result("apply_suggested_transformation", result)
+            return result
+        if not self.transformation_execution_lab_enabled:
+            result = CommandResult.fail("Transformation Execution Lab is not enabled.")
+            self.telemetry.record_command_result("apply_suggested_transformation", result)
+            return result
+        self._refresh_stable_suggestion()
+        suggestion = self._current_suggestion
+        lock_available, lock_reason = self._lock_availability(suggestion)
+        if not lock_available:
+            result = CommandResult.fail(lock_reason, workflow=self.transformation_workflow_snapshot())
+            self.telemetry.record_command_result("apply_suggested_transformation", result)
+            return result
+        old_lock = self._locked_transformation
+        old_lock_generation = self._lock_generation
+        old_enabled = self.execution_enabled
+        old_mode = self.stable_adaptive_mode
+        try:
+            self._lock_generation += 1
+            supported = tuple(
+                name
+                for name in suggestion.plan.required_capabilities
+                if name in ("adaptive_pitch_center", "formant_shift", "compressor", "limiter")
+            )
+            unsupported = tuple(name for name in suggestion.plan.required_capabilities if name not in supported)
+            self._locked_transformation = LockedTransformationSnapshot(
+                valid=True,
+                lock_id=self._lock_generation,
+                locked_at=self.target_planner.clock(),
+                source_calibration_id=suggestion.calibration_id,
+                suggestion_id=suggestion.suggestion_id,
+                target_id=suggestion.target_id,
+                target_version=suggestion.target_version,
+                character_strength=suggestion.character_strength,
+                plan=suggestion.plan,
+                supported_capabilities=supported,
+                unsupported_capabilities=unsupported,
+                warnings=suggestion.warnings,
+                newer_suggestion_available=False,
+            )
+            self.execution_enabled = True
+            self._refresh_execution_target()
+            workflow = self.transformation_workflow_snapshot()
+        except Exception as exc:
+            self._locked_transformation = old_lock
+            self._lock_generation = old_lock_generation
+            self.execution_enabled = old_enabled
+            self.stable_adaptive_mode = old_mode
+            try:
+                self._refresh_execution_target()
+            except Exception:
+                pass
+            try:
+                workflow = self.transformation_workflow_snapshot()
+            except Exception:
+                workflow = None
+            result = CommandResult.fail(f"Apply Transformation failed: {exc}", workflow=workflow)
+            self.telemetry.record_command_result("apply_suggested_transformation", result)
+            return result
+        target = self.current_target_profile.display_name.replace(" Reference", "")
+        result = CommandResult.ok(
+            f"Applied {target} at {self.target_planner_strength * 100.0:.0f}%.",
+            workflow=workflow,
+            stable_control=workflow["stable"],
+            transformation_execution=workflow["execution"],
+        )
+        self.telemetry.record_command_result("apply_suggested_transformation", result)
         return result
 
     def set_pitch_trim(self, semitones):

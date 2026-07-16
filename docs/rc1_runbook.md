@@ -2835,3 +2835,63 @@ M9.6 acceptance gate:
 - Vowels remain recognizable.
 - Lock/calibration workflow remains reliable.
 - No stability regression occurs.
+
+## M9.6 Unified Transformation Workflow Live Checklist
+
+Status: PROVISIONAL. Automated implementation and regression verification are
+complete; live unified-workflow acceptance remains open.
+
+Normal workflow:
+
+1. Open `Transform`.
+2. Press `Start Listening`.
+3. Speak normally until analysis readiness is shown.
+4. Press `Calibrate Voice`.
+5. Select `Natural Bright`.
+6. Adjust `Strength`.
+7. Press `Apply Transformation`.
+8. Tune pitch and formant in `Manual Adjustment`.
+9. Optionally open `Advanced Tone Shaping - Parametric EQ` and adjust, bypass,
+   or reset EQ.
+
+Expected page behavior:
+
+- No Source Analysis, Target Planner, Calibrate & Lock, Plan Execution, or
+  Parametric EQ tab is required for the normal workflow.
+- The primary action always shows the next useful state: Start Listening,
+  Analyzing Voice..., Calibrate Voice, Apply Transformation, Resume
+  Transformation, Transformation Applied, or Apply Changes.
+- The persistent summary above the tabs shows processing, analysis readiness,
+  calibration state, selected target, strength, and Applied / Changes Not
+  Applied / Stored Audio Neutral / No Stored Transformation.
+- Target or strength changes update Preview only and show `Changes Not Applied`
+  until Apply Changes succeeds.
+- Return Audio to Neutral disables execution and neutralizes runtime while
+  retaining the stored transformation and trims.
+- Resume Stored Transformation enables the retained stored plan.
+- Clear Transformation disables execution, clears the stored plan and trims, and
+  leaves analysis/calibration according to accepted policy.
+- Diagnostics tabs remain available for Source Analysis, Target Planner, Plan
+  Execution, Calibrate & Lock, and Parametric EQ inspection.
+
+Acceptance questions:
+
+- Can a first-time user complete the workflow without knowing the internal
+  architecture?
+- Is there always one obvious next action?
+- Is the currently audible target obvious?
+- Are unapplied changes obvious?
+- Can the transformation be updated without navigating elsewhere?
+- Can the user return to neutral and resume without confusion?
+- Can the user clear everything without stale state?
+- Can advanced users still inspect subsystem details?
+
+Unified workflow acceptance gate:
+
+- The Transform page is sufficient for the full normal workflow.
+- The user can distinguish Preview from Applied Transformation.
+- Apply Transformation / Apply Changes is explicit and mistake-resistant.
+- Return, Resume, and Clear meanings are not mixed.
+- Parametric EQ can be shaped from the Transform page without creating another
+  EQ authority.
+- No DSP, target-value, latency, persistence, or schema regression occurs.
