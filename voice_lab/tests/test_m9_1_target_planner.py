@@ -211,13 +211,7 @@ class M91PlannerMathTests(unittest.TestCase):
             plans[1].required_capabilities,
             (
                 "adaptive_pitch_center",
-                "pitch_range_mapping",
                 "formant_shift",
-                "parametric_eq",
-                "spectral_tilt_shaping",
-                "breathiness",
-                "harmonic_enhancement",
-                "de_esser",
             ),
         )
         self.assertEqual(plans[1].required_capabilities, plans[2].required_capabilities)
@@ -240,7 +234,7 @@ class M91PlannerMathTests(unittest.TestCase):
         self.assertGreaterEqual(plans[2].spectral.de_essing_amount, plans[1].spectral.de_essing_amount)
         self.assertLessEqual(plans[2].spectral.de_essing_amount, 1.0)
         self.assertNotIn("de_esser", plans[0].required_capabilities)
-        self.assertIn("de_esser", plans[1].required_capabilities)
+        self.assertNotIn("de_esser", plans[1].required_capabilities)
 
     def test_pitch_center_formula_and_range_scale_for_practical_f0s(self):
         planner = TransformationPlanner(clock=lambda: 1.0)
@@ -251,7 +245,7 @@ class M91PlannerMathTests(unittest.TestCase):
                     if target is LOWER_WEIGHTIER_REFERENCE:
                         expected_shift = target.pitch_strategy.relative_shift_st * 0.5
                     else:
-                        expected_shift = 12.0 * math.log2(target.target_median_f0_hz / f0) * 0.5
+                        expected_shift = target.pitch_strategy.relative_shift_st * 0.5
                     expected_shift = max(-target.max_pitch_shift_st, min(target.max_pitch_shift_st, expected_shift))
                     expected_scale = 1.0 + (((target.target_pitch_span_st / 8.0) - 1.0) * 0.5)
                     self.assertAlmostEqual(plan.pitch.applied_pitch_shift_st, expected_shift, places=6)
@@ -272,7 +266,7 @@ class M91PlannerMathTests(unittest.TestCase):
         baseline = TransformationPlanner().plan(source_snapshot(f1_hz=400.0, f2_hz=1200.0), HIGHER_BRIGHTER_REFERENCE, 1.0)
         changed = TransformationPlanner().plan(source_snapshot(f1_hz=800.0, f2_hz=2600.0), HIGHER_BRIGHTER_REFERENCE, 1.0)
 
-        self.assertAlmostEqual(baseline.formant.applied_formant_shift_st, 1.2)
+        self.assertAlmostEqual(baseline.formant.applied_formant_shift_st, 1.0)
         self.assertEqual(baseline.formant.applied_formant_shift_st, changed.formant.applied_formant_shift_st)
         self.assertIn("weak context", baseline.formant.basis)
 
@@ -280,10 +274,11 @@ class M91PlannerMathTests(unittest.TestCase):
         plan = TransformationPlanner().plan(source_snapshot(brightness_energy_ratio=0.09), HIGHER_BRIGHTER_REFERENCE, 1.0)
 
         self.assertAlmostEqual(plan.spectral.brightness_db.requested_db, 10.0 * math.log10(0.18 / 0.09))
-        self.assertAlmostEqual(plan.spectral.spectral_tilt_db.applied_db, 4.0)
-        self.assertGreater(plan.spectral.de_essing_amount, 0.0)
+        self.assertAlmostEqual(plan.spectral.brightness_db.applied_db, 0.0)
+        self.assertAlmostEqual(plan.spectral.spectral_tilt_db.applied_db, 0.0)
+        self.assertEqual(plan.spectral.de_essing_amount, 0.0)
         self.assertAlmostEqual(plan.texture.breathiness, HIGHER_BRIGHTER_REFERENCE.breathiness)
-        self.assertTrue(plan.texture.harmonic_enhancement_required)
+        self.assertFalse(plan.texture.harmonic_enhancement_required)
         lower = TransformationPlanner().plan(source_snapshot(), LOWER_WEIGHTIER_REFERENCE, 0.5)
         self.assertTrue(lower.dynamics.compressor.compressor_enabled)
         self.assertAlmostEqual(lower.dynamics.compressor.compressor_ratio, 2.0)

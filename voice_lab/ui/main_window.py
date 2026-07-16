@@ -944,16 +944,19 @@ class App(QWidget):
 
         refs = QHBoxLayout()
         neutral = QPushButton("Neutral")
-        higher = QPushButton("Higher / Brighter")
+        natural_bright = QPushButton("Natural Bright")
         natural_deep = QPushButton("Natural Deep")
+        small = QPushButton("Small / Cartoon")
         large = QPushButton("Large / Cavernous")
         neutral.clicked.connect(lambda: self.load_target_reference("neutral"))
-        higher.clicked.connect(lambda: self.load_target_reference("higher_brighter"))
+        natural_bright.clicked.connect(lambda: self.load_target_reference("natural_bright"))
         natural_deep.clicked.connect(lambda: self.load_target_reference("natural_deep"))
+        small.clicked.connect(lambda: self.load_target_reference("small_cartoon"))
         large.clicked.connect(lambda: self.load_target_reference("large_cavernous"))
         refs.addWidget(neutral)
-        refs.addWidget(higher)
+        refs.addWidget(natural_bright)
         refs.addWidget(natural_deep)
+        refs.addWidget(small)
         refs.addWidget(large)
         layout.addLayout(refs)
 
@@ -1100,6 +1103,8 @@ class App(QWidget):
             target_guidance = guidance.get("higher_brighter", target_guidance)
         elif target_id == "diagnostic-lower-weightier":
             target_guidance = guidance.get("natural_deep", guidance.get("lower_weightier", target_guidance))
+        elif target_id == "diagnostic-small-cartoon":
+            target_guidance = guidance.get("small_cartoon", target_guidance)
         elif target_id == "diagnostic-large-cavernous":
             target_guidance = guidance.get("large_cavernous", target_guidance)
         self.target_plan_details.setText(

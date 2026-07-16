@@ -2064,8 +2064,9 @@ authority, and laboratory reset semantics unchanged.
 - Adds explicit pitch and formant strategy metadata to immutable target
   profiles and transformation plans.
 - Keeps Neutral fully neutral at all strengths.
-- Keeps Higher / Brighter as an absolute-F0 diagnostic reference with
-  restrained positive formant movement.
+- M9.6 later replaces the prior Higher / Brighter absolute-F0 behavior with
+  Natural Bright relative upward pitch and restrained positive formant
+  movement.
 - Replaces the old Lower / Weightier diagnostic direction with Natural Deep:
   relative pitch down, moderate positive formant compensation, compressor, and
   limiter recommendations.
@@ -2091,7 +2092,7 @@ authority, and laboratory reset semantics unchanged.
 - Focused M9.5 tests cover immutable strategy contracts, invalid strategies,
   all-target zero-strength neutrality, target ordering, Natural Deep positive
   formant compensation, Large / Cavernous stylized negative formant movement,
-  naturalness guard behavior, Higher / Brighter regression, deterministic
+  naturalness guard behavior, upward-target regression, deterministic
   planning, lock isolation, Clear Stored Transformation, manual-trim warning,
   Off and Continuous adaptive modes, UI target exposure, and deterministic
   finite audio through the inherited one-stage pitch/formant path.
@@ -2169,10 +2170,76 @@ authority, and laboratory reset semantics unchanged.
 - Natural Deep values are accepted diagnostic defaults, not finished universal
   character presets.
 - More source voices should eventually be tested.
-- Higher / Brighter still requires separate final-character development.
+- Natural Bright still requires live acceptance and separate final-character
+  development.
 - Finished feminine and masculine character profiles remain future work.
 - De-essing, breathiness, harmonic enhancement, spectral-tilt execution,
   planner-driven Parametric EQ, and neural voice conversion remain unsupported
   or optional future work.
 - Additional articulation-sensitive phrase testing may continue as tuning
   evidence, but does not block M9.5.
+
+## M9.6 - Higher / Brighter Naturalness
+
+Status: PROVISIONAL. Implementation and automated verification are complete;
+live Natural Bright acceptance is still required before PASS.
+
+M9.6 separates natural upward brightening from deliberately exaggerated
+small-vocal-tract stylization. It preserves the accepted Natural Deep and
+Large / Cavernous behavior from M9.5.
+
+### Scope
+
+- Keeps canonical target ID `diagnostic-higher-brighter`, but changes its
+  visible name and semantics to Natural Bright.
+- Retains legacy `higher_brighter` lookup compatibility and adds
+  `natural_bright` lookup without creating a duplicate visible target or
+  alias-driven dirty state.
+- Adds `diagnostic-small-cartoon` as the explicit stylized upward comparison
+  target.
+- Uses this visible target order: Neutral, Natural Bright, Natural Deep, Small
+  / Cartoon, Large / Cavernous.
+- Natural Bright uses relative pitch `+3.5 st` and restrained positive formant
+  `+1.0 st` at full strength. Strength applies once, source F0 does not alter
+  the requested semitone movement, and normal target values do not hit planner
+  clamps.
+- Small / Cartoon uses relative pitch `+6.0 st` and size-coupled stylized
+  positive formant `+2.0 st` at full strength. It warns at nonzero strength
+  that the result may sound chipmunk-like, thin, nasal, or sharply sibilant.
+- Zero strength is fully neutral for all visible targets and aliases:
+  requested/applied pitch and formant are zero, dynamics are neutral, active
+  capabilities are empty, stylized state is false, and warnings are absent.
+- Natural Bright is a diagnostic natural upward/brightening foundation, not a
+  finished feminine voice.
+
+### Non-Changes
+
+- No additional pitch, formant, or Signalsmith stage was introduced.
+- Signalsmith buffering and inherited active latency remain unchanged at
+  approximately 4800 frames / 100 ms at 48 kHz.
+- Manual pitch/formant trims remain additive operator authority. Manual formant
+  trim remains `+/-2.0 st`; runtime formant safety remains `+/-2.0 st`.
+- Explicit lock authority remains required, Continuous remains Off by default,
+  and target/strength changes update suggestions only until re-locked.
+- No production character preset, production Pitch Shift behavior, settings
+  schema, presets schema, target persistence, plan persistence, de-essing,
+  breathiness synthesis, harmonic enhancement, spectral-tilt execution,
+  planner-driven Parametric EQ, static EQ compensation, phoneme/speech
+  recognition, identity classification, or neural conversion was added.
+- Natural Deep remains approximately `-3.5 st` pitch and `+1.505 st` formant
+  at full strength.
+- Large / Cavernous remains approximately `-4.5 st` pitch and `-1.5 st`
+  formant at full strength.
+- Planner `parametric_eq` and `spectral_tilt_shaping` remain unsupported.
+
+### Live Acceptance Required
+
+- Natural Bright must sound more natural than the old absolute-F0 Higher /
+  Brighter behavior.
+- Natural Bright must be preferable to pitch-only, or live testing must identify
+  a better formant value.
+- Natural Bright must not sound primarily chipmunk-like or helium-like and must
+  remain clearly distinct from Small / Cartoon.
+- Strength must scale predictably, sibilants must remain usable, vowels must
+  remain recognizable, the lock/calibration workflow must remain reliable, and
+  no stability regression may occur.

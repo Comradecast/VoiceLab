@@ -184,13 +184,17 @@ M9.1 does not classify source or target identity, gender, age, or quality. The
 diagnostic references are named by acoustic direction only:
 
 - Diagnostic Neutral;
-- Higher / Brighter Reference;
+- Natural Bright Reference;
 - Natural Deep Reference;
+- Small / Cartoon Reference;
 - Large / Cavernous Reference.
 
 They are not production characters and are not feminine, masculine,
-deep-masculine, giant, or identity labels. The previous `lower_weightier`
-reference name is retained only as a compatibility alias for Natural Deep.
+deep-masculine, giant, cartoon identity, or identity labels. The previous
+`lower_weightier` reference name is retained only as a compatibility alias for
+Natural Deep. The legacy `higher_brighter` lookup is retained as a compatibility
+alias for canonical Natural Bright semantics under target ID
+`diagnostic-higher-brighter`.
 
 ## Verification
 
@@ -229,11 +233,17 @@ regression.
 - Source profile plus target profile plus character strength is the accepted
   planning architecture.
 - Pitch-center planning is accepted.
+- M9.6 Natural Bright relative upward pitch planning is accepted
+  provisionally: source F0 does not alter the requested semitone movement, and
+  the old absolute-F0 upward target is historical audit evidence rather than
+  the active natural bright target.
 - Pitch-range planning is accepted as a future processor requirement.
 - Restrained target-intent formant planning is accepted.
 - M9.5 natural formant compensation is accepted after live Natural Deep
   acceptance: lowering pitch for a natural deep voice must not automatically
   lower formants.
+- M9.6 Small / Cartoon size-coupled positive stylization is accepted
+  provisionally as the upward exaggerated comparison target.
 - Spectral band and tilt-index planning are accepted as diagnostic EQ
   requirements.
 - De-essing planning is accepted as a future processor requirement.
@@ -248,8 +258,8 @@ regression.
 - Planner state remains session-only.
 - No source, target, or plan persistence is required at this stage.
 - The planner performs no identity, gender, age, or speaker classification.
-- Higher / Brighter and Lower / Weightier remain diagnostic references, not
-  finished product characters.
+- Natural Bright, Natural Deep, Small / Cartoon, and Large / Cavernous remain
+  diagnostic references, not finished product characters.
 
 ## Known Non-Blocking Debt
 

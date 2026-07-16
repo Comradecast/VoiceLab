@@ -107,6 +107,12 @@ formant zero and can deliberately produce negative final formant; those final
 values remain bounded and are truthfully warned without mutating the locked
 base plan.
 
+M9.6 confirms the same policy for Natural Bright. A locked Natural Bright base
+near `+3.5 st` pitch and `+1.0 st` formant can be compared with manual formant
+trim at final formant `0.0`, `+0.5`, `+1.0`, `+1.5`, and `+2.0 st`. The
+planner base remains immutable, trims are not rewritten automatically, final
+runtime clamps remain authoritative, and no trim state is persisted.
+
 ## Live Acceptance Notes
 
 Luke operated the Calibrate/Lock Lab for approximately 30 minutes with no

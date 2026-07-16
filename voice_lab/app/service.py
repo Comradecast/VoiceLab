@@ -59,6 +59,7 @@ from voice_lab.planner import (
     LARGE_CAVERNOUS_REFERENCE,
     LOWER_WEIGHTIER_REFERENCE,
     NATURAL_DEEP_REFERENCE,
+    SMALL_CARTOON_REFERENCE,
     TARGET_REFERENCE_ORDER,
     TransformationPlanner,
     replace_target,
@@ -389,6 +390,7 @@ class ApplicationService(QObject):
                 "neutral": DEFAULT_TARGET_PROFILE.asdict(),
                 "higher_brighter": HIGHER_BRIGHTER_REFERENCE.asdict(),
                 "natural_deep": NATURAL_DEEP_REFERENCE.asdict(),
+                "small_cartoon": SMALL_CARTOON_REFERENCE.asdict(),
                 "large_cavernous": LARGE_CAVERNOUS_REFERENCE.asdict(),
             },
             "target_order": tuple(profile.target_id for profile in TARGET_REFERENCE_ORDER),
@@ -401,8 +403,9 @@ class ApplicationService(QObject):
         return {
             "neutral": "Neutral generates a neutral suggestion. It does not erase or replace an existing lock.",
             "higher_brighter": (
-                "Higher / Brighter currently executes higher pitch center, restrained formant movement, "
-                "compressor, and limiter recommendations."
+                "Natural Bright raises pitch moderately while keeping formant movement restrained for a "
+                "brighter but non-cartoon-like result. Approximate full-strength intent: pitch +3.5 st, "
+                "formant +1.0 st."
             ),
             "lower_weightier": (
                 "Natural Deep lowers pitch while preserving vowel shape through moderate positive "
@@ -417,9 +420,15 @@ class ApplicationService(QObject):
                 "Large / Cavernous lowers both pitch and formants to simulate a larger vocal tract. "
                 "This is stylized and may exaggerate vowels, W/R sounds, or nasal resonance."
             ),
+            "small_cartoon": (
+                "Small / Cartoon raises both pitch and formants aggressively to create a deliberately "
+                "small, cartoon-like vocal effect. This is stylized and may sound chipmunk-like, thin, "
+                "nasal, or sharply sibilant."
+            ),
             "strength": (
-                "0% is a neutral suggested plan. Increasing strength scales the suggestion. Changes do "
-                "not alter a stored lock until re-locked; Continuous mode may follow live suggestions."
+                "0% is a neutral suggested plan. 50% applies approximately half the movement; 100% "
+                "applies the full diagnostic target. Changes do not alter a stored lock until re-locked; "
+                "Continuous mode may follow live suggestions."
             ),
         }
 
@@ -1176,8 +1185,10 @@ class ApplicationService(QObject):
         references = {
             "neutral": DEFAULT_TARGET_PROFILE,
             "higher_brighter": HIGHER_BRIGHTER_REFERENCE,
+            "natural_bright": HIGHER_BRIGHTER_REFERENCE,
             "natural_deep": NATURAL_DEEP_REFERENCE,
             "lower_weightier": LOWER_WEIGHTIER_REFERENCE,
+            "small_cartoon": SMALL_CARTOON_REFERENCE,
             "large_cavernous": LARGE_CAVERNOUS_REFERENCE,
         }
         target = references.get(reference)

@@ -11,8 +11,10 @@ target planner.
 - Natural Deep lowers pitch with moderate positive formant compensation.
 - Large / Cavernous lowers pitch and formants only as an explicit stylized
   large-vocal-tract reference.
-- Higher / Brighter remains an absolute-F0 reference with restrained positive
-  formant movement.
+- M9.6 replaces the prior absolute-F0 Higher / Brighter behavior with Natural
+  Bright: relative upward pitch with restrained positive formant movement.
+- Small / Cartoon raises pitch and formants only as an explicit stylized
+  small-vocal-tract reference.
 - Neutral remains fully neutral at all strengths.
 - `lower_weightier` remains only as a compatibility alias for Natural Deep.
 
@@ -88,6 +90,11 @@ The pre-live corrective patch also restores protected production preset
 selection so normal production Pitch Shift changes remain truthful while
 running. Experimental pitch/formant labs still do not expose production Pitch
 Shift, and no duplicate pitch stage was introduced.
+
+M9.6 keeps canonical target ID `diagnostic-higher-brighter` as Natural Bright
+and retains legacy `higher_brighter` lookup compatibility. It adds
+`diagnostic-small-cartoon` as a separate visible stylized target. Natural Deep
+and Large / Cavernous values are unchanged.
 
 ## Known Non-Blocking Debt
 

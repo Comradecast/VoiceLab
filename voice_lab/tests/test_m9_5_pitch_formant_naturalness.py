@@ -54,9 +54,10 @@ class M95PitchFormantNaturalnessTests(unittest.TestCase):
             "diagnostic-neutral",
             "diagnostic-higher-brighter",
             "diagnostic-lower-weightier",
+            "diagnostic-small-cartoon",
             "diagnostic-large-cavernous",
         ))
-        self.assertEqual(len({t.target_id for t in TARGET_REFERENCE_ORDER}), 4)
+        self.assertEqual(len({t.target_id for t in TARGET_REFERENCE_ORDER}), 5)
         with self.assertRaises(dataclasses.FrozenInstanceError):
             NATURAL_DEEP_REFERENCE.pitch_strategy.relative_shift_st = -4.0
         with self.assertRaises(dataclasses.FrozenInstanceError):
@@ -214,10 +215,11 @@ class M95PitchFormantNaturalnessTests(unittest.TestCase):
                     self.assertGreaterEqual(plan.formant.applied_formant_shift_st, 0.0)
                     self.assertFalse(plan.formant.naturalness_guard_active)
 
-    def test_higher_brighter_direction_remains_positive_and_bounded(self):
+    def test_natural_bright_direction_remains_positive_and_bounded(self):
         plan = TransformationPlanner().plan(source_snapshot(), HIGHER_BRIGHTER_REFERENCE, 1.0)
         self.assertGreater(plan.pitch.applied_pitch_shift_st, 0.0)
-        self.assertAlmostEqual(plan.formant.applied_formant_shift_st, 1.2)
+        self.assertAlmostEqual(plan.pitch.applied_pitch_shift_st, 3.5)
+        self.assertAlmostEqual(plan.formant.applied_formant_shift_st, 1.0)
         self.assertLessEqual(abs(plan.pitch.applied_pitch_shift_st), HIGHER_BRIGHTER_REFERENCE.max_pitch_shift_st)
 
     def test_planner_is_deterministic_with_fixed_inputs(self):
@@ -335,14 +337,15 @@ class M95PitchFormantNaturalnessTests(unittest.TestCase):
         restored = service.transformation_execution_snapshot()
         self.assertAlmostEqual(restored.target_pitch_semitones, locked_pitch)
 
-    def test_ui_guidance_exposes_four_targets_and_strategy_text(self):
+    def test_ui_guidance_exposes_five_targets_and_strategy_text(self):
         app = qt_application()
         service = make_service(parametric_eq_lab=True)
         window = App(service)
         try:
             buttons = [button.text() for button in window.findChildren(QPushButton)]
-            for label in ("Neutral", "Higher / Brighter", "Natural Deep", "Large / Cavernous"):
+            for label in ("Neutral", "Natural Bright", "Natural Deep", "Small / Cartoon", "Large / Cavernous"):
                 self.assertIn(label, buttons)
+            self.assertNotIn("Higher / Brighter", buttons)
             self.assertNotIn("Lower / Weightier", buttons)
             self.assertEqual(window.formant_trim.minimum(), -2.0)
             self.assertEqual(window.formant_trim.maximum(), 2.0)

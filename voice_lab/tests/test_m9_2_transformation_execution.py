@@ -23,7 +23,14 @@ from voice_lab.execution import (
 )
 from voice_lab.effects.signalsmith_backend import SignalsmithBackendStatus
 from voice_lab.mixer import Mixer
-from voice_lab.planner import DEFAULT_TARGET_PROFILE, HIGHER_BRIGHTER_REFERENCE, LOWER_WEIGHTIER_REFERENCE, TransformationPlanner
+from voice_lab.planner import (
+    DEFAULT_TARGET_PROFILE,
+    HIGHER_BRIGHTER_REFERENCE,
+    LOWER_WEIGHTIER_REFERENCE,
+    NATURAL_DEEP_REFERENCE,
+    TransformationPlanner,
+    target_voice_profile,
+)
 from voice_lab.plugins import PluginManager
 from voice_lab.tests.test_m6_3_device_failure_recovery import FakeHotkeys, FakeRouter, FakeSoundboard
 from voice_lab.tests.test_m6_5_operator_settings import SettingsAudioIO
@@ -156,7 +163,7 @@ class M92ExecutionContractTests(unittest.TestCase):
         self.assertTrue(new.backend_health.failed)
 
     def test_executor_maps_only_supported_capabilities_and_reports_unsupported(self):
-        plan = ready_plan(HIGHER_BRIGHTER_REFERENCE, 1.0)
+        plan = ready_plan(NATURAL_DEEP_REFERENCE, 1.0)
         target, status = TransformationExecutor().map_plan(
             plan,
             enabled=True,
@@ -171,7 +178,18 @@ class M92ExecutionContractTests(unittest.TestCase):
         self.assertNotIn("parametric_eq", target.requested_supported_capabilities)
 
     def test_execution_snapshot_reports_requested_pitch_and_saturation_separately(self):
-        service = activate_execution_service(HIGHER_BRIGHTER_REFERENCE, 1.0)
+        absolute_fixture = target_voice_profile(
+            target_id="diagnostic-absolute-clamp-fixture",
+            display_name="Absolute Clamp Fixture",
+            description="fixture",
+            target_median_f0_hz=220.0,
+            max_pitch_shift_st=8.0,
+            nominal_formant_shift_st=1.0,
+            formant_strategy={"strategy_id": "restrained_fixed_shift", "fixed_shift_st": 1.0},
+            requires_eq=False,
+            requires_pitch_range=False,
+        )
+        service = activate_execution_service(absolute_fixture, 1.0)
         service.transformation_execution_controller.source_snapshot_getter = lambda: source_snapshot(median_f0_hz=100.0)
         snapshot = service.transformation_execution_snapshot()
         self.assertGreater(snapshot.requested_pitch_semitones, snapshot.target_pitch_semitones)

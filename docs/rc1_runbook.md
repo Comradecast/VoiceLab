@@ -2582,12 +2582,17 @@ behavior.
 Accepted Target Planner notes:
 
 - Neutral target does not clear an existing lock.
-- Higher / Brighter currently executes adaptive pitch center, restrained
-  formant shift, compressor, and limiter recommendations.
+- Natural Bright currently executes moderate relative upward pitch center and
+  restrained positive formant shift without absolute-F0 forcing.
 - Natural Deep currently executes lower pitch center, moderate positive formant
   compensation, compressor, and limiter recommendations.
+- Small / Cartoon currently executes larger relative upward pitch plus
+  size-coupled positive formant movement as a stylized small-vocal-tract
+  reference.
 - Large / Cavernous currently executes lower pitch center with restrained
   negative formant movement as a stylized large-vocal-tract reference.
+- `higher_brighter` is retained only as a compatibility lookup for Natural
+  Bright.
 - `lower_weightier` is retained only as a compatibility alias for Natural Deep.
 - Unsupported future capabilities are separated under Planned but Not Executed.
 - Target or strength changes after lock must show that a new suggestion is
@@ -2608,7 +2613,8 @@ Known non-blocking post-M9.5 debt:
 - Natural Deep values are accepted diagnostic defaults, not finished universal
   character presets.
 - More source voices should eventually be tested.
-- Higher / Brighter still requires separate final-character development.
+- Natural Bright still requires live acceptance and separate final-character
+  development.
 - Planner Parametric EQ remains unsupported.
 - Spectral-tilt execution remains unsupported.
 - De-essing remains unsupported.
@@ -2633,8 +2639,8 @@ and production characters remain unchanged.
 
 Automated and live acceptance verified:
 
-- Neutral, Higher / Brighter, Natural Deep, and Large / Cavernous are exposed
-  in that order.
+- After M9.6, Neutral, Natural Bright, Natural Deep, Small / Cartoon, and
+  Large / Cavernous are exposed in that order.
 - All targets produce a fully neutral applied plan at `0%`.
 - Natural Deep at full strength requests about `-3.5 st` pitch and applies
   about `+1.5 st` formant compensation.
@@ -2726,3 +2732,106 @@ Live acceptance classification:
 - No new crackle, flutter, metallic tail, stream restart, or growing delay was
   reported: PASS.
 - M9.4 Parametric EQ remains unaffected: PASS.
+
+## M9.6 Higher / Brighter Naturalness Live Checklist
+
+Status: PROVISIONAL. Automated implementation and regression verification are
+complete; live Natural Bright acceptance remains open.
+
+Launch:
+
+```powershell
+.\.venv\Scripts\python.exe main.py --parametric-eq-lab
+```
+
+Initial state:
+
+- Start Processing.
+- Wait for Source Analysis Ready.
+- Calibrate Source.
+- Confirm a suggestion is available.
+- Confirm five targets are visible: Neutral, Natural Bright, Natural Deep,
+  Small / Cartoon, Large / Cavernous.
+- Use Baseline/Neutral voice.
+- Robot Off.
+- Lowpass Off.
+- Parametric EQ Flat or Bypass.
+- Adaptive Updating Off.
+- Pitch and formant trims zero.
+
+Natural Bright:
+
+- Select Natural Bright at `100%`.
+- Expected approximate base: pitch `+3.5 st`, formant `+1.0 st`.
+- Lock Suggested Transformation and enable execution.
+- Repeat:
+  - she sells seashells
+  - this weather is strange
+  - really bright white light
+  - why would we wait by the window
+  - everyone was singing in the evening
+  - yellow sweater
+  - fresh fish
+  - shiny silver shoes
+  - we were already there
+  - very rarely
+- Listen for natural vowel recognition; S, SH, CH, F, and TH clarity; excessive
+  sibilance; thin or nasal resonance; chipmunk or helium quality; metallic or
+  robotic tail; abrupt pitch instability; and whether the voice sounds
+  moderately higher rather than artificially tiny.
+
+Pitch-only comparison:
+
+- Keep Natural Bright locked.
+- Set formant trim to approximately `-1.0 st`.
+- Expected final: pitch about `+3.5 st`, formant about `0.0 st`.
+- Compare against the Natural Bright base `+1.0 st` formant and decide whether
+  moderate positive formant movement improves naturalness or makes the voice
+  too small/thin.
+
+Formant sweep:
+
+- With pitch about `+3.5 st`, compare final formant `0.0`, `+0.5`, `+1.0`,
+  `+1.5`, and `+2.0 st`.
+- Identify the setting that sounds brighter without becoming cartoon-like.
+
+Strength progression:
+
+- Test Natural Bright at `25%`, `50%`, `75%`, and `100%`.
+- Confirm pitch/formant movement increases predictably, no clamp jump occurs,
+  no sudden chipmunk transition occurs, no stale stored plan is applied, and
+  explicit re-lock remains required.
+
+Small / Cartoon:
+
+- Select Small / Cartoon at `100%`, explicitly re-lock, and enable execution.
+- Expected approximate base: pitch `+6.0 st`, formant `+2.0 st`.
+- Confirm the result is clearly exaggerated, clearly distinct from Natural
+  Bright, expectedly thin/cartoon-like, and not confused with the natural
+  target.
+
+Stability:
+
+- No crackle.
+- No flutter.
+- No metallic tail.
+- No growing delay.
+- No stream restart.
+- No backend failure.
+- No stale target.
+- Return Audio to Neutral works.
+- Clear Stored Transformation works.
+- Parametric EQ remains independent.
+
+M9.6 acceptance gate:
+
+- Natural Bright sounds more natural than the old absolute-F0 behavior.
+- Natural Bright is preferable to pitch-only or has a clearly identified better
+  formant value.
+- Natural Bright does not sound primarily chipmunk-like or helium-like.
+- Natural Bright remains clearly distinct from Small / Cartoon.
+- Strength scales predictably.
+- Sibilants remain usable.
+- Vowels remain recognizable.
+- Lock/calibration workflow remains reliable.
+- No stability regression occurs.

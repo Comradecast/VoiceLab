@@ -314,7 +314,7 @@ class TransformationPlanner:
             spectral = _spectral_plan(profile, target_profile, strength, source_confidence)
             texture = _texture_plan(target_profile, strength)
             dynamics = _dynamics_plan(target_profile, strength)
-            warnings = _warnings(profile, stale, source_reliability, pitch, formant, spectral, target_profile)
+            warnings = _warnings(profile, stale, source_reliability, pitch, formant, spectral, target_profile, strength)
             capabilities = _capabilities(pitch, formant, spectral, texture, dynamics, target_profile, strength)
             status_name, ready, degraded, unavailable = _plan_state(
                 profile, status, stale, source_reliability, pitch, formant, spectral
@@ -400,7 +400,7 @@ def _pitch_plan(profile, target, strength, source_confidence):
         )
         basis = f"{pitch_basis} Range maps target/source span with strength interpolation."
         confidence = source_confidence
-    return PitchPlan(source_f0, target.target_median_f0_hz, requested, applied, clamped,
+    return PitchPlan(source_f0, target.target_median_f0_hz, strength_adjusted, applied, clamped,
                      source_span, target.target_pitch_span_st, requested_scale, applied_scale,
                      range_clamped, _clamp01(confidence), basis, target.pitch_strategy.strategy_id)
 
@@ -423,8 +423,13 @@ def _formant_plan(target, strength, pitch):
     else:
         requested = strategy.fixed_shift_st * strength
         if strategy.strategy_id == FORMANT_STRATEGY_SIZE_COUPLED:
-            stylized = requested < 0.0 and pitch.applied_pitch_shift_st < 0.0
-            basis = "Size-coupled stylization intentionally lowers pitch and formants for a large-vocal-tract effect."
+            stylized = abs(requested) > SPECTRAL_EPSILON and abs(pitch.applied_pitch_shift_st) > SPECTRAL_EPSILON
+            if requested < 0.0 and pitch.applied_pitch_shift_st < 0.0:
+                basis = "Size-coupled stylization intentionally lowers pitch and formants for a large-vocal-tract effect."
+            elif requested > 0.0 and pitch.applied_pitch_shift_st > 0.0:
+                basis = "Size-coupled stylization intentionally raises pitch and formants for a small-vocal-tract effect."
+            else:
+                basis = "Size-coupled stylization intentionally couples pitch and formant direction."
         else:
             basis = "Restrained fixed formant shift from explicit target strategy."
     applied_request = requested
@@ -436,11 +441,12 @@ def _formant_plan(target, strength, pitch):
     if clamped:
         warning = "formant movement clamped" if not warning else f"{warning}; formant movement clamped"
     if strategy.strategy_id == FORMANT_STRATEGY_SIZE_COUPLED and stylized:
-        warning = (
+        stylized_warning = (
             "stylized negative pitch plus negative formant may exaggerate vowels, W/R transitions, or nasal resonance"
-            if not warning
-            else warning
+            if requested < 0.0 and pitch.applied_pitch_shift_st < 0.0
+            else "stylized positive pitch plus positive formant may sound chipmunk-like, thin, nasal, or sharply sibilant"
         )
+        warning = stylized_warning if not warning else warning
     if abs(strategy.fixed_shift_st) > MAX_NATURAL_FORMANT_SHIFT_ST:
         warning = "target asks for extreme formant movement"
     return FormantPlan(
@@ -587,6 +593,8 @@ def _tilt_adjustment(source_value, target_value, strength, limit, source_confide
 
 
 def _de_essing_amount(profile, target, brightness_adjustment, strength):
+    if not target.expect_de_essing and not target.requires_eq and target.max_band_adjustment_db <= SPECTRAL_EPSILON:
+        return 0.0
     source_sibilance = _optional_positive(profile.get("sibilance_energy_ratio")) or 0.0
     source_component = max(0.0, (source_sibilance - target.sibilance_energy_ratio) / 0.20) * strength
     brightness_component = 0.0
@@ -643,7 +651,11 @@ def _capabilities(pitch, formant, spectral, texture, dynamics, target, strength)
     return tuple(name for name in CAPABILITY_ORDER if name in set(needed))
 
 
-def _warnings(profile, stale, source_reliability, pitch, formant, spectral, target):
+def _warnings(profile, stale, source_reliability, pitch, formant, spectral, target, strength):
+    if _is_neutral_target(target):
+        return ()
+    if strength <= SPECTRAL_EPSILON:
+        return ()
     warnings = ["plan is diagnostic only; audio is not modified"]
     if stale:
         warnings.append("source profile stale")
@@ -658,7 +670,10 @@ def _warnings(profile, stale, source_reliability, pitch, formant, spectral, targ
     if formant.naturalness_guard_active:
         warnings.append("naturalness guard blocked inconsistent negative formant")
     if formant.stylized_formant_combination_active:
-        warnings.append("stylized negative pitch plus negative formant may exaggerate vowels, W/R transitions, or nasal resonance")
+        if formant.applied_formant_shift_st < 0.0 and pitch.applied_pitch_shift_st < 0.0:
+            warnings.append("stylized negative pitch plus negative formant may exaggerate vowels, W/R transitions, or nasal resonance")
+        elif formant.applied_formant_shift_st > 0.0 and pitch.applied_pitch_shift_st > 0.0:
+            warnings.append("stylized positive pitch plus positive formant may sound chipmunk-like, thin, nasal, or sharply sibilant")
     for label, adjustment in (
         ("chest", spectral.chest_db),
         ("low-mid", spectral.low_mid_db),
@@ -906,25 +921,24 @@ DEFAULT_TARGET_PROFILE = target_voice_profile(
 
 HIGHER_BRIGHTER_REFERENCE = target_voice_profile(
     target_id="diagnostic-higher-brighter",
-    display_name="Higher / Brighter Reference",
-    description="Diagnostic higher/brighter planning reference, not a production character.",
-    target_median_f0_hz=220.0,
-    target_pitch_span_st=7.5,
-    pitch_strategy=PitchStrategy(PITCH_STRATEGY_ABSOLUTE_F0),
+    display_name="Natural Bright Reference",
+    description="Raises pitch moderately while using restrained positive formant movement to keep the result bright without intentionally creating a small or cartoon-like vocal tract.",
+    target_median_f0_hz=140.0,
+    target_pitch_span_st=8.0,
+    pitch_strategy=PitchStrategy(PITCH_STRATEGY_RELATIVE_SHIFT, 3.5),
     max_pitch_shift_st=8.0,
-    nominal_formant_shift_st=1.2,
-    formant_strategy=FormantStrategy(FORMANT_STRATEGY_FIXED_SHIFT, fixed_shift_st=1.2),
+    nominal_formant_shift_st=1.0,
+    formant_strategy=FormantStrategy(FORMANT_STRATEGY_FIXED_SHIFT, fixed_shift_st=1.0, natural=True),
     chest_energy_ratio=0.12,
     low_mid_energy_ratio=0.28,
     presence_energy_ratio=0.28,
     brightness_energy_ratio=0.18,
     sibilance_energy_ratio=0.12,
     spectral_tilt_db=-4.0,
-    breathiness=0.25,
-    harmonic_weight=0.15,
-    expect_de_essing=True,
-    requires_breathiness=True,
-    requires_harmonic_enhancement=True,
+    max_band_adjustment_db=0.0,
+    max_spectral_tilt_adjustment_db=0.0,
+    requires_pitch_range=False,
+    requires_eq=False,
     warnings=("Diagnostic values are provisional.",),
 )
 
@@ -1007,11 +1021,39 @@ LARGE_CAVERNOUS_REFERENCE = target_voice_profile(
     ),
 )
 
+SMALL_CARTOON_REFERENCE = target_voice_profile(
+    target_id="diagnostic-small-cartoon",
+    display_name="Small / Cartoon Reference",
+    description="Raises both pitch and formants aggressively to create a deliberately small, cartoon-like vocal effect. Thin vowels, sharp consonants, and exaggerated brightness are expected.",
+    target_median_f0_hz=140.0,
+    target_pitch_span_st=8.0,
+    pitch_strategy=PitchStrategy(PITCH_STRATEGY_RELATIVE_SHIFT, 6.0),
+    max_pitch_shift_st=8.0,
+    nominal_formant_shift_st=2.0,
+    formant_strategy=FormantStrategy(
+        FORMANT_STRATEGY_SIZE_COUPLED,
+        fixed_shift_st=2.0,
+        stylized=True,
+    ),
+    chest_energy_ratio=0.10,
+    low_mid_energy_ratio=0.24,
+    presence_energy_ratio=0.30,
+    brightness_energy_ratio=0.22,
+    sibilance_energy_ratio=0.14,
+    spectral_tilt_db=-3.0,
+    max_band_adjustment_db=0.0,
+    max_spectral_tilt_adjustment_db=0.0,
+    requires_pitch_range=False,
+    requires_eq=False,
+    warnings=("Diagnostic values are provisional.",),
+)
+
 LOWER_WEIGHTIER_REFERENCE = NATURAL_DEEP_REFERENCE
 
 TARGET_REFERENCE_ORDER = (
     DEFAULT_TARGET_PROFILE,
     HIGHER_BRIGHTER_REFERENCE,
     NATURAL_DEEP_REFERENCE,
+    SMALL_CARTOON_REFERENCE,
     LARGE_CAVERNOUS_REFERENCE,
 )

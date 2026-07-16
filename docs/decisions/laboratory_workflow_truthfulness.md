@@ -97,6 +97,14 @@ Not Executed, including pitch-range mapping, parametric-EQ planner intent,
 spectral-tilt shaping, de-essing, breathiness, harmonic enhancement, and other
 unsupported requested capabilities.
 
+M9.6 target presentation uses five visible targets in deterministic order:
+Neutral, Natural Bright, Natural Deep, Small / Cartoon, and Large / Cavernous.
+Legacy Higher / Brighter lookup resolves to Natural Bright compatibility
+semantics and must not create a sixth visible target. Natural Bright is a
+diagnostic natural upward/brightening foundation, not a finished feminine voice.
+Small / Cartoon is explicitly stylized and must not be confused with the
+natural target.
+
 ## Soundboard Laboratory Policy
 
 Soundboard playback remains unchanged in normal production mode.
@@ -141,6 +149,11 @@ unsupported, and M9.4 Parametric EQ behavior remains unaffected.
 
 No M9.1 formulas, target profiles, Parametric EQ DSP, settings schema, or
 preset schema are changed by this correction.
+
+M9.6 changes the active upward target profile after this correction: Natural
+Bright no longer uses absolute-F0 forcing, and no static EQ compensation is
+used to conceal its artifacts. Parametric EQ remains independent and planner
+`parametric_eq` remains unsupported.
 
 ## Production Pitch Shift Regression
 

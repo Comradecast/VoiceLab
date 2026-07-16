@@ -421,7 +421,7 @@ class M93ExecutionAndModeTests(unittest.TestCase):
         second = service.transformation_execution_snapshot()
         self.assertEqual(first.target_pitch_semitones, locked_pitch)
         self.assertEqual(second.target_pitch_semitones, locked_pitch)
-        self.assertEqual(second.status, "active_partial")
+        self.assertEqual(second.status, "active")
 
     def test_adaptive_mode_switching(self):
         service = make_service(calibrate_lock_lab=True)
@@ -429,6 +429,7 @@ class M93ExecutionAndModeTests(unittest.TestCase):
         service.execution_enabled = True
         off_pitch = service.transformation_execution_snapshot().target_pitch_semitones
         service.source_analysis_snapshot = lambda: ready_source(median_f0_hz=220.0)
+        service.load_target_reference("lower_weightier")
         self.assertTrue(service.set_adaptive_updating_mode(ADAPTIVE_CONTINUOUS).success)
         continuous_pitch = service.transformation_execution_snapshot().target_pitch_semitones
         self.assertNotEqual(off_pitch, continuous_pitch)
