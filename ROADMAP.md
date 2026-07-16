@@ -2064,7 +2064,7 @@ authority, and laboratory reset semantics unchanged.
 - Adds explicit pitch and formant strategy metadata to immutable target
   profiles and transformation plans.
 - Keeps Neutral fully neutral at all strengths.
-- M9.6 later replaces the prior Higher / Brighter absolute-F0 behavior with
+- M9.6 replaces the prior Higher / Brighter absolute-F0 behavior with
   Natural Bright relative upward pitch and restrained positive formant
   movement.
 - Replaces the old Lower / Weightier diagnostic direction with Natural Deep:
@@ -2181,8 +2181,8 @@ authority, and laboratory reset semantics unchanged.
 
 ## M9.6 - Higher / Brighter Naturalness
 
-Status: PROVISIONAL. Implementation and automated verification are complete;
-live Natural Bright acceptance is still required before PASS.
+Status: PASS. Luke completed live Natural Bright and unified transformation
+workflow acceptance.
 
 M9.6 separates natural upward brightening from deliberately exaggerated
 small-vocal-tract stylization. It preserves the accepted Natural Deep and
@@ -2232,26 +2232,38 @@ Large / Cavernous behavior from M9.5.
   formant at full strength.
 - Planner `parametric_eq` and `spectral_tilt_shaping` remain unsupported.
 
-### Live Acceptance Required
+### Live Acceptance
 
-- Natural Bright must sound more natural than the old absolute-F0 Higher /
-  Brighter behavior.
-- Natural Bright must be preferable to pitch-only, or live testing must identify
-  a better formant value.
-- Natural Bright must not sound primarily chipmunk-like or helium-like and must
-  remain clearly distinct from Small / Cartoon.
+- Natural Bright at approximately `+3.5 st` pitch and `+1.0 st` formant works
+  as the accepted diagnostic natural-upward default.
+- The result operates as intended, sounds acceptable for continued product
+  development, and no target-value retuning is requested from this acceptance
+  run.
+- It does not primarily present as the old extreme absolute-F0 transformation,
+  does not require planner clamp saturation, and source F0 does not change the
+  relative semitone target.
+- Pitch and formant scale predictably with strength. Vowels and consonants
+  remain usable.
+- Natural Bright remains a diagnostic natural-upward foundation, not a finished
+  feminine character.
+- The accepted product decision is that natural upward transformation should
+  use moderate relative pitch movement with restrained positive formant
+  movement rather than forcing every source toward one absolute F0.
+- Small / Cartoon at approximately `+6.0 st` pitch and `+2.0 st` formant is
+  clearly distinct from Natural Bright. Its exaggerated thin/cartoon character
+  is intentional, it remains an explicit creative effect, and it must not be
+  presented as the natural upward default.
 
 ### M9.6 UX Correction - Unified Transformation Workflow
 
-Status: PROVISIONAL. Implementation and automated verification are complete;
-live unified-workflow acceptance is still required before PASS.
+Status: PASS. Live unified-workflow acceptance is complete.
 
 The first M9.6 implementation exposed truthful subsystem tabs as the main user
 path, but that forced repeated movement between Source Analysis, Target Planner,
 Calibrate & Lock, Plan Execution, and Parametric EQ. The corrected workflow adds
 a primary `Transform` page so the normal task is completed in one place.
 
-Accepted implementation scope:
+Accepted implementation scope and live workflow:
 
 - Top-level laboratory navigation starts with `Transform`, then Input
   Processing, Routing, and Diagnostics.
@@ -2269,6 +2281,11 @@ Accepted implementation scope:
   derived from ApplicationService snapshots.
 - Source Analysis, Target Planner, Plan Execution, Calibrate & Lock, and
   Parametric EQ diagnostics remain available and read the same service state.
+- The normal workflow now supports Start Listening, analysis readiness,
+  Calibrate Voice, target selection, strength, Preview, Apply Transformation,
+  Apply Changes after edits, pitch/formant adjustment, core voice shaping,
+  Parametric EQ, Return Audio to Neutral, Resume Stored Transformation, and
+  Clear Transformation from one page.
 
 Non-changes:
 
@@ -2277,15 +2294,15 @@ Non-changes:
   schema, production character, explicit-lock authority, or Continuous default
   was changed.
 
-Acceptance remains blocked on live confirmation that the unified workflow gives
-one obvious next action, makes audible versus unapplied state obvious, supports
-return/resume/clear without stale-state confusion, and preserves diagnostic
-inspection for advanced users.
+Live acceptance confirmed that the unified method works significantly better,
+is substantially easier to operate, requires no subsystem-tab navigation for
+ordinary transformation work, makes applied versus unapplied state visible, and
+preserves diagnostic inspection for advanced users. Visual presentation remains
+polish debt, not an M9.6 blocker.
 
 ### M9.6 UX Correction - Core Voice Shaping on Transform
 
-Status: PROVISIONAL. Implementation and automated verification are complete;
-live core-shaping acceptance is still required before PASS.
+Status: PASS. Live core-shaping acceptance is complete.
 
 Luke's live unified-workflow pass found the remaining practical issue: common
 voice-shaping controls still required leaving `Transform`. The corrected page
@@ -2304,6 +2321,15 @@ Implemented scope:
   ApplicationService-owned state.
 - Global Bypass Effects remains separate and is reported as making the shaping
   controls inaudible without clearing or toggling their values.
+- Gain, Robot, Lowpass, and High-Pass were live accepted from Transform. Gain
+  changes audible level without altering pitch/formant planning. Robot can be
+  made audible and returns to the prior sound at neutral. Lowpass audibly
+  reduces high-frequency content. High-Pass audibly reduces low-frequency
+  content and remains synchronized with the full Input Processing page.
+- Parametric EQ is accessible from Transform, reuses the existing EQ
+  controller/effect authority, and keeps EQ ON/BYPASS and Reset to Flat
+  functional without changing M9.4 behavior or introducing planner-driven EQ
+  compensation.
 
 Non-changes:
 
@@ -2315,3 +2341,33 @@ Non-changes:
 - Strength must scale predictably, sibilants must remain usable, vowels must
   remain recognizable, the lock/calibration workflow must remain reliable, and
   no stability regression may occur.
+
+### Final M9.6 Architecture Confirmation
+
+- Accepted target values are unchanged: Neutral `0 / 0`, Natural Bright
+  `+3.5 / +1.0`, Natural Deep `-3.5 / +1.505`, Small / Cartoon `+6.0 / +2.0`,
+  and Large / Cavernous `-4.5 / -1.5`.
+- Visible target order is Neutral, Natural Bright, Natural Deep, Small /
+  Cartoon, and Large / Cavernous.
+- One combined Experimental Pitch/Formant stage remains. No production Pitch
+  Shift exists in experimental pitch/formant chains, while production Pitch
+  Shift remains functional in normal mode.
+- Active Signalsmith latency remains approximately 4800 frames / 100 ms at
+  48 kHz. No chain order, target formula, settings schema, presets schema,
+  persistence, identity classification, or Continuous default changed.
+- Detailed subsystem pages remain available under Diagnostics.
+  ApplicationService remains the shared state and command authority, with no
+  tab-owned planner, calibration, execution, EQ, or shaping state.
+
+### Known Non-Blocking Debt
+
+- Transform layout is functionally accepted but not visually final. Spacing,
+  grouping, sizing, typography, and visual hierarchy may be improved later
+  without redesigning the accepted workflow or duplicating authorities.
+- Natural Bright is not a finished feminine character. Natural Deep is not a
+  universal finished masculine character. Additional source voices should
+  eventually be tested, and final production character presets remain future
+  work.
+- De-essing, breathiness, harmonic enhancement, spectral-tilt execution,
+  planner Parametric EQ, planner spectral-tilt shaping, and optional future
+  neural conversion remain unsupported or deferred.

@@ -1,7 +1,7 @@
 # Unified Transformation Workflow
 
-Status: PROVISIONAL. Implemented for M9.6 UX correction; live unified-workflow
-acceptance is pending.
+Status: Accepted. Implemented for M9.6 UX correction and accepted during live
+unified-workflow testing.
 
 ## Problem
 
@@ -23,11 +23,17 @@ work. The page keeps the normal task in one place:
 5. Choose strength.
 6. Apply Transformation.
 7. Adjust pitch/formant trims.
-8. Optionally shape Parametric EQ.
-9. Return audio to neutral, resume, or clear.
+8. Adjust core voice shaping.
+9. Optionally shape Parametric EQ.
+10. Return audio to neutral, resume, or clear.
 
 Subsystem tabs remain available for diagnostics. They read the same
 ApplicationService state and are no longer required for the normal workflow.
+
+Live acceptance confirmed that the unified method works significantly better
+than the subsystem-tab workflow, is substantially easier to operate, and does
+not require subsystem-tab navigation for ordinary transformation work. Visual
+presentation can be improved later, but visual polish does not block M9.6.
 
 ## Atomic Apply
 
@@ -63,6 +69,13 @@ Apply Changes succeeds. Dirty state is shown as `Changes Not Applied` in the
 persistent summary and on the Transform page. Compatibility aliases resolve to
 the same canonical target and must not create a false dirty state.
 
+Live acceptance confirmed that Apply Transformation remains an explicit user
+action, locks exactly the current immutable suggestion, and enables execution
+coherently. Target or strength edits do not auto-apply; unapplied edits are
+shown as Changes Not Applied; Apply Changes updates the stored and audible
+transformation. No partial or silent apply behavior was observed, and explicit
+lock authority remains architecturally preserved.
+
 ## Persistent Status
 
 A compact transformation summary is visible above the tabs and derives from
@@ -84,6 +97,10 @@ section. It reuses the existing ParametricEqController and existing service
 commands. No second EQ owner, duplicate EQ controller, duplicate EQ effect,
 latency change, or planner-driven EQ compensation was added.
 
+Live acceptance confirmed Parametric EQ remains accessible from Transform, EQ
+ON/BYPASS and Reset to Flat remain functional, M9.4 behavior remains
+unchanged, and planner-driven EQ compensation remains unsupported.
+
 ## Core Voice Shaping
 
 Live M9.6 unified-workflow testing found that the primary workflow still forced
@@ -104,11 +121,27 @@ inaudible without clearing or toggling those values.
 No Gain, Robot, Lowpass, High-Pass, Parametric EQ, or Pitch/Formant processor
 was duplicated.
 
+Live acceptance confirmed Gain changes audible level without altering
+pitch/formant planning, Robot is audible and returns to the prior sound at
+neutral, Lowpass audibly reduces high-frequency content, and High-Pass audibly
+reduces low-frequency content. Transform quick High-Pass control and the full
+Input Processing page remain synchronized. Global Bypass Effects remains
+separate from shaping values.
+
 ## Boundaries
 
 This decision does not change DSP behavior, Signalsmith buffering, Signalsmith
 latency, target values, planner formulas, target persistence, settings schema,
 presets schema, production characters, or Continuous mode defaults.
 
-M9.6 remains PROVISIONAL until Luke completes live Natural Bright and unified
-workflow acceptance.
+Accepted target values are unchanged: Neutral `0 / 0`, Natural Bright
+`+3.5 / +1.0`, Natural Deep `-3.5 / +1.505`, Small / Cartoon `+6.0 / +2.0`,
+and Large / Cavernous `-4.5 / -1.5`. Visible order remains Neutral, Natural
+Bright, Natural Deep, Small / Cartoon, and Large / Cavernous.
+
+One combined Experimental Pitch/Formant stage remains. Production Pitch Shift
+is absent from experimental pitch/formant chains and remains functional in
+normal mode. Active Signalsmith latency remains approximately 4800 frames /
+100 ms at 48 kHz. No chain order, settings/presets schema, persistence,
+identity classification, tab-owned planner/calibration/execution/EQ/shaping
+state, or Continuous default was introduced.

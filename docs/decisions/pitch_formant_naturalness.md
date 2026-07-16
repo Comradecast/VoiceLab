@@ -11,7 +11,7 @@ target planner.
 - Natural Deep lowers pitch with moderate positive formant compensation.
 - Large / Cavernous lowers pitch and formants only as an explicit stylized
   large-vocal-tract reference.
-- M9.6 replaces the prior absolute-F0 Higher / Brighter behavior with Natural
+- M9.6 replaced the prior absolute-F0 Higher / Brighter behavior with Natural
   Bright: relative upward pitch with restrained positive formant movement.
 - Small / Cartoon raises pitch and formants only as an explicit stylized
   small-vocal-tract reference.
@@ -62,6 +62,25 @@ with truthful warning, correct Return Audio to Neutral behavior, correct Clear
 Stored Transformation behavior, no reported crackle/flutter/metallic
 tail/stream restart/growing delay, and no M9.4 Parametric EQ regression.
 
+M9.6 live acceptance confirmed Natural Bright at approximately `+3.5 st` pitch
+and `+1.0 st` formant as the current diagnostic natural-upward default. It
+operates as intended, is acceptable for continued product development, does
+not primarily present as the old extreme absolute-F0 transformation, does not
+require planner clamp saturation, keeps source F0 from changing the relative
+semitone target, scales predictably with strength, and preserves usable vowels
+and consonants. No target-value retuning was requested.
+
+The accepted upward product decision is that natural upward transformation
+should use moderate relative pitch movement with restrained positive formant
+movement rather than forcing every source toward one absolute F0. Natural
+Bright remains a diagnostic natural-upward foundation, not a finished feminine
+character.
+
+Small / Cartoon at approximately `+6.0 st` pitch and `+2.0 st` formant was
+accepted as clearly distinct from Natural Bright. Its exaggerated thin/cartoon
+character is intentional, it remains an explicit creative effect, and it must
+not be presented as the natural upward default.
+
 ## Non-Changes
 
 M9.5 does not add a second pitch/formant processor, change Signalsmith
@@ -96,12 +115,18 @@ and retains legacy `higher_brighter` lookup compatibility. It adds
 `diagnostic-small-cartoon` as a separate visible stylized target. Natural Deep
 and Large / Cavernous values are unchanged.
 
+The accepted visible order is Neutral, Natural Bright, Natural Deep, Small /
+Cartoon, and Large / Cavernous. Accepted target values are Neutral `0 / 0`,
+Natural Bright `+3.5 / +1.0`, Natural Deep `-3.5 / +1.505`, Small / Cartoon
+`+6.0 / +2.0`, and Large / Cavernous `-4.5 / -1.5`.
+
 ## Known Non-Blocking Debt
 
-Natural Deep values are accepted diagnostic defaults, not finished universal
-character presets. More source voices should eventually be tested. Higher /
-Brighter, finished feminine and masculine character profiles, de-essing,
-breathiness, harmonic enhancement, spectral-tilt execution, planner-driven
-Parametric EQ, and optional neural voice conversion remain future work.
-Additional articulation-sensitive phrase testing may continue as tuning
-evidence, but does not block M9.5.
+Natural Bright is not a finished feminine character, and Natural Deep values
+are accepted diagnostic defaults rather than a universal finished masculine
+character. More source voices should eventually be tested. Finished feminine
+and masculine character profiles, de-essing, breathiness, harmonic
+enhancement, spectral-tilt execution, planner-driven Parametric EQ, and
+optional neural voice conversion remain future work. Additional
+articulation-sensitive phrase testing may continue as tuning evidence, but
+does not block M9.5 or M9.6.

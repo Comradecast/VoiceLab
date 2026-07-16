@@ -99,11 +99,13 @@ unsupported requested capabilities.
 
 M9.6 target presentation uses five visible targets in deterministic order:
 Neutral, Natural Bright, Natural Deep, Small / Cartoon, and Large / Cavernous.
-Legacy Higher / Brighter lookup resolves to Natural Bright compatibility
-semantics and must not create a sixth visible target. Natural Bright is a
-diagnostic natural upward/brightening foundation, not a finished feminine voice.
-Small / Cartoon is explicitly stylized and must not be confused with the
-natural target.
+Accepted target values are Neutral `0 / 0`, Natural Bright `+3.5 / +1.0`,
+Natural Deep `-3.5 / +1.505`, Small / Cartoon `+6.0 / +2.0`, and Large /
+Cavernous `-4.5 / -1.5`. Legacy Higher / Brighter lookup resolves to Natural
+Bright compatibility semantics and must not create a sixth visible target.
+Natural Bright is a diagnostic natural upward/brightening foundation, not a
+finished feminine voice. Small / Cartoon is explicitly stylized and must not
+be confused with the natural target.
 
 ## Soundboard Laboratory Policy
 
@@ -152,8 +154,12 @@ preset schema are changed by this correction.
 
 M9.6 changes the active upward target profile after this correction: Natural
 Bright no longer uses absolute-F0 forcing, and no static EQ compensation is
-used to conceal its artifacts. Parametric EQ remains independent and planner
-`parametric_eq` remains unsupported.
+used to conceal its artifacts. Luke accepted Natural Bright at approximately
+`+3.5 st` pitch and `+1.0 st` formant as the current diagnostic
+natural-upward default. Small / Cartoon at approximately `+6.0 st` pitch and
+`+2.0 st` formant is the separate intentional exaggerated alternative.
+Parametric EQ remains independent and planner `parametric_eq` remains
+unsupported.
 
 ## Production Pitch Shift Regression
 
@@ -175,8 +181,21 @@ mistaken for audible runtime. State is still service-owned; diagnostics and the
 Transform page read the same snapshots. See
 `docs/decisions/unified_transformation_workflow.md`.
 
-The remaining M9.6 correction exposes existing Gain, Robot, Lowpass, and
-Input Processing High-Pass controls on Transform under Core Voice Shaping. The
-Voice and Input Processing pages remain synchronized through ApplicationService
+Live M9.6 acceptance confirmed the Transform page is accepted for the normal
+workflow: Start Listening, analysis readiness, Calibrate Voice, target
+selection, strength, Preview, Apply Transformation, Apply Changes, manual
+pitch/formant adjustment, core voice shaping, Parametric EQ, Return Audio to
+Neutral, Resume Stored Transformation, and Clear Transformation all work from
+one page. Apply remains atomic and explicit; target and strength edits do not
+auto-apply; unapplied edits are shown as Changes Not Applied.
+
+The final M9.6 correction exposes existing Gain, Robot, Lowpass, and Input
+Processing High-Pass controls on Transform under Core Voice Shaping. The Voice
+and Input Processing pages remain synchronized through ApplicationService
 state; no duplicate effect, controller, chain authority, persistence, or schema
-change was introduced.
+change was introduced. Global Bypass Effects remains separate.
+
+Parametric EQ remains accessible from Transform through the existing controller
+and effect authority. EQ ON/BYPASS and Reset to Flat remain functional, M9.4
+behavior remains unchanged, and no planner-driven EQ compensation was
+introduced.

@@ -1,7 +1,7 @@
 # Higher / Brighter Naturalness
 
-Status: PROVISIONAL. M9.6 automated implementation and regression verification
-are complete; live Natural Bright acceptance is pending.
+Status: Accepted. M9.6 automated verification and live Natural Bright
+acceptance are complete; M9.6 is PASS.
 
 ## Context
 
@@ -93,21 +93,32 @@ Natural Deep and Large / Cavernous values are unchanged from M9.5.
 
 Planner `parametric_eq` and `spectral_tilt_shaping` remain unsupported.
 
-## Live Acceptance Pending
+## Live Acceptance
 
-Natural Bright is accepted only provisionally until Luke confirms live that it
-sounds more natural than the old absolute-F0 behavior, does not primarily sound
-chipmunk-like or helium-like, remains distinct from Small / Cartoon, preserves
-usable sibilants and recognizable vowels, and does not regress stability or the
-calibration/lock workflow.
+Luke accepted Natural Bright at approximately `+3.5 st` pitch and `+1.0 st`
+formant as the current diagnostic natural-upward default. It operates as
+intended, sounds acceptable for continued product development, and needs no
+target-value retuning from this acceptance run.
 
-M9.6 also requires unified workflow live acceptance. The normal Natural Bright
-test path now starts on the `Transform` page and uses Apply Transformation /
-Apply Changes instead of requiring the user to move across Source Analysis,
-Target Planner, Calibrate & Lock, Plan Execution, and Parametric EQ tabs.
+Natural Bright no longer primarily presents as the old extreme absolute-F0
+transformation. It does not require planner clamp saturation, source F0 does
+not change the relative semitone target, pitch and formant scale predictably
+with strength, and vowels and consonants remain usable.
 
-The remaining live UX correction adds Core Voice Shaping to Transform so Gain,
-Robot, Lowpass, and High-Pass can be adjusted during Natural Bright acceptance
-without leaving the primary workflow. These are existing chain/input-processing
-authorities only; Natural Bright pitch/formant values and DSP behavior remain
-unchanged.
+The accepted product decision is that natural upward transformation should use
+moderate relative pitch movement with restrained positive formant movement
+rather than forcing every source toward one absolute F0. Natural Bright remains
+a diagnostic natural-upward foundation, not a finished feminine character.
+
+Small / Cartoon at approximately `+6.0 st` pitch and `+2.0 st` formant was
+accepted as clearly distinct from Natural Bright. Its exaggerated thin/cartoon
+character is intentional, it remains an explicit creative effect, and it must
+not be presented as the natural upward default.
+
+The accepted Natural Bright test path starts on the `Transform` page and uses
+Apply Transformation / Apply Changes instead of requiring the user to move
+across Source Analysis, Target Planner, Calibrate & Lock, Plan Execution, and
+Parametric EQ tabs. Core Voice Shaping on Transform lets Gain, Robot, Lowpass,
+and High-Pass be adjusted without leaving the primary workflow. These are
+existing chain/input-processing authorities only; Natural Bright pitch/formant
+values and DSP behavior remain unchanged.

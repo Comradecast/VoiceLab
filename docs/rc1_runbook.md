@@ -2735,8 +2735,8 @@ Live acceptance classification:
 
 ## M9.6 Higher / Brighter Naturalness Live Checklist
 
-Status: PROVISIONAL. Automated implementation and regression verification are
-complete; live Natural Bright acceptance remains open.
+Status: PASS. Automated implementation, regression verification, and live
+Natural Bright acceptance are complete.
 
 Launch:
 
@@ -2825,21 +2825,32 @@ Stability:
 
 M9.6 acceptance gate:
 
-- Natural Bright sounds more natural than the old absolute-F0 behavior.
-- Natural Bright is preferable to pitch-only or has a clearly identified better
-  formant value.
-- Natural Bright does not sound primarily chipmunk-like or helium-like.
-- Natural Bright remains clearly distinct from Small / Cartoon.
-- Strength scales predictably.
-- Sibilants remain usable.
-- Vowels remain recognizable.
-- Lock/calibration workflow remains reliable.
-- No stability regression occurs.
+- Natural Bright works at the current `+3.5 st` pitch and `+1.0 st` formant
+  default: PASS.
+- Natural Bright sounds acceptable for continued product development and no
+  target-value retuning is requested: PASS.
+- Natural Bright no longer primarily presents as the old extreme absolute-F0
+  transformation: PASS.
+- Natural Bright does not require planner clamp saturation: PASS.
+- Source F0 does not change the relative semitone target: PASS.
+- Pitch and formant scale predictably with strength: PASS.
+- Vowels and consonants remain usable: PASS.
+- Natural Bright remains a diagnostic natural-upward foundation, not a finished
+  feminine character: PASS.
+- Natural upward transformation should use moderate relative pitch movement
+  with restrained positive formant movement rather than forcing every source
+  toward one absolute F0: ACCEPTED.
+- Small / Cartoon at `+6.0 st` pitch and `+2.0 st` formant is clearly distinct
+  from Natural Bright: PASS.
+- Small / Cartoon's exaggerated thin/cartoon character is intentional and must
+  not be presented as the natural upward default: PASS.
+- Lock/calibration workflow remains reliable: PASS.
+- No stability regression occurs: PASS.
 
 ## M9.6 Unified Transformation Workflow Live Checklist
 
-Status: PROVISIONAL. Automated implementation and regression verification are
-complete; live unified-workflow acceptance remains open.
+Status: PASS. Automated implementation, regression verification, and live
+unified-workflow acceptance are complete.
 
 Normal workflow:
 
@@ -2851,7 +2862,8 @@ Normal workflow:
 6. Adjust `Strength`.
 7. Press `Apply Transformation`.
 8. Tune pitch and formant in `Manual Adjustment`.
-9. Optionally open `Advanced Tone Shaping - Parametric EQ` and adjust, bypass,
+9. Adjust `Core Voice Shaping`.
+10. Optionally open `Advanced Tone Shaping - Parametric EQ` and adjust, bypass,
    or reset EQ.
 
 Expected page behavior:
@@ -2888,18 +2900,29 @@ Acceptance questions:
 
 Unified workflow acceptance gate:
 
-- The Transform page is sufficient for the full normal workflow.
-- The user can distinguish Preview from Applied Transformation.
-- Apply Transformation / Apply Changes is explicit and mistake-resistant.
-- Return, Resume, and Clear meanings are not mixed.
+- The Transform page is sufficient for the full normal workflow: PASS.
+- The unified method works significantly better and is substantially easier to
+  operate than the subsystem-tab workflow: PASS.
+- No subsystem-tab navigation is required for ordinary transformation work:
+  PASS.
+- The user can distinguish Preview from Applied Transformation: PASS.
+- Apply Transformation / Apply Changes remains explicit and atomic: PASS.
+- Target or strength edits do not auto-apply: PASS.
+- Unapplied edits are shown as Changes Not Applied: PASS.
+- Apply Changes updates the stored and audible transformation: PASS.
+- No partial or silent apply behavior was observed: PASS.
+- Return, Resume, and Clear meanings are not mixed: PASS.
 - Parametric EQ can be shaped from the Transform page without creating another
-  EQ authority.
-- No DSP, target-value, latency, persistence, or schema regression occurs.
+  EQ authority: PASS.
+- Visual presentation can be improved later, but it no longer blocks usability:
+  ACCEPTED NON-BLOCKING DEBT.
+- No DSP, target-value, latency, persistence, or schema regression occurs:
+  PASS.
 
 ## M9.6 Core Voice Shaping Live Checklist
 
-Status: PROVISIONAL. Automated implementation and regression verification are
-complete; live core-shaping acceptance remains open.
+Status: PASS. Automated implementation, regression verification, and live
+core-shaping acceptance are complete.
 
 Normal workflow:
 
@@ -2920,9 +2943,69 @@ Normal workflow:
 
 Acceptance questions:
 
-- Are Gain, Robot, Lowpass, and High-Pass reachable from Transform?
-- Do Transform controls and original pages stay synchronized?
-- Is global bypass clearly separate from individual shaping values?
-- Does Open Full Input Processing remain available for detailed cleanup?
-- Is any core control editable when its effect stage is unavailable?
-- Is there any duplicate processing, added latency, or chain-order change?
+- Gain is reachable from Transform, audibly controls level, uses the existing
+  Gain authority, does not alter pitch/formant planning, and creates no
+  duplicate Gain stage: PASS.
+- Robot is reachable from Transform, is audible, uses the existing Robot
+  authority, returns to the prior sound at neutral, and creates no duplicate
+  Robot stage: PASS.
+- Lowpass is reachable from Transform, audibly reduces high-frequency content,
+  uses the existing Lowpass authority, and creates no duplicate filter stage:
+  PASS.
+- High-Pass is reachable from Transform, audibly reduces low-frequency content,
+  uses the existing Input Processing High-Pass authority, stays synchronized
+  with the full Input Processing page, and creates no duplicate processor:
+  PASS.
+- Global Bypass Effects remains separate from individual shaping values: PASS.
+- Open Full Input Processing remains available for detailed cleanup: PASS.
+- Parametric EQ remains accessible from Transform, reuses the existing
+  controller/effect authority, keeps EQ ON/BYPASS and Reset to Flat functional,
+  preserves M9.4 behavior, and adds no duplicate EQ instance: PASS.
+- No duplicate processing, added latency, or chain-order change was introduced:
+  PASS.
+
+## M9.6 Final Architecture and Debt Record
+
+Status: PASS.
+
+Accepted target values are unchanged:
+
+- Neutral: `0 / 0`.
+- Natural Bright: `+3.5 / +1.0`.
+- Natural Deep: `-3.5 / +1.505`.
+- Small / Cartoon: `+6.0 / +2.0`.
+- Large / Cavernous: `-4.5 / -1.5`.
+
+Accepted visible order:
+
+1. Neutral.
+2. Natural Bright.
+3. Natural Deep.
+4. Small / Cartoon.
+5. Large / Cavernous.
+
+Architecture confirmation:
+
+- One combined Experimental Pitch/Formant stage remains.
+- No production Pitch Shift exists in experimental pitch/formant chains.
+- Production Pitch Shift remains functional in normal mode.
+- Active Signalsmith latency remains approximately 4800 frames / 100 ms at
+  48 kHz.
+- No chain order, target formula, settings schema, presets schema, persistence,
+  identity classification, or Continuous default changed.
+- Detailed subsystem pages remain available under Diagnostics.
+- ApplicationService remains the shared state and command authority.
+- No tab-owned planner, calibration, execution, EQ, or shaping state exists.
+
+Known non-blocking product debt:
+
+- Transform layout is functionally accepted but not visually final.
+- Visual polish must not redesign the accepted workflow or duplicate
+  authorities.
+- Natural Bright is not a finished feminine character.
+- Natural Deep is not a universal finished masculine character.
+- Additional source voices should eventually be tested.
+- Final production character presets remain future work.
+- De-essing, breathiness, harmonic enhancement, spectral-tilt execution,
+  planner Parametric EQ, planner spectral-tilt shaping, and neural conversion
+  remain unsupported or deferred.

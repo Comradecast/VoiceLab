@@ -113,6 +113,12 @@ trim at final formant `0.0`, `+0.5`, `+1.0`, `+1.5`, and `+2.0 st`. The
 planner base remains immutable, trims are not rewritten automatically, final
 runtime clamps remain authoritative, and no trim state is persisted.
 
+Live M9.6 acceptance confirmed Natural Bright works at the current
+`+3.5 st` pitch and `+1.0 st` formant diagnostic default, with predictable
+strength scaling and no requested target-value retuning. Small / Cartoon
+remains the explicit `+6.0 st` pitch and `+2.0 st` formant stylized
+alternative and must not be presented as the natural upward default.
+
 ## M9.6 Unified Apply Command
 
 The unified `Transform` page adds an explicit Apply Transformation / Apply
@@ -120,6 +126,11 @@ Changes command. This command preserves the accepted authority model: it is a
 user action that locks the current immutable suggestion and enables execution
 as one coherent operation. Target, strength, and calibration changes still
 refresh Preview only until Apply succeeds.
+
+Live M9.6 acceptance confirmed no partial or silent apply behavior: Apply
+Transformation locks exactly the current immutable suggestion, target or
+strength edits do not auto-apply, unapplied edits are shown as Changes Not
+Applied, and Apply Changes updates the stored and audible transformation.
 
 Separate Lock Suggested Transformation and Enable Execution controls remain
 available in diagnostics for engineering inspection. Return Audio to Neutral,
